@@ -1,8 +1,1131 @@
-/*
+/* Style for markdown highlights */
+.cm-highlight {
+    background-color: var(--highlight-color, #ffd700)66;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* Override default view-content padding for highlights sidebar */
+.workspace-leaf-content[data-type="highlights-sidebar"] .view-content {
+    padding: 0;
+}
 
-If your plugin does not need CSS, delete this file.
+/* Sidebar styles */
+.highlights-search-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--size-2-1);
+    background-color: var(--background-primary);
+    padding: 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    flex-shrink: 0; 
+}
 
-*/
+.highlights-search-input {
+    flex: 1;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: var(--font-ui-small);
+    font-family: var(--font-interface);
+    box-sizing: border-box;
+    transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+}
+
+.highlights-search-input::placeholder {
+    color: var(--text-faint);
+}
+
+.highlights-search-input:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+    outline: none;
+}
+
+.highlights-search-input:hover:not(:focus) {
+    border-color: var(--background-modifier-border-hover);
+}
+
+.highlights-group-button {
+    -webkit-app-region: no-drag;
+    background-color: transparent !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--size-2-2) var(--size-2-3);
+    cursor: var(--cursor);
+    border-radius: var(--clickable-icon-radius);
+    color: var(--icon-color) !important;
+    opacity: var(--icon-opacity);
+    transition: opacity 0.15s ease-in-out;
+    height: auto !important;
+    border: none;
+    font-family: var(--font-interface);
+    box-sizing: border-box;
+    box-shadow: none !important;
+}
+
+.highlights-group-button:hover {
+    background-color: var(--background-modifier-hover) !important;
+    opacity: var(--icon-opacity-hover);
+    box-shadow: none !important;
+}
+
+.highlights-group-button:active {
+    background-color: var(--background-modifier-active) !important;
+    box-shadow: none !important;
+}
+
+.highlights-group-button.active {
+    background-color: var(--background-modifier-active-hover) !important;
+    color: var(--icon-color-active) !important;
+    opacity: 1;
+    box-shadow: none !important;
+}
+
+.highlights-group-button.active:hover {
+    background-color: var(--background-modifier-active-hover) !important;
+    box-shadow: none !important;
+}
+
+.highlights-group-button.is-active {
+    opacity: var(--icon-opacity-hover);
+    color: var(--icon-color-active) !important;
+    background-color: var(--background-modifier-active-hover) !important;
+    box-shadow: none !important;
+}
+
+.highlights-group-button.is-active:hover {
+    background-color: var(--background-modifier-active-hover) !important;
+    box-shadow: none !important;
+}
+
+.search-term-highlight {
+    background-color: var(--text-highlight-bg);
+    color: var(--text-normal);
+    padding: 0;
+    border-radius: 2px;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.highlights-list-area {
+    padding: 12px 12px; 
+    flex-grow: 1;
+    overflow-y: scroll;
+    min-height: 0;
+    scrollbar-gutter: stable;
+    position: relative;
+}
+
+.highlights-list-area > .highlights-list > p {
+    margin-top: 0; 
+    padding: 15px 0; 
+    text-align: center;
+    color: var(--text-faint);
+    font-size: var(--font-ui-small);
+}
+
+.highlight-group-header {
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-weight-black);
+    padding: 16px 0 12px 0;
+    margin: 16px -12px 0 -12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.highlight-group-header > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.highlight-group-header:first-child {
+    margin-top: 0;
+}
+
+.group-color-square {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid var(--background-modifier-border);
+    flex-shrink: 0;
+}
+
+.group-color-square[data-color="#ffd700"] { background-color: #ffd700; }
+.group-color-square[data-color="#ff6b6b"] { background-color: #ff6b6b; }
+.group-color-square[data-color="#4ecdc4"] { background-color: #4ecdc4; }
+.group-color-square[data-color="#45b7d1"] { background-color: #45b7d1; }
+.group-color-square[data-color="#96ceb4"] { background-color: #96ceb4; }
+
+.group-tag-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.group-tag-icon svg {
+    width: 10px;
+    height: 10px;
+}
+
+.highlight-item-card {
+    background: var(--background-secondary); 
+    border: none; 
+    border-left: 5px solid var(--highlight-border-color, #ffd700); 
+    border-radius: 6px; 
+    padding: 0; 
+    margin-bottom: 10px; 
+    box-shadow: var(--shadow-s); 
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-light);
+    transition: background-color 0.2s ease, border-left-color 0.2s ease;
+    position: relative;
+}
+
+.highlight-item-card.selected {
+    box-shadow: var(--shadow-s); 
+}
+
+.highlight-item-card.highlight-selected {
+    box-shadow: 0 0 0 1.5px var(--highlight-selection-color), var(--shadow-s);
+}
+
+/* Hover-based color picker - only triggered by left border hover */
+.highlight-border-hover-zone {
+    position: absolute;
+    left: -5px;
+    top: 0;
+    width: 25px; /* Covers the 5px border + 20px additional hover area extending left */
+    height: 100%;
+    z-index: 1;
+    background: transparent;
+    cursor: pointer;
+}
+
+.hover-color-picker {
+    position: absolute;
+    left: -5px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+}
+
+.hover-color-picker.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.hover-color-options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: var(--shadow-l);
+}
+
+.hover-color-option {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid var(--background-modifier-border);
+    transition: transform 0.1s ease, border-color 0.2s ease, opacity 0.2s ease;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: slideIn 0.2s ease forwards;
+    animation-delay: calc(var(--option-index) * 0.05s);
+}
+
+.hover-color-option:hover {
+    transform: translateY(0) scale(1.2);
+    border-color: var(--text-normal);
+    z-index: 1;
+}
+
+.hover-color-option[data-color="#ffd700"] { background-color: #ffd700; }
+.hover-color-option[data-color="#ff6b6b"] { background-color: #ff6b6b; }
+.hover-color-option[data-color="#4ecdc4"] { background-color: #4ecdc4; }
+.hover-color-option[data-color="#45b7d1"] { background-color: #45b7d1; }
+.hover-color-option[data-color="#96ceb4"] { background-color: #96ceb4; }
+
+@keyframes slideIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.highlight-quote {
+    color: var(--text-normal);
+    padding: 10px 15px; 
+    margin-bottom: 0; 
+    border-radius: 0 6px 0 0; 
+    cursor: pointer;
+    font-size: inherit; 
+    line-height: var(--line-height-normal);
+    transition: background-color 0.2s ease;
+}
+
+.highlight-quote:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.highlight-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0;
+    padding: 6px 15px 6px 15px; 
+    border-top: 0.5px solid var(--background-modifier-border); 
+    font-size: var(--font-ui-smaller); 
+    transition: background-color 0.2s ease;
+}
+
+.highlight-actions:hover .comment-toggle {
+    color: var(--text-normal);
+    text-decoration: underline;
+}
+
+.highlight-actions.no-comments {
+    cursor: default;
+}
+
+.highlight-actions.no-comments:hover {
+    background-color: transparent;
+}
+
+.comment-buttons {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.highlight-item-card.selected .comment-buttons {
+    opacity: 1;
+}
+
+.highlight-timestamp {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    margin-left: auto;
+}
+
+.highlight-comments {
+    border-top: 0.5px solid var(--background-modifier-border);
+    background-color: var(--background-modifier-form-field);
+    border-radius: 0 0 6px 6px;
+}
+
+.highlight-comment {
+    cursor: pointer;
+    color: var(--text-normal);
+    font-size: var(--font-ui-smaller);
+    line-height: var(--line-height-normal);
+    padding: 6px 15px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    border-bottom: 0.5px solid var(--background-modifier-border);
+}
+
+.highlight-comment:last-child {
+    margin-bottom: 0;
+    border-radius: 0 0 6px 0;
+}
+
+.highlight-comment:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.comment-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    width: 20px;
+    height: 20px;
+}
+
+.comment-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.icon-btn {
+    background: transparent;
+    border: 1px solid var(--background-modifier-border);
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--text-muted);
+}
+
+.icon-btn:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+.icon-btn.remove:hover {
+    background: var(--text-error);
+    color: white;
+    border-color: var(--text-error);
+}
+
+/* Color picker popup */
+.color-picker-popup {
+    position: absolute;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    padding: 8px;
+    box-shadow: var(--shadow-l);
+    z-index: 1000;
+    display: flex;
+    gap: 6px;
+}
+
+.color-option {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.2s ease, transform 0.1s ease;
+}
+
+.color-option[data-color] {
+    background-color: attr(data-color);
+}
+
+.color-option[data-color="#ffd700"] { background-color: #ffd700; }
+.color-option[data-color="#ff6b6b"] { background-color: #ff6b6b; }
+.color-option[data-color="#4ecdc4"] { background-color: #4ecdc4; }
+.color-option[data-color="#45b7d1"] { background-color: #45b7d1; }
+.color-option[data-color="#96ceb4"] { background-color: #96ceb4; }
+
+.color-option:hover {
+    border-color: var(--text-normal);
+    transform: scale(1.1);
+}
+
+/* Color picker section */
+.highlight-color-picker {
+    border-top: 0.5px solid var(--background-modifier-border);
+    padding: 8px 15px;
+    background-color: var(--background-modifier-form-field);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.color-picker-label {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    margin-right: 4px;
+}
+
+.color-picker-options {
+    display: flex;
+    gap: 6px;
+}
+
+/* Accordion-style comment toggle */
+.comment-toggle {
+    cursor: pointer;
+    transition: color 0.2s ease, text-decoration 0.2s ease;
+}
+
+.comment-toggle:hover {
+    color: var(--text-normal);
+    text-decoration: underline;
+}
+
+.info-container {
+    pointer-events: none;
+}
+
+.focused {
+    animation: highlight-flash 2s ease-out;
+}
+
+@keyframes highlight-flash {
+    0% { background-color: var(--interactive-accent); }
+    100% { background-color: transparent; }
+}
+
+/* Override menu item border-radius for tag filter dropdown */
+.menu .menu-item {
+    border-radius: 0 !important;
+}
+
+/* Highlight tags display */
+.highlight-tags {
+    padding: 6px 0 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.highlight-tag {
+    background-color: var(--tag-background);
+    color: var(--tag-color);
+    border: 1px solid var(--tag-border-color);
+    border-radius: var(--tag-radius);
+    padding: 1px 6px;
+    font-size: var(--tag-size);
+    font-weight: var(--tag-weight);
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.highlight-tag:hover {
+    background-color: var(--interactive-hover);
+    border-color: var(--interactive-accent);
+    color: var(--text-normal);
+}
+
+.highlight-tag::before {
+    content: '#';
+    opacity: 0.7;
+}
+
+/* Tag filter badge */
+.tag-filter-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 10px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Tabs container */
+.highlights-tabs-container {
+    display: flex;
+    background-color: var(--background-primary);
+    flex-shrink: 0;
+}
+
+.highlights-tab {
+    flex: 1;
+    padding: 10px 0;
+    border: none !important;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    font-size: var(--font-ui-small);
+    font-family: var(--font-interface);
+    font-weight: var(--font-weight-normal);
+    cursor: pointer;
+    transition: color 0.2s ease;
+    text-align: center;
+    text-decoration: none;
+    position: relative;
+    box-shadow: none !important;
+}
+
+.highlights-tab:hover {
+    color: var(--text-normal) !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.highlights-tab.active {
+    color: var(--text-normal) !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.highlights-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--interactive-accent);
+}
+
+/* Line info styling */
+.highlight-line-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.line-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.line-icon svg {
+    width: 10px;
+    height: 10px;
+}
+
+/* Comment icon styling */
+.comment-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.comment-icon svg {
+    width: 10px;
+    height: 10px;
+}
+
+/* Collections styles */
+.collections-container {
+    padding: 12px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.collections-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.collections-title {
+    font-size: var(--font-ui-medium);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-normal);
+}
+
+.new-collection-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-s);
+    border: 1px solid var(--interactive-accent);
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    font-size: var(--font-ui-small);
+    font-family: var(--font-interface);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.new-collection-btn:hover {
+    background-color: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+}
+
+.collections-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    align-content: start;
+}
+
+/* Responsive collections grid - single column on narrow sidebars */
+@container (max-width: 220px) {
+    .collections-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Also handle very narrow cases */
+@media (max-width: 400px) {
+    .collections-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.collection-card {
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    padding: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: 100px; /* Fixed height for consistent grid */
+    min-height: 100px; /* Ensure minimum height */
+    max-height: 100px; /* Prevent stretching */
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden; /* Prevent content overflow */
+}
+
+.collection-card:hover {
+    border-color: var(--interactive-accent);
+    box-shadow: var(--shadow-s);
+}
+
+.collection-card:hover .collection-delete-btn {
+    opacity: 1;
+}
+
+.collection-name {
+    font-size: var(--font-ui-smaller);
+    font-weight: 600;
+    color: var(--text-normal);
+    margin-bottom: 2px;
+    padding-right: 28px; /* Add padding to account for menu button */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.collection-description {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    line-height: var(--line-height-tight);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* Limit to 2 lines */
+    line-clamp: 2; /* Standard property for compatibility */
+    -webkit-box-orient: vertical;
+    margin-bottom: 8px; /* Add space before stats */
+}
+
+.collection-stats {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
+    padding-top: 4px;
+    border-top: 1px solid var(--background-modifier-border);
+    flex-shrink: 0; /* Prevent shrinking */
+    margin-top: auto; /* Push to bottom */
+}
+
+.collection-delete-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 0.2s ease;
+    z-index: 1;
+}
+
+.collection-delete-btn:hover {
+    background: var(--text-error);
+    border-color: var(--text-error);
+    color: white;
+}
+
+.collection-delete-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
+.collection-menu-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 20px;
+    height: 20px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    opacity: 0;
+}
+
+.collection-menu-btn:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+.collection-card:hover .collection-menu-btn {
+    display: flex;
+    opacity: 1;
+}
+
+/* Remove floating toolbar styles - functionality moved to main button bar */
+
+/* Adjust padding for the last item in the highlights list and collections grid */
+.highlights-list-area > .highlights-list:last-child,
+.highlights-list-area > .collections-grid:last-child {
+   padding-bottom: 20px; /* Reduce padding since no floating button */
+}
+
+/* Styling for empty states in highlights-list */
+.highlights-list p {
+    color: var(--text-faint);
+    text-align: center;
+    font-size: var(--font-ui-small);
+    margin-top: 20px; /* Add some top margin */
+    padding: 10px;
+}
+
+/* Search input container */
+.highlights-search-input-container {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    flex-shrink: 0;
+}
+
+.highlights-search-input-container .highlights-search-input {
+    margin: 0;
+    background-color: var(--background-modifier-form-field);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--input-radius);
+    color: var(--text-normal);
+    font-family: var(--font-ui);
+    font-size: var(--font-ui-small);
+    padding: 6px 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.highlights-search-input-container .highlights-search-input:focus {
+    border-color: var(--background-modifier-border-focus);
+    box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus);
+    outline: none;
+}
+
+.highlights-search-input-container .highlights-search-input::placeholder {
+    color: var(--text-faint);
+}
+
+/* Comment stat clickable styling */
+.highlight-comment-stat.clickable {
+    cursor: pointer;
+    border-radius: var(--radius-s);
+    padding: 2px 4px;
+    margin: -2px -4px;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.8;
+}
+
+.highlight-comment-stat.clickable:hover {
+    background-color: var(--background-modifier-hover);
+    opacity: 1;
+}
+
+/* Collection stat clickable styling */
+.highlight-collection-stat.clickable {
+    cursor: pointer;
+    border-radius: var(--radius-s);
+    padding: 2px 4px;
+    margin: -2px -4px;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+    opacity: 0.8;
+}
+
+.highlight-collection-stat.clickable:hover {
+    background-color: var(--background-modifier-hover);
+    opacity: 1;
+}
+
+/* Add Comment line styling - distinct from regular comments */
+.highlight-add-comment-line {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: var(--line-height-normal);
+    padding: 8px 15px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    background-color: var(--background-primary-alt);
+    border-radius: 0 0 6px 0;
+    display: flex;
+    align-items: center;
+    justify-content: left;
+    gap: 6px;
+    font-weight: 400;
+}
+
+.highlight-add-comment-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.highlight-add-comment-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.highlight-add-comment-line:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-radius: 0 0 6px 0;
+}
+
+.highlight-add-comment-line:hover .highlight-add-comment-icon {
+    color: var(--text-normal);
+}
+
+/* Highlights sidebar content layout */
+.highlights-sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* Search input container visibility */
+.highlights-search-input-container.hidden {
+    display: none !important;
+}
+
+/* Collection info line styling */
+.collection-info-line {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Collection description empty state */
+.collection-description-empty {
+    font-style: italic;
+}
+
+/* Highlight filename styling */
+.highlight-filename {
+    color: var(--text-muted) !important;
+    font-size: var(--font-ui-smaller);
+    margin-bottom: 2px;
+    display: block;
+    cursor: pointer;
+}
+
+.highlight-filename:hover {
+    color: var(--text-normal) !important;
+    text-decoration: underline;
+}
+
+/* Highlight info line styling */
+.highlight-info-line {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Dropdown menu styling */
+.highlights-dropdown-menu {
+    position: fixed;
+    background: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-l);
+    z-index: 1000;
+    max-height: 300px;
+    overflow-y: auto;
+    min-width: 200px;
+}
+
+/* Dropdown clear item styling */
+.highlights-dropdown-clear {
+    padding: 8px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--background-modifier-border);
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.highlights-dropdown-clear:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Dropdown item styling */
+.highlights-dropdown-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-ui-small);
+    user-select: none;
+}
+
+.highlights-dropdown-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Dropdown check styling */
+.highlights-dropdown-check {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Dropdown empty state */
+.highlights-dropdown-empty {
+    padding: 8px 16px;
+    color: var(--text-faint);
+    font-size: var(--font-ui-small);
+    font-style: italic;
+}
+
+/* Collection navigation back button styling */
+.collection-nav-back {
+    background-color: var(--interactive-accent) !important;
+    color: var(--text-on-accent) !important;
+    border-color: var(--interactive-accent) !important;
+}
+
+/* Disabled button styling */
+.highlights-group-button.disabled {
+    opacity: 0.5 !important;
+    pointer-events: none !important;
+}
+
+.highlights-search-input.disabled {
+    opacity: 0.5 !important;
+    pointer-events: none !important;
+}
+
+/* Modal button container */
+.modal-button-container {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+/* Collections container for special layout */
+.highlights-list.collections-container {
+    container-type: inline-size;
+}
+
+/* Highlight item custom color properties */
+.highlight-item-card {
+    border-left-color: var(--highlight-border-color, var(--highlight-color, #ffd700));
+}
+
+/* Dropdown positioning using CSS custom properties */
+.highlights-dropdown-menu.dropdown-positioned {
+    position: fixed;
+    left: var(--dropdown-left);
+    top: var(--dropdown-top);
+    z-index: 1000;
+    min-width: 200px;
+    /* Remove max-height and overflow restrictions to let JS handle them */
+}
+
+/* Remove the old responsive positioning rules that conflict with JS positioning */
+
+/* Collection animation keyframes */
+@keyframes collectionPopIn {
+    0% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes collectionPopOut {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0.3);
+        opacity: 0;
+    }
+}
+
+/* Collection animation classes */
+.collection-card.animating-in {
+    animation: collectionPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+.collection-card.animating-out {
+    animation: collectionPopOut 0.2s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
+}
+
+/* Ensure animations start from the correct state */
+.collection-card.preparing-animation {
+    transform: scale(0.3);
+    opacity: 0;
+}

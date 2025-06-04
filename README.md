@@ -1,94 +1,79 @@
-# Obsidian Sample Plugin
+# Highlights Sidebar
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+A sidebar plugin for Obsidian that helps you view and manage text highlights, comments, and collections across your vault.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+- **Create highlights** from selected text using `==highlighted text==` syntax
+- **Sidebar view** showing all highlights from the current file
+- **Search and filter** highlights by text content
+- **Color coding** with 5 different highlight colors
+- **Comments system** using footnotes (e.g., `==text==[^comment]`)
+- **Collections** to organize highlights across multiple files
+- **Tag support** for categorizing highlights
+- **Dynamic commands** for viewing highlights in specific collections
 
-## First time developing plugins?
+## Usage
 
-Quick starting guide for new plugin devs:
+### Creating Highlights
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+1. **Select text** in any markdown file
+2. **Right-click** and choose "Create highlight" from the context menu
+3. Or use the command palette: `Ctrl/Cmd + P` → "Toggle highlight"
+4. Or manually type: `==your highlighted text==`
 
-## Releasing new releases
+### Using the Sidebar
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+1. Click the **highlighter icon** in the ribbon to open the sidebar
+2. The sidebar shows all highlights from the currently active file
+3. **Click any highlight** to jump directly to its location in the document
+4. Use the **All Notes tab** to view highlights from across your entire vault
+5. **Group highlights** by Color, Comments, Folder, Parent, Collection or Filename using the grouping buttons
+6. **Filter by tags** using the tag filter dropdown to show only highlights with specific tags
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+### Adding Comments
 
-## Adding your plugin to the community plugin list
+Add footnotes immediately after highlights to create comments:
+```markdown
+==Important text==[^1]
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
-
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+[^1]: This is my comment about the highlighted text
 ```
 
-If you have multiple URLs, you can also do:
+You can also click the **comment button** on any highlight in the sidebar and select "Add Comment" to create footnotes automatically at the highlight's location.
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
+### Working with Collections
 
-## API Documentation
+1. Switch to the **Collections tab** in the sidebar
+2. Click **"New Collection"** to create a collection
+3. Add highlights to collections using the collection button on each highlight
+4. View collection contents by clicking on any collection card
+5. Jump to collections by using the command palette
 
-See https://github.com/obsidianmd/obsidian-api
+### Color Coding
+
+- Change highlight colors using the color picker in each highlight card
+- 5 colors available: Gold, Red, Teal, Blue, and Green
+- Colors help categorize and organize your highlights
+
+## Installation
+
+1. Download the plugin files
+2. Place them in your `.obsidian/plugins/obsidian-highlights-sidebar/` folder
+3. Enable the plugin in Obsidian's Community Plugins settings
+
+## Commands
+
+- **Toggle**: Open/close the sidebar
+- **Go to "Collection"**: Jumps to that specific collection 
+
+## Important Notes
+
+- **Manual removal**: For now, highlights and comments must be manually removed from your markdown files by deleting the `==` syntax and footnotes.
+- **Collection commands**: If a collection is deleted, the command to jump to that specific collection will remain in the command palette **until reload.** However, it will show (deleted) next to the name of a collection prior to reloading.
+
+## Support
+
+For issues or feature requests, please visit the plugin's repository.
+
+If you find this plugin helpful, consider [buying me a coffee](https://buymeacoffee.com/trevware) ☕

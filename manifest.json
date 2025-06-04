@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "obsidian-highlights-sidebar",
+	"name": "Highlights Sidebar",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
+	"minAppVersion": "1.8.10",
+	"description": "A sidebar plugin for viewing and managing text highlights, highlight comments and highlight collections.",
 	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"authorUrl": "https://www.linkedin.com/in/trevortarakjian/",
+	"fundingUrl": "https://buymeacoffee.com/trevware",
 	"isDesktopOnly": false
 }
