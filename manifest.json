@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"minAppVersion": "1.8.10",
 	"description": "A sidebar plugin for viewing and managing text highlights, highlight comments and highlight collections.",
-	"author": "Obsidian",
+	"author": "trevware",
 	"authorUrl": "https://www.linkedin.com/in/trevortarakjian/",
 	"fundingUrl": "https://buymeacoffee.com/trevware",
 	"isDesktopOnly": false
