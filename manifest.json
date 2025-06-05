@@ -1,6 +1,6 @@
 {
-	"id": "obsidian-highlights-sidebar",
-	"name": "Highlights Sidebar",
+	"id": "sidebar-highlights",
+	"name": "Sidebar Highlights",
 	"version": "1.0.1",
 	"minAppVersion": "1.8.10",
 	"description": "A sidebar plugin for viewing and managing text highlights, highlight comments and highlight collections.",
