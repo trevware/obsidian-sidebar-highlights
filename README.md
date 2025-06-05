@@ -1,4 +1,4 @@
-# Highlights Sidebar
+# Sidebar Highlights
 
 A sidebar plugin for Obsidian that helps you view and manage text highlights, comments, and collections across your vault.
 
@@ -59,7 +59,7 @@ You can also click the **comment button** on any highlight in the sidebar and se
 ## Installation
 
 1. Download the plugin files
-2. Place them in your `.obsidian/plugins/obsidian-highlights-sidebar/` folder
+2. Place them in your `.obsidian/plugins/sidebar-highlights/` folder
 3. Enable the plugin in Obsidian's Community Plugins settings
 
 ## Commands

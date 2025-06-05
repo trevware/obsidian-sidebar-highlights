@@ -711,7 +711,7 @@ class HighlightSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Highlights Sidebar' });
+        containerEl.createEl('h2', { text: 'Sidebar Highlights' });
 
         containerEl.createEl('p', { 
             text: 'This plugin has no options to configure.',
