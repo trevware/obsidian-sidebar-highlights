@@ -696,7 +696,8 @@ export class HighlightsSidebarView extends ItemView {
     private createHighlightItem(container: HTMLElement, highlight: Highlight, searchTerm?: string, showFilename: boolean = false) {
         const options: HighlightRenderOptions = {
             searchTerm,
-            showFilename,
+            showFilename: this.plugin.settings.showFilenames && showFilename,
+            showTimestamp: this.plugin.settings.showTimestamps,
             isCommentsVisible: this.highlightCommentsVisible.get(highlight.id) || false,
             isColorPickerVisible: this.highlightColorPickerVisible.get(highlight.id) || false,
             onCommentToggle: (highlightId) => {
@@ -904,7 +905,6 @@ export class HighlightsSidebarView extends ItemView {
             const prevEl = this.containerEl.querySelector(`[data-highlight-id="${prevId}"]`) as HTMLElement;
             if (prevEl) {
                 prevEl.classList.remove('selected', 'highlight-selected');
-                prevEl.style.removeProperty('--highlight-selection-color');
             }
         }
         const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
@@ -912,8 +912,6 @@ export class HighlightsSidebarView extends ItemView {
             newEl.classList.add('selected');
             const newHighlight = this.plugin.getCurrentFileHighlights().find(h => h.id === highlight.id);
             if (newHighlight) {
-                const newHighlightColor = newHighlight.color || this.plugin.settings.highlightColor;
-                newEl.style.setProperty('--highlight-selection-color', newHighlightColor);
                 newEl.classList.add('highlight-selected');
             }
         }
@@ -943,9 +941,9 @@ export class HighlightsSidebarView extends ItemView {
                 foundMatch = true;
             }
         }
-         // A small tolerance, though for ==text== it should ideally be exact or very close.
+        // A small tolerance, though for ==text== it should ideally be exact or very close.
         if (!foundMatch || minDistance > 5) {
-             // console.warn("Could not precisely match highlight offset. Using best guess.", highlight.text, "Offset diff:", minDistance);
+            // Using best guess for highlight position
         }
 
         const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + 2);
@@ -1695,9 +1693,6 @@ export class HighlightsSidebarView extends ItemView {
             // If a highlight ID was provided, automatically add it to the new collection
             if (highlightId) {
                 this.plugin.collectionsManager.addHighlightToCollection(collection.id, highlightId);
-                new Notice(`Created collection "${collection.name}" and added highlight`);
-            } else {
-                new Notice(`Created collection: ${collection.name}`);
             }
             
             // Animate the new collection
@@ -1736,7 +1731,6 @@ export class HighlightsSidebarView extends ItemView {
             collection.description = description;
             this.plugin.saveSettings();
             this.plugin.refreshSidebar();
-            new Notice(`Updated collection: ${name}`);
         }).open();
     }
 
@@ -1807,7 +1801,6 @@ export class HighlightsSidebarView extends ItemView {
                 // Perform actual deletion
                 this.plugin.collectionsManager.deleteCollection(collectionId);
                 this.plugin.refreshSidebar();
-                new Notice(`Deleted collection: ${collection.name}`);
                 resolve(true);
             }, 220); // Match animation duration (200ms + small buffer)
         });

@@ -27,6 +27,11 @@ export class DropdownManager {
 
     closeActiveDropdown(): void {
         if (this.activeDropdown && this.activeDropdown.parentNode) {
+            // Clean up CSS classes and custom properties
+            this.activeDropdown.classList.remove('dropdown-constrained-height');
+            this.activeDropdown.style.removeProperty('--dropdown-max-height');
+            this.activeDropdown.style.removeProperty('--dropdown-top');
+            this.activeDropdown.style.removeProperty('--dropdown-left');
             this.activeDropdown.parentNode.removeChild(this.activeDropdown);
         }
         this.activeDropdown = null;
@@ -134,44 +139,47 @@ export class DropdownManager {
         const spaceBelow = viewportHeight - buttonRect.bottom;
         const spaceAbove = buttonRect.top;
         
-        // Determine optimal position
+        // Calculate positioning values
         let top: number;
         let left: number;
         
-        // Check if dropdown fits below the button (with 8px buffer)
+        // Determine optimal vertical position
         if (spaceBelow >= dropdownHeight + 8) {
             // Position below
             top = buttonRect.bottom + 4;
+            dropdown.classList.add('dropdown-positioned-below');
         } else if (spaceAbove >= dropdownHeight + 8) {
-            // Position above
+            // Position above  
             top = buttonRect.top - dropdownHeight - 4;
+            dropdown.classList.add('dropdown-positioned-above');
         } else {
             // Not enough space in either direction, choose the side with more space
             if (spaceBelow > spaceAbove) {
                 // Position below but constrain height
                 top = buttonRect.bottom + 4;
-                dropdown.style.maxHeight = `${spaceBelow - 8}px`;
-                dropdown.style.overflowY = 'auto';
+                dropdown.classList.add('dropdown-positioned-below-constrained');
+                dropdown.style.setProperty('--dropdown-max-height', `${spaceBelow - 8}px`);
+                dropdown.classList.add('dropdown-constrained-height');
             } else {
                 // Position above but constrain height
                 top = 8; // Leave 8px from top of viewport
-                dropdown.style.maxHeight = `${buttonRect.top - 12}px`;
-                dropdown.style.overflowY = 'auto';
+                dropdown.classList.add('dropdown-positioned-above-constrained');
+                dropdown.style.setProperty('--dropdown-max-height', `${buttonRect.top - 12}px`);
+                dropdown.classList.add('dropdown-constrained-height');
             }
         }
         
-        // Check horizontal positioning
+        // Determine optimal horizontal position
         left = buttonRect.left;
-        if (left + dropdownWidth > viewportWidth - 8) {
+        if (buttonRect.left + dropdownWidth > viewportWidth - 8) {
             // Dropdown would go off right edge, align right edge with button right edge
             left = Math.max(8, buttonRect.right - dropdownWidth);
         }
+        dropdown.classList.add('dropdown-left-aligned');
         
-        // Position dropdown
-        dropdown.style.setProperty('--dropdown-left', `${left}px`);
+        // Set final positioning values via CSS custom properties
         dropdown.style.setProperty('--dropdown-top', `${top}px`);
-        dropdown.style.setProperty('--dropdown-right', `${buttonRect.right}px`);
-        dropdown.style.setProperty('--dropdown-button-top', `${buttonRect.top}px`);
+        dropdown.style.setProperty('--dropdown-left', `${left}px`);
         
         // Set up click outside handler
         const closeHandler = (e: MouseEvent) => {
@@ -196,7 +204,7 @@ export class DropdownManager {
             setIcon(checkDiv, 'check');
             element.classList.add('is-checked');
         } else {
-            checkDiv.innerHTML = '';
+            checkDiv.empty(); // Use DOM API instead of innerHTML
             element.classList.remove('is-checked');
         }
     }

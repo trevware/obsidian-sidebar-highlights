@@ -1,8 +1,38 @@
-/* Style for markdown highlights */
+/* Style for markdown highlights - theme color classes */
 .cm-highlight {
-    background-color: var(--highlight-color, #ffd700)66;
     padding: 1px 2px;
     border-radius: 2px;
+}
+
+/* Default highlight color */
+body .cm-highlight,
+body.theme-highlight-default .cm-highlight {
+    background-color: #ffd70066;
+}
+
+/* Yellow highlight theme */
+body.theme-highlight-yellow .cm-highlight {
+    background-color: #ffd70066;
+}
+
+/* Red highlight theme */
+body.theme-highlight-red .cm-highlight {
+    background-color: #ff6b6b66;
+}
+
+/* Teal highlight theme */
+body.theme-highlight-teal .cm-highlight {
+    background-color: #4ecdc466;
+}
+
+/* Blue highlight theme */
+body.theme-highlight-blue .cm-highlight {
+    background-color: #45b7d166;
+}
+
+/* Green highlight theme */
+body.theme-highlight-green .cm-highlight {
+    background-color: #96ceb466;
 }
 
 /* Override default view-content padding for highlights sidebar */
@@ -192,7 +222,7 @@
 .highlight-item-card {
     background: var(--background-secondary); 
     border: none; 
-    border-left: 5px solid var(--highlight-border-color, #ffd700); 
+    border-left: 5px solid #ffd700; /* Default color, overridden by color classes */
     border-radius: 6px; 
     padding: 0; 
     margin-bottom: 10px; 
@@ -208,7 +238,7 @@
 }
 
 .highlight-item-card.highlight-selected {
-    box-shadow: 0 0 0 1.5px var(--highlight-selection-color), var(--shadow-s);
+    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s); /* Default selection color, overridden by color classes */
 }
 
 /* Hover-based color picker - only triggered by left border hover */
@@ -301,13 +331,36 @@
 
 .highlight-actions {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
     margin-top: 0;
     padding: 6px 15px 6px 15px; 
     border-top: 0.5px solid var(--background-modifier-border); 
     font-size: var(--font-ui-smaller); 
     transition: background-color 0.2s ease;
+}
+
+.highlight-info-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: visible;
+}
+
+.highlight-filename {
+    color: var(--text-muted) !important;
+    font-size: var(--font-ui-smaller);
+    margin-bottom: 4px;
+    display: block;
+    cursor: pointer;
+    padding: 0;
+    order: -1; /* Ensures filename appears first */
+}
+
+.highlight-filename:hover {
+    color: var(--text-normal) !important;
+    text-decoration: underline;
 }
 
 .highlight-actions:hover .comment-toggle {
@@ -334,11 +387,6 @@
     opacity: 1;
 }
 
-.highlight-timestamp {
-    color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
-    margin-left: auto;
-}
 
 .highlight-comments {
     border-top: 0.5px solid var(--background-modifier-border);
@@ -604,6 +652,10 @@
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+.highlight-line-info span {
+    text-align: left;
 }
 
 .line-icon {
@@ -956,20 +1008,6 @@
     font-style: italic;
 }
 
-/* Highlight filename styling */
-.highlight-filename {
-    color: var(--text-muted) !important;
-    font-size: var(--font-ui-smaller);
-    margin-bottom: 2px;
-    display: block;
-    cursor: pointer;
-}
-
-.highlight-filename:hover {
-    color: var(--text-normal) !important;
-    text-decoration: underline;
-}
-
 /* Highlight info line styling */
 .highlight-info-line {
     color: var(--text-muted);
@@ -977,7 +1015,33 @@
     margin-bottom: 2px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.highlight-stats-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: visible;
+}
+
+.highlight-timestamp-container {
+    margin-left: auto;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 50%;
+    overflow: hidden;
+}
+
+.highlight-timestamp-info {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Dropdown menu styling */
@@ -1072,22 +1136,106 @@
     container-type: inline-size;
 }
 
-/* Highlight item custom color properties */
-.highlight-item-card {
-    border-left-color: var(--highlight-border-color, var(--highlight-color, #ffd700));
+/* Collection animation classes */
+.collection-card.animating-in {
+    animation: collectionPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
-/* Dropdown positioning using CSS custom properties */
-.highlights-dropdown-menu.dropdown-positioned {
-    position: fixed;
-    left: var(--dropdown-left);
+.collection-card.animating-out {
+    animation: collectionPopOut 0.2s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
+}
+
+/* Ensure animations start from the correct state */
+.collection-card.preparing-animation {
+    transform: scale(0.3);
+    opacity: 0;
+}
+
+/* Dropdown positioning classes - fully CSS-driven approach */
+.dropdown-positioned-below {
     top: var(--dropdown-top);
-    z-index: 1000;
-    min-width: 200px;
-    /* Remove max-height and overflow restrictions to let JS handle them */
 }
 
-/* Remove the old responsive positioning rules that conflict with JS positioning */
+.dropdown-positioned-above {
+    top: var(--dropdown-top);
+}
+
+.dropdown-positioned-above-constrained {
+    top: 8px;
+}
+
+.dropdown-positioned-below-constrained {
+    top: var(--dropdown-top);
+}
+
+.dropdown-left-aligned {
+    left: var(--dropdown-left);
+}
+
+.dropdown-right-aligned {
+    left: var(--dropdown-left);
+}
+
+/* Dropdown sizing - width is auto-calculated, height uses max-height when constrained */
+.highlights-dropdown-menu {
+    width: auto;
+    max-width: calc(100vw - 16px);
+}
+
+.highlights-dropdown-menu.dropdown-constrained-height {
+    max-height: var(--dropdown-max-height);
+    overflow-y: auto;
+}
+
+/* Highlight color classes - replaces inline border color styling */
+.highlight-item-card.highlight-color-default {
+    border-left-color: #ffd700;
+}
+
+.highlight-item-card.highlight-color-yellow {
+    border-left-color: #ffd700;
+}
+
+.highlight-item-card.highlight-color-red {
+    border-left-color: #ff6b6b;
+}
+
+.highlight-item-card.highlight-color-teal {
+    border-left-color: #4ecdc4;
+}
+
+.highlight-item-card.highlight-color-blue {
+    border-left-color: #45b7d1;
+}
+
+.highlight-item-card.highlight-color-green {
+    border-left-color: #96ceb4;
+}
+
+/* Highlight selection color classes - replaces inline selection color styling */
+.highlight-item-card.highlight-selected.highlight-color-default {
+    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-selected.highlight-color-yellow {
+    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-selected.highlight-color-red {
+    box-shadow: 0 0 0 1.5px #ff6b6b, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-selected.highlight-color-teal {
+    box-shadow: 0 0 0 1.5px #4ecdc4, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-selected.highlight-color-blue {
+    box-shadow: 0 0 0 1.5px #45b7d1, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-selected.highlight-color-green {
+    box-shadow: 0 0 0 1.5px #96ceb4, var(--shadow-s);
+}
 
 /* Collection animation keyframes */
 @keyframes collectionPopIn {
@@ -1113,19 +1261,4 @@
         transform: scale(0.3);
         opacity: 0;
     }
-}
-
-/* Collection animation classes */
-.collection-card.animating-in {
-    animation: collectionPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-.collection-card.animating-out {
-    animation: collectionPopOut 0.2s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
-}
-
-/* Ensure animations start from the correct state */
-.collection-card.preparing-animation {
-    transform: scale(0.3);
-    opacity: 0;
 }

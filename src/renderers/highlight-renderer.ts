@@ -5,6 +5,7 @@ import type HighlightCommentsPlugin from '../../main';
 export interface HighlightRenderOptions {
     searchTerm?: string;
     showFilename?: boolean;
+    showTimestamp?: boolean;
     isCommentsVisible?: boolean;
     isColorPickerVisible?: boolean;
     onCommentToggle?: (highlightId: string) => void;
@@ -43,18 +44,31 @@ export class HighlightRenderer {
 
     private applyHighlightStyling(item: HTMLElement, highlight: Highlight): void {
         const highlightColor = highlight.color || this.plugin.settings.highlightColor;
-        item.style.setProperty('--highlight-border-color', highlightColor);
+        const colorClass = this.getColorClassName(highlightColor);
+        
+        // Apply color class for border styling
+        item.classList.add(colorClass);
         
         if (this.plugin.selectedHighlightId === highlight.id) {
-            item.style.setProperty('--highlight-selection-color', highlightColor);
             item.classList.add('highlight-selected');
         }
     }
 
+    private getColorClassName(color: string): string {
+        const colorMap: Record<string, string> = {
+            '#ffd700': 'highlight-color-yellow',
+            '#ff6b6b': 'highlight-color-red', 
+            '#4ecdc4': 'highlight-color-teal',
+            '#45b7d1': 'highlight-color-blue',
+            '#96ceb4': 'highlight-color-green'
+        };
+        
+        return colorMap[color] || 'highlight-color-default';
+    }
+
     private createQuoteSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         const quoteEl = item.createDiv({ cls: 'highlight-quote' });
-        const renderedText = this.renderMarkdown(highlight.text);
-        quoteEl.innerHTML = renderedText;
+        this.renderMarkdownToElement(quoteEl, highlight.text);
 
         if (options.searchTerm && options.searchTerm.length > 0) {
             this.highlightSearchMatches(quoteEl, options.searchTerm);
@@ -85,19 +99,24 @@ export class HighlightRenderer {
     }
 
     private createActionsSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+        // Create actions section
         const actions = item.createDiv({ cls: 'highlight-actions' });
-        const infoContainer = actions.createDiv();
         
-        this.addFileNameInfo(infoContainer, highlight, options);
+        // Create filename section inside actions (below border-top)
+        this.addFileNameInfo(actions, highlight, options);
+        
+        // Create info container for stats and timestamp
+        const infoContainer = actions.createDiv({ cls: 'highlight-info-container' });
         this.addStatsInfo(infoContainer, highlight, options);
+        
+        // Add action buttons
         this.addActionButtons(actions, highlight, options);
-        this.addTimestamp(actions, highlight);
     }
 
-    private addFileNameInfo(infoContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+    private addFileNameInfo(actions: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         if (options.showFilename) {
             const fileName = highlight.filePath.split('/').pop()?.replace(/\.md$/, '') || highlight.filePath;
-            const fileNameEl = infoContainer.createEl('small', {
+            const fileNameEl = actions.createEl('small', {
                 cls: 'highlight-filename',
                 text: fileName,
                 attr: { title: highlight.filePath }
@@ -112,15 +131,18 @@ export class HighlightRenderer {
 
     private addStatsInfo(infoContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         const lineNumber = highlight.line >= 0 ? highlight.line + 1 : 'Unknown';
-        const infoLineContainer = infoContainer.createEl('small', { cls: 'highlight-info-line' });
+        const infoLineContainer = infoContainer.createDiv({ cls: 'highlight-info-line' });
+        
+        // Create left section for stats
+        const statsSection = infoLineContainer.createDiv({ cls: 'highlight-stats-section' });
         
         // Line number section
-        this.createInfoItem(infoLineContainer, 'text', `${lineNumber}`, 'highlight-line-info');
+        this.createInfoItem(statsSection, 'text', `${lineNumber}`, 'highlight-line-info');
 
         // Comment count section
         const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
         const commentContainer = this.createInfoItem(
-            infoLineContainer, 
+            statsSection, 
             'message-square', 
             `${validFootnoteCount}`, 
             'highlight-line-info highlight-comment-stat clickable'
@@ -134,7 +156,7 @@ export class HighlightRenderer {
         // Collection count section
         const collectionCount = this.plugin.collectionsManager.getHighlightCollectionCount(highlight.id);
         const collectionContainer = this.createInfoItem(
-            infoLineContainer,
+            statsSection,
             'folder-open',
             `${collectionCount}`,
             'highlight-line-info highlight-collection-stat clickable'
@@ -144,6 +166,9 @@ export class HighlightRenderer {
             event.stopPropagation();
             options.onCollectionsMenu?.(event, highlight);
         });
+
+        // Create completely separate timestamp section
+        this.addTimestampToInfoLine(infoLineContainer, highlight, options);
     }
 
     private createInfoItem(container: HTMLElement, iconName: string, text: string, className: string): HTMLElement {
@@ -157,21 +182,23 @@ export class HighlightRenderer {
         return itemContainer;
     }
 
-    private addActionButtons(actions: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        const buttonContainer = actions.createDiv({ cls: 'comment-buttons' });
-    }
-
-    private addTimestamp(actions: HTMLElement, highlight: Highlight): void {
-        if (highlight.createdAt) {
+    private addTimestampToInfoLine(infoLineContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+        if (options.showTimestamp && highlight.createdAt) {
             const timestamp = new Date(highlight.createdAt);
             const timeString = timestamp.toLocaleString();
             
-            const timestampEl = actions.createEl('small', {
-                cls: 'highlight-timestamp',
+            // Create a separate timestamp container div
+            const timestampContainer = infoLineContainer.createDiv({ cls: 'highlight-timestamp-container' });
+            const timestampEl = timestampContainer.createDiv({
+                cls: 'highlight-timestamp-info',
                 text: timeString,
                 attr: { title: `Created: ${timeString}` }
             });
         }
+    }
+
+    private addActionButtons(actions: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+        const buttonContainer = actions.createDiv({ cls: 'comment-buttons' });
     }
 
     private createCommentsSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
@@ -184,8 +211,7 @@ export class HighlightRenderer {
         if (validFootnoteContents.length > 0) {
             validFootnoteContents.forEach((content, index) => {
                 const commentDiv = commentsContainer.createDiv({ cls: 'highlight-comment' });
-                const renderedComment = this.renderMarkdown(content);
-                commentDiv.innerHTML = renderedComment;
+                this.renderMarkdownToElement(commentDiv, content);
                 commentDiv.addEventListener('click', (event) => {
                     event.stopPropagation();
                     options.onCommentClick?.(highlight, index);
@@ -275,22 +301,170 @@ export class HighlightRenderer {
         });
     }
 
-    private renderMarkdown(text: string): string {
+
+
+    // Safe DOM-based rendering method to replace innerHTML usage
+    private renderMarkdownToElement(element: HTMLElement, text: string): void {
+        element.empty(); // Clear existing content
+        
+        // Escape HTML first (but keep apostrophes as normal characters)
         let escaped = text
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#x27;');
+            .replace(/"/g, '&quot;');
         
-        return escaped
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/__(.*?)__/g, '<strong>$1</strong>')
-            .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
-            .replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>')
-            .replace(/`([^`]+?)`/g, '<code>$1</code>')
-            .replace(/~~(.*?)~~/g, '<del>$1</del>')
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+        // Process markdown patterns safely
+        const segments = this.parseMarkdownSegments(escaped);
+        
+        for (const segment of segments) {
+            if (segment.type === 'text') {
+                element.appendText(segment.content || '');
+            } else if (segment.type === 'strong') {
+                const strongEl = element.createEl('strong');
+                strongEl.textContent = segment.content || '';
+            } else if (segment.type === 'em') {
+                const emEl = element.createEl('em');
+                emEl.textContent = segment.content || '';
+            } else if (segment.type === 'code') {
+                const codeEl = element.createEl('code');
+                codeEl.textContent = segment.content || '';
+            } else if (segment.type === 'del') {
+                const delEl = element.createEl('del');
+                delEl.textContent = segment.content || '';
+            } else if (segment.type === 'link') {
+                const linkEl = element.createEl('a');
+                linkEl.textContent = segment.text || '';
+                linkEl.href = segment.url || '';
+                linkEl.target = '_blank';
+            }
+        }
+    }
+
+    private parseMarkdownSegments(text: string): Array<{type: string, content?: string, text?: string, url?: string}> {
+        const segments: Array<{type: string, content?: string, text?: string, url?: string}> = [];
+        
+        // Process patterns in order of precedence using iOS-compatible approach
+        const patterns = [
+            { regex: /\*\*(.*?)\*\*/g, type: 'strong' },
+            { regex: /__(.*?)__/g, type: 'strong' },
+            { regex: /~~(.*?)~~/g, type: 'del' },
+            { regex: /`([^`]+?)`/g, type: 'code' },
+            { regex: /\[([^\]]+)\]\(([^)]+)\)/g, type: 'link' }
+        ];
+        
+        const matches: Array<{start: number, end: number, type: string, content?: string, text?: string, url?: string}> = [];
+        
+        // Find all matches for non-italic patterns
+        for (const pattern of patterns) {
+            let match;
+            pattern.regex.lastIndex = 0;
+            while ((match = pattern.regex.exec(text)) !== null) {
+                if (pattern.type === 'link') {
+                    matches.push({
+                        start: match.index,
+                        end: match.index + match[0].length,
+                        type: pattern.type,
+                        text: match[1],
+                        url: match[2]
+                    });
+                } else {
+                    matches.push({
+                        start: match.index,
+                        end: match.index + match[0].length,
+                        type: pattern.type,
+                        content: match[1]
+                    });
+                }
+            }
+        }
+        
+        // Add italic matches using manual parsing for iOS compatibility
+        this.findItalicMatches(text, matches);
+        
+        // Sort matches by position and remove overlaps
+        matches.sort((a, b) => a.start - b.start);
+        const nonOverlapping: Array<{start: number, end: number, type: string, content?: string, text?: string, url?: string}> = [];
+        for (const match of matches) {
+            if (!nonOverlapping.some(existing => 
+                (match.start >= existing.start && match.start < existing.end) ||
+                (match.end > existing.start && match.end <= existing.end)
+            )) {
+                nonOverlapping.push(match);
+            }
+        }
+        
+        // Build segments
+        let pos = 0;
+        for (const match of nonOverlapping) {
+            // Add text before match
+            if (pos < match.start) {
+                segments.push({
+                    type: 'text',
+                    content: text.substring(pos, match.start)
+                });
+            }
+            
+            // Add the match
+            segments.push(match);
+            pos = match.end;
+        }
+        
+        // Add remaining text
+        if (pos < text.length) {
+            segments.push({
+                type: 'text',
+                content: text.substring(pos)
+            });
+        }
+        
+        return segments;
+    }
+    
+    private findItalicMatches(text: string, matches: Array<{start: number, end: number, type: string, content?: string, text?: string, url?: string}>): void {
+        // Find single asterisk italic patterns manually
+        for (let i = 0; i < text.length; i++) {
+            if (text[i] === '*' && (i === 0 || text[i-1] !== '*') && (i === text.length - 1 || text[i+1] !== '*')) {
+                // Find closing asterisk
+                for (let j = i + 1; j < text.length; j++) {
+                    if (text[j] === '*' && (j === text.length - 1 || text[j+1] !== '*') && (j === 0 || text[j-1] !== '*')) {
+                        const content = text.substring(i + 1, j);
+                        if (content.length > 0 && content.indexOf('*') === -1) {
+                            matches.push({
+                                start: i,
+                                end: j + 1,
+                                type: 'em',
+                                content: content
+                            });
+                            i = j; // Skip past this match
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Find single underscore italic patterns manually
+        for (let i = 0; i < text.length; i++) {
+            if (text[i] === '_' && (i === 0 || text[i-1] !== '_') && (i === text.length - 1 || text[i+1] !== '_')) {
+                // Find closing underscore
+                for (let j = i + 1; j < text.length; j++) {
+                    if (text[j] === '_' && (j === text.length - 1 || text[j+1] !== '_') && (j === 0 || text[j-1] !== '_')) {
+                        const content = text.substring(i + 1, j);
+                        if (content.length > 0 && content.indexOf('_') === -1) {
+                            matches.push({
+                                start: i,
+                                end: j + 1,
+                                type: 'em',
+                                content: content
+                            });
+                            i = j; // Skip past this match
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private extractTagsFromHighlight(highlight: Highlight): string[] {

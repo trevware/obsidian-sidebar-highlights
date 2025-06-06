@@ -32,6 +32,8 @@ interface CommentPluginSettings {
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc'; // Add grouping mode persistence
+    showFilenames: boolean; // Show note titles in All Notes and Collections
+    showTimestamps: boolean; // Show note timestamps
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -40,7 +42,9 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     autoOpenSidebar: true,
     highlights: {},
     collections: {}, // Initialize empty collections
-    groupingMode: 'none' // Default grouping mode
+    groupingMode: 'none', // Default grouping mode
+    showFilenames: true, // Show filenames by default
+    showTimestamps: true // Show timestamps by default
 }
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
@@ -179,7 +183,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Only manual cleanup needed is for any direct DOM listeners or intervals
         // which we don't currently have in the main plugin file
-        console.log('Highlight Comments plugin unloaded');
     }
 
     async loadSettings() {
@@ -198,15 +201,15 @@ export default class HighlightCommentsPlugin extends Plugin {
         const style = document.createElement('style');
         style.id = 'highlight-comments-plugin-styles';
         
-        // Set CSS custom property for highlight color
-        document.documentElement.style.setProperty('--highlight-color', this.settings.highlightColor);
+        // Apply theme color class to body
+        this.applyHighlightTheme();
         
         document.head.appendChild(style);
     }
 
     updateStyles() {
-        // Update CSS custom property when settings change
-        document.documentElement.style.setProperty('--highlight-color', this.settings.highlightColor);
+        // Update theme color class when settings change
+        this.applyHighlightTheme();
     }
 
     removeStyles() {
@@ -214,8 +217,44 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (style) {
             style.remove();
         }
-        // Clean up CSS custom property
-        document.documentElement.style.removeProperty('--highlight-color');
+        // Clean up theme classes
+        this.removeHighlightTheme();
+    }
+
+    private applyHighlightTheme() {
+        // Remove any existing theme classes
+        this.removeHighlightTheme();
+        
+        // Apply new theme class
+        const themeClass = this.getHighlightThemeClass(this.settings.highlightColor);
+        document.body.classList.add(themeClass);
+    }
+
+    private removeHighlightTheme() {
+        const themeClasses = [
+            'theme-highlight-default',
+            'theme-highlight-yellow', 
+            'theme-highlight-red',
+            'theme-highlight-teal',
+            'theme-highlight-blue',
+            'theme-highlight-green'
+        ];
+        
+        themeClasses.forEach(className => {
+            document.body.classList.remove(className);
+        });
+    }
+
+    private getHighlightThemeClass(color: string): string {
+        const colorMap: Record<string, string> = {
+            '#ffd700': 'theme-highlight-yellow',
+            '#ff6b6b': 'theme-highlight-red', 
+            '#4ecdc4': 'theme-highlight-teal',
+            '#45b7d1': 'theme-highlight-blue',
+            '#96ceb4': 'theme-highlight-green'
+        };
+        
+        return colorMap[color] || 'theme-highlight-default';
     }
 
     async activateView() {
@@ -305,18 +344,18 @@ export default class HighlightCommentsPlugin extends Plugin {
     public registerCollectionCommands() {
         // Register commands for all existing collections
         for (const collection of this.collections.values()) {
-            const commandId = `go-to-collection-${collection.id}`;
+            const goToId = `go-to-collection-${collection.id}`;
             
             // Always register/re-register to update the name if it changed
             this.addCommand({
-                id: commandId,
+                id: goToId,
                 name: `Go to ${collection.name}`,
                 callback: () => {
                     this.goToCollection(collection.id);
                 }
             });
             
-            this.collectionCommands.add(commandId);
+            this.collectionCommands.add(goToId);
         }
     }
 
@@ -326,18 +365,18 @@ export default class HighlightCommentsPlugin extends Plugin {
         const existingCollectionIds = new Set(Array.from(this.collections.keys()));
         
         // Find commands for collections that no longer exist
-        const deletedCommands = Array.from(this.collectionCommands).filter(commandId => {
-            const collectionId = commandId.replace('go-to-collection-', '');
+        const deletedCommands = Array.from(this.collectionCommands).filter(goToId => {
+            const collectionId = goToId.replace('go-to-collection-', '');
             return !existingCollectionIds.has(collectionId);
         });
 
         // Re-register deleted collection commands with updated names
-        for (const commandId of deletedCommands) {
-            const collectionId = commandId.replace('go-to-collection-', '');
+        for (const goToId of deletedCommands) {
+            const collectionId = goToId.replace('go-to-collection-', '');
             const deletedCollectionName = this.deletedCollectionNames.get(collectionId) || 'Collection';
             
             this.addCommand({
-                id: commandId,
+                id: goToId,
                 name: `Go to ${deletedCollectionName} (deleted)`,
                 callback: () => {
                     new Notice(`Collection "${deletedCollectionName}" has been deleted`);
@@ -394,7 +433,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         
         if (!determinedFilePath || !fileHighlightsList) {
-            console.error(`Cannot update highlight ${highlightId}: File path "${determinedFilePath}" invalid or highlight list not found.`);
             return;
         }
     
@@ -409,8 +447,6 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.highlights.set(determinedFilePath, newFileHighlightsList);
             this.saveSettings(); 
             this.refreshSidebar(); 
-        } else {
-            console.warn(`Highlight ${highlightId} not found in file ${determinedFilePath} for update.`);
         }
     }
 
@@ -448,7 +484,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         // First, clean up highlights for files that no longer exist
         for (const filePath of this.highlights.keys()) {
             if (!existingFilePaths.has(filePath)) {
-                console.log(`Cleaning up highlights for deleted file: ${filePath}`);
                 this.highlights.delete(filePath);
                 hasChanges = true;
             }
@@ -464,7 +499,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                         return true; // Keep this highlight ID
                     }
                 }
-                console.log(`Removing orphaned highlight ${highlightId} from collection ${collection.name}`);
                 return false; // Remove this highlight ID
             });
             
@@ -487,18 +521,14 @@ export default class HighlightCommentsPlugin extends Plugin {
                 
                 if (oldHighlightsJSON !== newHighlightsJSON) {
                     hasChanges = true;
-                    if (newHighlights.length > oldHighlights.length) {
-                        console.log(`Found ${newHighlights.length - oldHighlights.length} new highlights in ${file.path}`);
-                    }
                 }
             } catch (error) {
-                console.warn(`Failed to scan file ${file.path} for highlights:`, error);
+                // Continue on error
             }
         }
         
         // Save settings and refresh sidebar only once after scanning all files
         if (hasChanges) {
-            console.log('Highlights changed during scan, saving settings and refreshing sidebar');
             await this.saveSettings();
             this.refreshSidebar();
         }
@@ -608,8 +638,6 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private async handleFileCreate(file: TFile) {
-        console.log(`New file created: ${file.path}`);
-        
         try {
             // Read the content of the newly created file
             const content = await this.app.vault.read(file);
@@ -620,14 +648,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Get the highlights found
             const highlights = this.highlights.get(file.path);
             if (highlights && highlights.length > 0) {
-                console.log(`Found ${highlights.length} existing highlights in newly created file: ${file.path}`);
-                
                 // Save settings and refresh sidebar since we found highlights
                 await this.saveSettings();
                 this.refreshSidebar();
             }
         } catch (error) {
-            console.warn(`Failed to scan newly created file ${file.path} for highlights:`, error);
+            // Continue on error
         }
     }
 
@@ -651,11 +677,8 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private handleFileDelete(file: TFile) {
-        console.log(`File deleted: ${file.path}`);
-        
         // Remove highlights for the deleted file
         if (this.highlights.has(file.path)) {
-            console.log(`Removing ${this.highlights.get(file.path)?.length || 0} highlights for deleted file: ${file.path}`);
             
             // Get the highlight IDs that will be removed
             const deletedHighlightIds = new Set(
@@ -674,19 +697,12 @@ export default class HighlightCommentsPlugin extends Plugin {
                 );
                 
                 if (collection.highlightIds.length !== originalLength) {
-                    console.log(`Removed ${originalLength - collection.highlightIds.length} highlights from collection: ${collection.name}`);
                     collectionsModified = true;
                 }
             }
             
             this.saveSettings();
             this.refreshSidebar();
-            
-            if (collectionsModified) {
-                console.log('Collections were modified due to file deletion');
-            }
-        } else {
-            console.log(`No highlights found for deleted file: ${file.path}`);
         }
     }
 
@@ -713,10 +729,27 @@ class HighlightSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'Sidebar Highlights' });
 
-        containerEl.createEl('p', { 
-            text: 'This plugin has no options to configure.',
-            attr: { style: 'color: var(--text-muted); margin-top: 16px;' }
-        });
+        new Setting(containerEl)
+            .setName('Show note titles in All Notes and Collections')
+            .setDesc('Display the filename/note title below highlights when viewing All Notes or Collections.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showFilenames)
+                .onChange(async (value) => {
+                    this.plugin.settings.showFilenames = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName('Show note timestamps')
+            .setDesc('Display creation timestamps for highlights')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showTimestamps)
+                .onChange(async (value) => {
+                    this.plugin.settings.showTimestamps = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
     }
 }
 
