@@ -241,6 +241,22 @@ body.theme-highlight-green .cm-highlight {
     box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s); /* Default selection color, overridden by color classes */
 }
 
+/* Native comment highlight card styling - similar to regular highlights but with muted appearance */
+.highlight-item-card.highlight-native-comment {
+    border-left-color: var(--text-muted) !important;
+    background: var(--background-primary);
+    opacity: 0.85;
+}
+
+.highlight-item-card.highlight-native-comment:hover {
+    background: var(--background-modifier-hover);
+    opacity: 1;
+}
+
+.highlight-item-card.highlight-native-comment.highlight-selected {
+    box-shadow: 0 0 0 1.5px var(--text-muted), var(--shadow-s) !important;
+}
+
 /* Hover-based color picker - only triggered by left border hover */
 .highlight-border-hover-zone {
     position: absolute;
@@ -922,6 +938,17 @@ body.theme-highlight-green .cm-highlight {
 .highlight-comment-stat.clickable:hover {
     background-color: var(--background-modifier-hover);
     opacity: 1;
+}
+
+/* Disabled comment stat styling for native comments */
+.highlight-comment-stat.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    color: var(--text-faint);
+}
+
+.highlight-comment-stat.disabled .comment-icon {
+    color: var(--text-faint);
 }
 
 /* Collection stat clickable styling */

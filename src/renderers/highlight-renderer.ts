@@ -6,6 +6,7 @@ export interface HighlightRenderOptions {
     searchTerm?: string;
     showFilename?: boolean;
     showTimestamp?: boolean;
+    showHighlightActions?: boolean;
     isCommentsVisible?: boolean;
     isColorPickerVisible?: boolean;
     onCommentToggle?: (highlightId: string) => void;
@@ -43,11 +44,17 @@ export class HighlightRenderer {
     }
 
     private applyHighlightStyling(item: HTMLElement, highlight: Highlight): void {
-        const highlightColor = highlight.color || this.plugin.settings.highlightColor;
-        const colorClass = this.getColorClassName(highlightColor);
-        
-        // Apply color class for border styling
-        item.classList.add(colorClass);
+        if (highlight.isNativeComment) {
+            // Native comments get special styling
+            item.classList.add('highlight-native-comment');
+        } else {
+            // Regular highlights get color styling
+            const highlightColor = highlight.color || this.plugin.settings.highlightColor;
+            const colorClass = this.getColorClassName(highlightColor);
+            
+            // Apply color class for border styling
+            item.classList.add(colorClass);
+        }
         
         if (this.plugin.selectedHighlightId === highlight.id) {
             item.classList.add('highlight-selected');
@@ -99,6 +106,9 @@ export class HighlightRenderer {
     }
 
     private createActionsSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+        // Only create actions section if showHighlightActions is true (default to true if not specified)
+        if (options.showHighlightActions === false) return;
+        
         // Create actions section
         const actions = item.createDiv({ cls: 'highlight-actions' });
         
@@ -139,19 +149,26 @@ export class HighlightRenderer {
         // Line number section
         this.createInfoItem(statsSection, 'text', `${lineNumber}`, 'highlight-line-info');
 
-        // Comment count section
-        const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+        // Comment count section - don't show comment count for native comments since they ARE the comment
+        const validFootnoteCount = highlight.isNativeComment ? 0 : (highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0);
+        const commentStatClass = highlight.isNativeComment 
+            ? 'highlight-line-info highlight-comment-stat disabled'
+            : 'highlight-line-info highlight-comment-stat clickable';
+        
         const commentContainer = this.createInfoItem(
             statsSection, 
             'message-square', 
             `${validFootnoteCount}`, 
-            'highlight-line-info highlight-comment-stat clickable'
+            commentStatClass
         );
 
-        commentContainer.addEventListener('click', (event) => {
-            event.stopPropagation();
-            options.onCommentToggle?.(highlight.id);
-        });
+        // Only add click handler for regular highlights, not native comments
+        if (!highlight.isNativeComment) {
+            commentContainer.addEventListener('click', (event) => {
+                event.stopPropagation();
+                options.onCommentToggle?.(highlight.id);
+            });
+        }
 
         // Collection count section
         const collectionCount = this.plugin.collectionsManager.getHighlightCollectionCount(highlight.id);
@@ -206,20 +223,24 @@ export class HighlightRenderer {
 
         const commentsContainer = item.createDiv({ cls: 'highlight-comments' });
         
-        // Add existing comments
-        const validFootnoteContents = highlight.footnoteContents?.filter(c => c.trim() !== '') || [];
-        if (validFootnoteContents.length > 0) {
-            validFootnoteContents.forEach((content, index) => {
-                const commentDiv = commentsContainer.createDiv({ cls: 'highlight-comment' });
-                this.renderMarkdownToElement(commentDiv, content);
-                commentDiv.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    options.onCommentClick?.(highlight, index);
+        // For native comments, don't show footnote comments since they don't have footnotes
+        // Only show footnote comments for regular highlights
+        if (!highlight.isNativeComment) {
+            const validFootnoteContents = highlight.footnoteContents?.filter(c => c.trim() !== '') || [];
+            if (validFootnoteContents.length > 0) {
+                validFootnoteContents.forEach((content, index) => {
+                    const commentDiv = commentsContainer.createDiv({ cls: 'highlight-comment' });
+                    this.renderMarkdownToElement(commentDiv, content);
+                    commentDiv.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        options.onCommentClick?.(highlight, index);
+                    });
                 });
-            });
+            }
         }
-        
-        // Add "Add Comment" line
+
+        // Add "Add Comment" line for all highlights (regular and native comments)
+        // For native comments, it will be disabled/greyed out
         this.createAddCommentLine(commentsContainer, highlight, options);
     }
 
@@ -231,8 +252,9 @@ export class HighlightRenderer {
         const plusIcon = addCommentLine.createDiv({ cls: 'highlight-add-comment-icon' });
         setIcon(plusIcon, 'plus');
         
-        addCommentLine.createSpan({ text: 'Add Comment' });
+        addCommentLine.createSpan({ text: 'Add comment' });
         
+        // Add click handler for all highlights (native comments and regular highlights)
         addCommentLine.addEventListener('click', (event) => {
             event.stopPropagation();
             options.onAddComment?.(highlight);
@@ -240,7 +262,7 @@ export class HighlightRenderer {
     }
 
     private createColorPickerSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        if (!options.isColorPickerVisible) return;
+        if (!options.isColorPickerVisible || highlight.isNativeComment) return;
 
         const colorPickerContainer = item.createDiv({ cls: 'highlight-color-picker' });
         const colorOptionsContainer = colorPickerContainer.createDiv({ cls: 'color-picker-options' });
@@ -490,6 +512,9 @@ export class HighlightRenderer {
     }
 
     private createHoverColorPicker(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
+        // Don't create hover color picker for native comments
+        if (highlight.isNativeComment) return;
+        
         // Create a hover zone for the left border area
         const hoverZone = item.createDiv({ cls: 'highlight-border-hover-zone' });
         

@@ -29,6 +29,7 @@ export class HighlightsSidebarView extends ItemView {
     private dropdownManager: DropdownManager = new DropdownManager();
     private highlightRenderer: HighlightRenderer;
     private savedScrollPosition: number = 0; // Store scroll position during rebuilds
+    private showNativeComments: boolean = true; // Track native comments visibility
 
     constructor(leaf: WorkspaceLeaf, plugin: HighlightCommentsPlugin) {
         super(leaf);
@@ -36,6 +37,8 @@ export class HighlightsSidebarView extends ItemView {
         this.highlightRenderer = new HighlightRenderer(plugin);
         // Load grouping mode from settings
         this.groupingMode = plugin.settings.groupingMode || 'none';
+        // Load native comments visibility from localStorage
+        this.showNativeComments = localStorage.getItem('sidebar-highlights-show-native-comments') !== 'false';
     }
 
     getViewType() { return VIEW_TYPE_HIGHLIGHTS; }
@@ -46,219 +49,234 @@ export class HighlightsSidebarView extends ItemView {
         this.contentEl.empty();
         this.contentEl.classList.add('highlights-sidebar-content');
 
-        const searchContainer = this.contentEl.createDiv({ cls: 'highlights-search-container' });
-        
-        // Replace search input with search button
-        const searchButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Search...' }
-        });
-        this.searchButton = searchButton;
-        setIcon(searchButton, 'search');
-        searchButton.addEventListener('click', () => {
-            this.toggleSearch();
-        });
-
-        const groupButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Group highlights' }
-        });
-        setIcon(groupButton, 'group');
-        this.updateGroupButtonState(groupButton);
-        groupButton.addEventListener('click', (event) => {
-            const menu = new Menu();
+        // Only create the search container if toolbar is enabled
+        if (this.plugin.settings.showToolbar) {
+            const searchContainer = this.contentEl.createDiv({ cls: 'highlights-search-container' });
             
-            menu.addItem((item) => {
-                item
-                    .setTitle('No Grouping')
-                    .setIcon('list')
-                    .setChecked(this.groupingMode === 'none')
-                    .onClick(() => {
-                        this.groupingMode = 'none';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        // Use renderContent instead of renderFilteredList to handle all view modes
-                        this.renderContent();
-                    });
+            // Replace search input with search button
+            const searchButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Search' }
+            });
+            this.searchButton = searchButton;
+            setIcon(searchButton, 'search');
+            searchButton.addEventListener('click', () => {
+                this.toggleSearch();
             });
 
-            menu.addSeparator();
-            
-            menu.addItem((item) => {
-                item
-                    .setTitle('Color')
-                    .setIcon('palette')
-                    .setChecked(this.groupingMode === 'color')
-                    .onClick(() => {
-                        this.groupingMode = 'color';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
+            const groupButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Group highlights' }
+            });
+            setIcon(groupButton, 'group');
+            this.updateGroupButtonState(groupButton);
+            groupButton.addEventListener('click', (event) => {
+                const menu = new Menu();
+                
+                menu.addItem((item) => {
+                    item
+                        .setTitle('None')
+                        .setIcon('list')
+                        .setChecked(this.groupingMode === 'none')
+                        .onClick(() => {
+                            this.groupingMode = 'none';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            // Use renderContent instead of renderFilteredList to handle all view modes
+                            this.renderContent();
+                        });
+                });
+
+                menu.addSeparator();
+                
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Color')
+                        .setIcon('palette')
+                        .setChecked(this.groupingMode === 'color')
+                        .onClick(() => {
+                            this.groupingMode = 'color';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addSeparator();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Highlight comments ↑')
+                        .setIcon('sort-asc')
+                        .setChecked(this.groupingMode === 'comments-asc')
+                        .onClick(() => {
+                            this.groupingMode = 'comments-asc';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Highlight comments ↓')
+                        .setIcon('sort-desc')
+                        .setChecked(this.groupingMode === 'comments-desc')
+                        .onClick(() => {
+                            this.groupingMode = 'comments-desc';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addSeparator();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Date created ↑')
+                        .setIcon('calendar')
+                        .setChecked(this.groupingMode === 'date-created-asc')
+                        .onClick(() => {
+                            this.groupingMode = 'date-created-asc';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Date created ↓')
+                        .setIcon('calendar')
+                        .setChecked(this.groupingMode === 'date-created-desc')
+                        .onClick(() => {
+                            this.groupingMode = 'date-created-desc';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addSeparator();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Parent')
+                        .setIcon('folder')
+                        .setChecked(this.groupingMode === 'parent')
+                        .onClick(() => {
+                            this.groupingMode = 'parent';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Collection')
+                        .setIcon('folder-open')
+                        .setChecked(this.groupingMode === 'collection')
+                        .onClick(() => {
+                            this.groupingMode = 'collection';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Filename')
+                        .setIcon('file-text')
+                        .setChecked(this.groupingMode === 'filename')
+                        .onClick(() => {
+                            this.groupingMode = 'filename';
+                            this.updateGroupButtonState(groupButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.showAtMouseEvent(event);
             });
 
-            menu.addSeparator();
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Comments ↑')
-                    .setIcon('sort-asc')
-                    .setChecked(this.groupingMode === 'comments-asc')
-                    .onClick(() => {
-                        this.groupingMode = 'comments-asc';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
+            // Add toggle native comments button (positioned after group button)
+            const nativeCommentsToggleButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Toggle native comments' }
             });
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Comments ↓')
-                    .setIcon('sort-desc')
-                    .setChecked(this.groupingMode === 'comments-desc')
-                    .onClick(() => {
-                        this.groupingMode = 'comments-desc';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.addSeparator();
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Date Created ↑')
-                    .setIcon('calendar')
-                    .setChecked(this.groupingMode === 'date-created-asc')
-                    .onClick(() => {
-                        this.groupingMode = 'date-created-asc';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Date Created ↓')
-                    .setIcon('calendar')
-                    .setChecked(this.groupingMode === 'date-created-desc')
-                    .onClick(() => {
-                        this.groupingMode = 'date-created-desc';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.addSeparator();
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Parent')
-                    .setIcon('folder')
-                    .setChecked(this.groupingMode === 'parent')
-                    .onClick(() => {
-                        this.groupingMode = 'parent';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Collection')
-                    .setIcon('folder-open')
-                    .setChecked(this.groupingMode === 'collection')
-                    .onClick(() => {
-                        this.groupingMode = 'collection';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.addItem((item) => {
-                item
-                    .setTitle('Filename')
-                    .setIcon('file-text')
-                    .setChecked(this.groupingMode === 'filename')
-                    .onClick(() => {
-                        this.groupingMode = 'filename';
-                        this.updateGroupButtonState(groupButton);
-                        this.saveGroupingModeToSettings();
-                        this.renderContent();
-                    });
-            });
-
-            menu.showAtMouseEvent(event);
-        });
-
-        const commentsToggleButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Toggle all comments' }
-        });
-        this.commentsToggleButton = commentsToggleButton;
-        this.updateCommentsToggleIcon(commentsToggleButton);
-        commentsToggleButton.addEventListener('click', () => {
-            this.toggleAllComments();
-            this.updateCommentsToggleIcon(commentsToggleButton);
-            this.renderContent(); // Use renderContent instead of renderFilteredList
-        });
-
-        const resetColorsButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Revert highlight colors' }
-        });
-        setIcon(resetColorsButton, 'rotate-ccw');
-        resetColorsButton.addEventListener('click', () => {
-            this.resetAllColors();
-        });
-
-        const tagFilterButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Filter by tags' }
-        });
-        setIcon(tagFilterButton, 'tag');
-        
-        tagFilterButton.addEventListener('click', (event) => {
-            this.showTagFilterMenu(event);
-        });
-
-        // Add collection navigation button (New Collection / Back to Collections)
-        const collectionNavButton = searchContainer.createEl('button', {
-            cls: 'highlights-group-button',
-            attr: { 'aria-label': 'Collection Navigation' }
-        });
-        this.updateCollectionNavButton(collectionNavButton);
-        
-        collectionNavButton.addEventListener('click', () => {
-            if (this.viewMode === 'collections' && this.currentCollectionId) {
-                // Back to collections
-                this.currentCollectionId = null;
+            this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
+            nativeCommentsToggleButton.addEventListener('click', () => {
+                this.toggleNativeCommentsVisibility();
+                this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
                 this.renderContent();
-            } else {
-                // New collection
-                this.showNewCollectionDialog();
-            }
-        });
+            });
 
-        // Create search input container (initially hidden)
-        const searchInputContainer = this.contentEl.createDiv({ 
-            cls: 'highlights-search-input-container hidden'
-        });
-        
-        this.searchInputEl = searchInputContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Search...',
-            cls: 'highlights-search-input'
-        });
-        this.searchInputEl.addEventListener('input', debounce(() => {
-            this.renderContent();
-        }, 300));
+            const commentsToggleButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Toggle highlight comments' }
+            });
+            this.commentsToggleButton = commentsToggleButton;
+            this.updateCommentsToggleIcon(commentsToggleButton);
+            commentsToggleButton.addEventListener('click', () => {
+                this.toggleAllComments();
+                this.updateCommentsToggleIcon(commentsToggleButton);
+                this.renderContent(); // Use renderContent instead of renderFilteredList
+            });
+
+            const resetColorsButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Revert highlight colors' }
+            });
+            setIcon(resetColorsButton, 'rotate-ccw');
+            resetColorsButton.addEventListener('click', () => {
+                this.resetAllColors();
+            });
+
+            const tagFilterButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Filter by tags' }
+            });
+            setIcon(tagFilterButton, 'tag');
+            
+            tagFilterButton.addEventListener('click', (event) => {
+                this.showTagFilterMenu(event);
+            });
+
+            // Add collection navigation button (New Collection / Back to Collections)
+            const collectionNavButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button',
+                attr: { 'aria-label': 'Collection Navigation' }
+            });
+            this.updateCollectionNavButton(collectionNavButton);
+            
+            collectionNavButton.addEventListener('click', () => {
+                if (this.viewMode === 'collections' && this.currentCollectionId) {
+                    // Back to collections
+                    this.currentCollectionId = null;
+                    this.renderContent();
+                } else {
+                    // New collection
+                    this.showNewCollectionDialog();
+                }
+            });
+
+            // Create search input container (initially hidden)
+            const searchInputContainer = this.contentEl.createDiv({ 
+                cls: 'highlights-search-input-container hidden'
+            });
+            
+            this.searchInputEl = searchInputContainer.createEl('input', {
+                type: 'text',
+                placeholder: 'Search...',
+                cls: 'highlights-search-input'
+            });
+            this.searchInputEl.addEventListener('input', debounce(() => {
+                this.renderContent();
+            }, 300));
+        }
 
         // Add tabs container
         const tabsContainer = this.contentEl.createDiv({ cls: 'highlights-tabs-container' });
@@ -375,7 +393,49 @@ export class HighlightsSidebarView extends ItemView {
 
     refresh() {
         this.selectedTags.clear();
-        this.renderContent();
+        // When toolbar setting changes, we need to rebuild the entire view structure
+        // because onOpen() conditionally creates toolbar elements
+        
+        // Preserve current view mode and collection state
+        const currentViewMode = this.viewMode;
+        const currentCollectionId = this.currentCollectionId;
+        
+        this.onOpen();
+        
+        // Restore the view mode and collection state after DOM recreation
+        this.viewMode = currentViewMode;
+        this.currentCollectionId = currentCollectionId;
+        
+        // Update the tab states to reflect the current view mode
+        this.updateTabStates();
+    }
+
+    private updateTabStates() {
+        // Get tabs by their order since they don't have data-tab attributes
+        const tabs = this.contentEl.querySelectorAll('.highlights-tab');
+        if (tabs.length >= 3) {
+            const currentNoteTab = tabs[0] as HTMLElement;  // First tab
+            const allNotesTab = tabs[1] as HTMLElement;     // Second tab  
+            const collectionsTab = tabs[2] as HTMLElement;  // Third tab
+            
+            // Remove active class from all tabs
+            currentNoteTab.classList.remove('active');
+            allNotesTab.classList.remove('active');
+            collectionsTab.classList.remove('active');
+            
+            // Add active class to the correct tab based on current view mode
+            switch (this.viewMode) {
+                case 'current':
+                    currentNoteTab.classList.add('active');
+                    break;
+                case 'all':
+                    allNotesTab.classList.add('active');
+                    break;
+                case 'collections':
+                    collectionsTab.classList.add('active');
+                    break;
+            }
+        }
     }
 
     private captureScrollPosition(): void {
@@ -494,6 +554,18 @@ export class HighlightsSidebarView extends ItemView {
             
             highlightsContainer.createSpan({ text: `${collectionStats.highlightCount}` });
 
+            // Native comments count section (show when native comments are enabled)
+            if (this.showNativeComments) {
+                const nativeCommentsContainer = infoLineContainer.createDiv({
+                    cls: 'highlight-line-info'
+                });
+                
+                const nativeCommentsIcon = nativeCommentsContainer.createDiv({ cls: 'line-icon' });
+                setIcon(nativeCommentsIcon, 'captions');
+                
+                nativeCommentsContainer.createSpan({ text: `${collectionStats.nativeCommentsCount}` });
+            }
+
             // Files count section
             const filesContainer = infoLineContainer.createDiv({
                 cls: 'highlight-line-info'
@@ -570,6 +642,11 @@ export class HighlightsSidebarView extends ItemView {
             });
         }
 
+        // Apply native comments filtering
+        if (!this.showNativeComments) {
+            filteredHighlights = filteredHighlights.filter(highlight => !highlight.isNativeComment);
+        }
+
         if (filteredHighlights.length === 0) {
             const message = searchTerm ? 'No matching highlights in collection.' : 'No highlights in collection.';
             this.listContainerEl.createEl('p', { text: message });
@@ -594,7 +671,7 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private renderFilteredList() {
-        if (!this.searchInputEl || !this.contentAreaEl || !this.listContainerEl) {
+        if (!this.contentAreaEl || !this.listContainerEl) {
             return;
         }
 
@@ -605,7 +682,8 @@ export class HighlightsSidebarView extends ItemView {
         this.contentAreaEl.empty();
         this.listContainerEl = this.contentAreaEl.createDiv({ cls: 'highlights-list' });
 
-        const searchTerm = this.searchInputEl.value.toLowerCase().trim();
+        // Get search term - if no search input (toolbar disabled), use empty string
+        const searchTerm = this.searchInputEl ? this.searchInputEl.value.toLowerCase().trim() : '';
         const scrollTop = this.contentAreaEl.scrollTop;
 
         this.listContainerEl.empty();
@@ -650,11 +728,24 @@ export class HighlightsSidebarView extends ItemView {
             });
         }
 
+        // Apply native comments filtering
+        if (!this.showNativeComments) {
+            filteredHighlights = filteredHighlights.filter(highlight => !highlight.isNativeComment);
+        }
+
         if (filteredHighlights.length === 0) {
-            const message = this.viewMode === 'current' 
-                ? (searchTerm ? 'No matching highlights.' : 'No highlights in this file.')
-                : (searchTerm ? 'No matching highlights across all files.' : 'No highlights found across all files.');
-            this.listContainerEl.createEl('p', { text: message }); // This is the reference "No highlights in file"
+            let message: string;
+            if (this.viewMode === 'current') {
+                const file = this.plugin.app.workspace.getActiveFile();
+                if (file && file.extension === 'pdf') {
+                    message = 'PDF highlights are not supported.';
+                } else {
+                    message = searchTerm ? 'No matching highlights.' : 'No highlights in this file.';
+                }
+            } else {
+                message = searchTerm ? 'No matching highlights across all files.' : 'No highlights found across all files.';
+            }
+            this.listContainerEl.createEl('p', { text: message });
         } else {
             if (this.groupingMode === 'none') {
                 // Sort by file path first, then by offset within file
@@ -698,6 +789,7 @@ export class HighlightsSidebarView extends ItemView {
             searchTerm,
             showFilename: this.plugin.settings.showFilenames && showFilename,
             showTimestamp: this.plugin.settings.showTimestamps,
+            showHighlightActions: this.plugin.settings.showHighlightActions,
             isCommentsVisible: this.highlightCommentsVisible.get(highlight.id) || false,
             isColorPickerVisible: this.highlightColorPickerVisible.get(highlight.id) || false,
             onCommentToggle: (highlightId) => {
@@ -798,7 +890,11 @@ export class HighlightsSidebarView extends ItemView {
             const escapedText = this.escapeRegex(highlight.text);
             
             // Look for existing footnotes after this highlight
-            const highlightRegex = new RegExp(`==${escapedText}==`, 'g');
+            // Use different regex pattern based on whether it's a native comment or regular highlight
+            const regexPattern = highlight.isNativeComment 
+                ? `%%${escapedText}%%`
+                : `==${escapedText}==`;
+            const highlightRegex = new RegExp(regexPattern, 'g');
             let match;
             let bestMatch: { index: number, length: number } | null = null;
             let minDistance = Infinity;
@@ -920,7 +1016,12 @@ export class HighlightsSidebarView extends ItemView {
         this.contentAreaEl.scrollTop = this.preservedScrollTop;
 
         const content = targetView.editor.getValue();
-        const regex = new RegExp(`==${this.escapeRegex(highlight.text)}==`, 'g');
+        
+        // Use different regex pattern based on whether it's a native comment or regular highlight
+        const regexPattern = highlight.isNativeComment 
+            ? `%%${this.escapeRegex(highlight.text)}%%`
+            : `==${this.escapeRegex(highlight.text)}==`;
+        const regex = new RegExp(regexPattern, 'g');
         const matches: { index: number, length: number }[] = [];
         let matchResult;
         while ((matchResult = regex.exec(content)) !== null) {
@@ -941,7 +1042,7 @@ export class HighlightsSidebarView extends ItemView {
                 foundMatch = true;
             }
         }
-        // A small tolerance, though for ==text== it should ideally be exact or very close.
+        // A small tolerance, though for both ==text== and %%text%% it should ideally be exact or very close.
         if (!foundMatch || minDistance > 5) {
             // Using best guess for highlight position
         }
@@ -1004,7 +1105,11 @@ export class HighlightsSidebarView extends ItemView {
             
             // Find the highlight in the content
             const escapedText = this.escapeRegex(highlight.text);
-            const highlightRegex = new RegExp(`==${escapedText}==`, 'g');
+            // Use different regex pattern based on whether it's a native comment or regular highlight
+            const regexPattern = highlight.isNativeComment 
+                ? `%%${escapedText}%%`
+                : `==${escapedText}==`;
+            const highlightRegex = new RegExp(regexPattern, 'g');
             let match;
             let bestMatch: { index: number, length: number } | null = null;
             let minDistance = Infinity;
@@ -1092,7 +1197,8 @@ export class HighlightsSidebarView extends ItemView {
                 groupKey = this.getColorName(color);
                 groupColors.set(groupKey, color); // Store the hex color
             } else if (this.groupingMode === 'comments-asc' || this.groupingMode === 'comments-desc') {
-                const commentCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+                // For comment grouping, only count footnote comments from regular highlights (not native comments)
+                const commentCount = highlight.isNativeComment ? 0 : (highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0);
                 groupKey = commentCount === 0 ? 'No Comments' : 
                           commentCount === 1 ? '1 Comment' : 
                           `${commentCount} Comments`;
@@ -1124,8 +1230,11 @@ export class HighlightsSidebarView extends ItemView {
                 // Group by date created
                 if (highlight.createdAt) {
                     const date = new Date(highlight.createdAt);
-                    // Format as YYYY-MM-DD for grouping
-                    groupKey = date.toISOString().split('T')[0];
+                    // Format as YYYY-MM-DD for grouping using local timezone
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    groupKey = `${year}-${month}-${day}`;
                 } else {
                     groupKey = 'No Date';
                 }
@@ -1223,7 +1332,11 @@ export class HighlightsSidebarView extends ItemView {
             const uniqueFiles = new Set(groupHighlights.map(h => h.filePath));
             const fileCount = uniqueFiles.size;
             
-            // Highlights count section
+            // Calculate native comments count for this group
+            const nativeCommentsCount = groupHighlights.filter(h => h.isNativeComment).length;
+            
+            // Highlights count section (excluding native comments)
+            const regularHighlightsCount = groupHighlights.filter(h => !h.isNativeComment).length;
             const highlightsContainer = infoLineContainer.createDiv({
                 cls: 'highlight-line-info'
             });
@@ -1231,7 +1344,19 @@ export class HighlightsSidebarView extends ItemView {
             const highlightsIcon = highlightsContainer.createDiv({ cls: 'line-icon' });
             setIcon(highlightsIcon, 'highlighter');
             
-            highlightsContainer.createSpan({ text: `${groupHighlights.length}` });
+            highlightsContainer.createSpan({ text: `${regularHighlightsCount}` });
+
+            // Native comments count section (show when native comments are enabled)
+            if (this.showNativeComments) {
+                const nativeCommentsContainer = infoLineContainer.createDiv({
+                    cls: 'highlight-line-info'
+                });
+                
+                const nativeCommentsIcon = nativeCommentsContainer.createDiv({ cls: 'line-icon' });
+                setIcon(nativeCommentsIcon, 'captions');
+                
+                nativeCommentsContainer.createSpan({ text: `${nativeCommentsCount}` });
+            }
 
             // Files count section
             const filesContainer = infoLineContainer.createDiv({
@@ -1291,6 +1416,8 @@ export class HighlightsSidebarView extends ItemView {
         
         // Check if any comments are currently expanded
         const anyExpanded = highlightsToConsider.some(highlight => {
+            // Only check for footnote comments on regular highlights, not native comments
+            if (highlight.isNativeComment) return false;
             const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
             return validFootnoteCount > 0 && this.highlightCommentsVisible.get(highlight.id);
         });
@@ -1319,6 +1446,8 @@ export class HighlightsSidebarView extends ItemView {
         
         // Check if any comments are currently expanded
         const anyExpanded = highlightsToToggle.some(highlight => {
+            // Only check for footnote comments on regular highlights, not native comments
+            if (highlight.isNativeComment) return false;
             const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
             return validFootnoteCount > 0 && this.highlightCommentsVisible.get(highlight.id);
         });
@@ -1327,6 +1456,8 @@ export class HighlightsSidebarView extends ItemView {
         const newState = !anyExpanded;
         
         highlightsToToggle.forEach(highlight => {
+            // Only toggle footnote comments for regular highlights, not native comments
+            if (highlight.isNativeComment) return;
             const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
             if (validFootnoteCount > 0) {
                 this.highlightCommentsVisible.set(highlight.id, newState);
@@ -1511,7 +1642,7 @@ export class HighlightsSidebarView extends ItemView {
                 }
             },
             {
-                text: 'New Collection',
+                text: 'New collection',
                 icon: 'plus',
                 className: 'highlights-dropdown-clear',
                 onClick: () => {
@@ -1574,14 +1705,19 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             // Show new collection button with normal styling
             setIcon(button, 'folder-plus');
-            button.setAttribute('aria-label', 'New Collection');
+            button.setAttribute('aria-label', 'New collection');
             button.classList.remove('active', 'collection-nav-back');
         }
     }
 
     private toggleSearch() {
+        // Only proceed if toolbar is enabled
+        if (!this.plugin.settings.showToolbar) return;
+        
         this.searchExpanded = !this.searchExpanded;
         const searchInputContainer = this.contentEl.querySelector('.highlights-search-input-container') as HTMLElement;
+        
+        if (!searchInputContainer) return;
         
         if (this.searchExpanded) {
             searchInputContainer.classList.remove('hidden');
@@ -1602,6 +1738,9 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private enableSearchAndToolbar() {
+        // Only proceed if toolbar is enabled
+        if (!this.plugin.settings.showToolbar) return;
+        
         // Enable search button and input
         if (this.searchButton) {
             this.searchButton.classList.remove('disabled');
@@ -1615,9 +1754,10 @@ export class HighlightsSidebarView extends ItemView {
         const toolbarButtons = this.contentEl.querySelectorAll('.highlights-search-container button');
         toolbarButtons.forEach((button, index) => {
             const isCollectionNavButton = index === toolbarButtons.length - 1; // Last button
+            const isNativeCommentsToggle = index === 2; // Native comments toggle is the 3rd button (index 2)
             
-            if (this.viewMode === 'collections' && !this.currentCollectionId && !isCollectionNavButton) {
-                // In collections overview, disable all buttons except collection nav
+            if (this.viewMode === 'collections' && !this.currentCollectionId && !isCollectionNavButton && !isNativeCommentsToggle) {
+                // In collections overview, disable all buttons except collection nav and native comments toggle
                 button.classList.add('disabled');
             } else {
                 // Enable all other cases
@@ -1633,6 +1773,9 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private disableSearchAndToolbar() {
+        // Only proceed if toolbar is enabled
+        if (!this.plugin.settings.showToolbar) return;
+        
         // Disable search button and input
         if (this.searchButton) {
             this.searchButton.classList.add('disabled');
@@ -1676,6 +1819,9 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private showTagActive() {
+        // Only proceed if toolbar is enabled
+        if (!this.plugin.settings.showToolbar) return;
+        
         const tagFilterButton = this.contentEl.querySelector('.highlights-search-container button[aria-label="Filter by tags"]') as HTMLElement;
         if (tagFilterButton) {
             if (this.selectedTags.size > 0) {
@@ -1734,22 +1880,16 @@ export class HighlightsSidebarView extends ItemView {
         }).open();
     }
 
-    private preserveScrollAndRender(renderFunction: () => void) {
-        this.preservedScrollTop = this.contentAreaEl.scrollTop;
-        this.isPreservingScroll = true;
-        
-        // Use requestAnimationFrame to ensure smooth rendering
-        requestAnimationFrame(() => {
-            renderFunction();
-            
-            // Restore scroll position immediately after DOM update
-            requestAnimationFrame(() => {
-                if (this.isPreservingScroll) {
-                    this.contentAreaEl.scrollTop = this.preservedScrollTop;
-                    this.isPreservingScroll = false;
-                }
-            });
-        });
+    private updateNativeCommentsToggleState(button: HTMLElement) {
+        if (this.showNativeComments) {
+            setIcon(button, 'captions');
+            button.classList.remove('active');
+            button.setAttribute('aria-label', 'Toggle native comments');
+        } else {
+            setIcon(button, 'captions-off');
+            button.classList.add('active');
+            button.setAttribute('aria-label', 'Toggle native comments');
+        }
     }
 
     // Animation methods for collection creation and deletion
@@ -1804,5 +1944,10 @@ export class HighlightsSidebarView extends ItemView {
                 resolve(true);
             }, 220); // Match animation duration (200ms + small buffer)
         });
+    }
+
+    private toggleNativeCommentsVisibility() {
+        this.showNativeComments = !this.showNativeComments;
+        localStorage.setItem('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
     }
 }

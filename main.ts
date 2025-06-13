@@ -15,6 +15,7 @@ export interface Highlight {
     color?: string;
     collectionIds?: string[]; // Add collection support
     createdAt?: number; // Timestamp when highlight was created
+    isNativeComment?: boolean; // True if this is a native comment (%% %) rather than highlight (== ==)
 }
 
 export interface Collection {
@@ -34,6 +35,8 @@ interface CommentPluginSettings {
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc'; // Add grouping mode persistence
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
+    showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
+    showToolbar: boolean; // Show/hide the toolbar container
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -44,7 +47,9 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     collections: {}, // Initialize empty collections
     groupingMode: 'none', // Default grouping mode
     showFilenames: true, // Show filenames by default
-    showTimestamps: true // Show timestamps by default
+    showTimestamps: true, // Show timestamps by default
+    showHighlightActions: true, // Show highlight actions by default
+    showToolbar: true // Show toolbar by default
 }
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
@@ -161,7 +166,10 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.registerCollectionCommands();
 
         // Scan all files for highlights after workspace is ready
-        this.app.workspace.onLayoutReady(() => {
+        this.app.workspace.onLayoutReady(async () => {
+            // Fix any duplicate timestamps from previous versions
+            await this.fixDuplicateTimestamps();
+            
             this.scanAllFilesForHighlights();
             
             if (this.settings.autoOpenSidebar) {
@@ -451,9 +459,18 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async loadHighlightsFromFile(file: TFile) {
-        const content = await this.app.vault.read(file);
         // Clear any selection from previous file
         this.selectedHighlightId = null;
+        
+        // Skip parsing PDF files
+        if (file.extension === 'pdf') {
+            // Clear any existing highlights for this file and refresh sidebar
+            this.highlights.delete(file.path);
+            this.refreshSidebar();
+            return;
+        }
+        
+        const content = await this.app.vault.read(file);
         // detectAndStoreMarkdownHighlights will call refreshSidebar if changes are detected
         this.detectAndStoreMarkdownHighlights(content, file);
         // Always refresh sidebar when file changes, even if no highlights detected
@@ -536,8 +553,8 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
         const markdownHighlightRegex = /==(.*?)==/g;
+        const commentHighlightRegex = /%%(.*?)%%/g;
         const newHighlights: Highlight[] = [];
-        let match;
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const existingByTextAndOrder = new Map<string, {highlights: Highlight[], count: number}>();
         
@@ -551,7 +568,33 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Extract all footnotes from the content
         const footnoteMap = this.extractFootnotes(content);
 
+        // Get code block ranges to exclude highlights within them
+        const codeBlockRanges = this.getCodeBlockRanges(content);
+
+        // Process both highlight types
+        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment'}> = [];
+        
+        // Find all highlight matches
+        let match;
         while ((match = markdownHighlightRegex.exec(content)) !== null) {
+            // Skip if match is inside a code block
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                allMatches.push({match, type: 'highlight'});
+            }
+        }
+        
+        // Find all comment matches
+        while ((match = commentHighlightRegex.exec(content)) !== null) {
+            // Skip if match is inside a code block
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                allMatches.push({match, type: 'comment'});
+            }
+        }
+        
+        // Sort matches by position in content
+        allMatches.sort((a, b) => a.match.index - b.match.index);
+
+        allMatches.forEach(({match, type}) => {
             const [, highlightText] = match;
             const entry = existingByTextAndOrder.get(highlightText);
             let existingHighlight: Highlight | undefined = undefined;
@@ -564,25 +607,32 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Calculate line number from offset
             const lineNumber = content.substring(0, match.index).split('\n').length - 1;
             
-            // Count footnotes immediately after the highlight (no spaces between footnotes)
-            const afterHighlight = content.substring(match.index + match[0].length);
-            const footnoteMatches = afterHighlight.match(/^(\[\^\w+\])+/);
-            
-            // Extract footnote contents and filter out empty ones
             let footnoteContents: string[] = [];
-            if (footnoteMatches) {
-                const footnoteRefs = footnoteMatches[0].match(/\[\^(\w+)\]/g) || [];
-                footnoteRefs.forEach(ref => {
-                    const key = ref.slice(2, -1); // Remove [^ and ]
-                    if (footnoteMap.has(key)) {
-                        const fnContent = footnoteMap.get(key)!.trim();
-                        if (fnContent) { // Only add non-empty content
-                            footnoteContents.push(fnContent);
+            let footnoteCount = 0;
+            
+            if (type === 'highlight') {
+                // For highlights, look for footnotes immediately after
+                const afterHighlight = content.substring(match.index + match[0].length);
+                const footnoteMatches = afterHighlight.match(/^(\[\^\w+\])+/);
+                
+                if (footnoteMatches) {
+                    const footnoteRefs = footnoteMatches[0].match(/\[\^(\w+)\]/g) || [];
+                    footnoteRefs.forEach(ref => {
+                        const key = ref.slice(2, -1); // Remove [^ and ]
+                        if (footnoteMap.has(key)) {
+                            const fnContent = footnoteMap.get(key)!.trim();
+                            if (fnContent) { // Only add non-empty content
+                                footnoteContents.push(fnContent);
+                            }
                         }
-                    }
-                });
+                    });
+                }
+                footnoteCount = footnoteContents.length;
+            } else {
+                // For comments, the text itself IS the comment content
+                footnoteContents = [highlightText];
+                footnoteCount = 1;
             }
-            const footnoteCount = footnoteContents.length; // Count only non-empty footnotes
             
             if (existingHighlight) {
                 newHighlights.push({
@@ -592,9 +642,15 @@ export default class HighlightCommentsPlugin extends Plugin {
                     endOffset: match.index + match[0].length,
                     filePath: file.path, // ensure filePath is current
                     footnoteCount: footnoteCount,
-                    footnoteContents: footnoteContents
+                    footnoteContents: footnoteContents,
+                    isNativeComment: type === 'comment',
+                    // Preserve existing createdAt timestamp if it exists
+                    createdAt: existingHighlight.createdAt || Date.now()
                 });
             } else {
+                // For new highlights, create a unique timestamp to avoid duplicates
+                // Add a small offset based on the match index to ensure uniqueness
+                const uniqueTimestamp = Date.now() + (match.index % 1000);
                 newHighlights.push({
                     id: this.generateId(),
                     text: highlightText,
@@ -605,14 +661,15 @@ export default class HighlightCommentsPlugin extends Plugin {
                     filePath: file.path,
                     footnoteCount: footnoteCount,
                     footnoteContents: footnoteContents,
-                    createdAt: Date.now()
+                    createdAt: uniqueTimestamp,
+                    isNativeComment: type === 'comment'
                 });
             }
-        }
+        });
 
         // Check for actual changes before updating and refreshing
-        const oldHighlightsJSON = JSON.stringify(existingHighlightsForFile.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color})));
-        const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color})));
+        const oldHighlightsJSON = JSON.stringify(existingHighlightsForFile.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
+        const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
 
         if (oldHighlightsJSON !== newHighlightsJSON) {
             this.highlights.set(file.path, newHighlights);
@@ -714,6 +771,86 @@ export default class HighlightCommentsPlugin extends Plugin {
     generateId(): string {
         return Math.random().toString(36).substr(2, 9);
     }
+
+    /**
+     * Fix duplicate timestamps in existing highlights by assigning unique timestamps
+     * while preserving the relative order within each file
+     */
+    async fixDuplicateTimestamps(): Promise<void> {
+        let hasChanges = false;
+        
+        for (const [filePath, highlights] of this.highlights) {
+            const timestampCounts = new Map<number, Highlight[]>();
+            
+            // Group highlights by timestamp to find duplicates
+            highlights.forEach(highlight => {
+                if (highlight.createdAt) {
+                    if (!timestampCounts.has(highlight.createdAt)) {
+                        timestampCounts.set(highlight.createdAt, []);
+                    }
+                    timestampCounts.get(highlight.createdAt)!.push(highlight);
+                }
+            });
+            
+            // Fix duplicates
+            for (const [timestamp, duplicates] of timestampCounts) {
+                if (duplicates.length > 1) {
+                    // Sort by start offset to maintain document order
+                    duplicates.sort((a, b) => a.startOffset - b.startOffset);
+                    
+                    // Assign unique timestamps, keeping the first one and incrementing others
+                    duplicates.forEach((highlight, index) => {
+                        if (index > 0) {
+                            // Add milliseconds based on position to ensure uniqueness
+                            highlight.createdAt = timestamp + index;
+                            hasChanges = true;
+                        }
+                    });
+                }
+            }
+        }
+        
+        if (hasChanges) {
+            await this.saveSettings();
+            this.refreshSidebar();
+            console.log('Fixed duplicate timestamps in highlights');
+        }
+    }
+
+    /**
+     * Get ranges of code blocks (both inline and fenced) in the content
+     */
+    private getCodeBlockRanges(content: string): Array<{start: number, end: number}> {
+        const ranges: Array<{start: number, end: number}> = [];
+        
+        // Find fenced code blocks (``` or ~~~ with optional language)
+        const fencedCodeRegex = /^(```|~~~).*?\n([\s\S]*?)\n\1\s*$/gm;
+        let match;
+        while ((match = fencedCodeRegex.exec(content)) !== null) {
+            ranges.push({
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+        
+        // Find inline code blocks (`code`)
+        const inlineCodeRegex = /`([^`\n]+?)`/g;
+        while ((match = inlineCodeRegex.exec(content)) !== null) {
+            ranges.push({
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+        
+        return ranges;
+    }
+
+    /**
+     * Check if a range is inside any of the provided code block ranges
+     */
+    private isInsideCodeBlock(start: number, end: number, codeBlockRanges: Array<{start: number, end: number}>): boolean {
+        return codeBlockRanges.some(range => start >= range.start && end <= range.end);
+    }
 }
 
 class HighlightSettingTab extends PluginSettingTab {
@@ -729,6 +866,9 @@ class HighlightSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'Sidebar Highlights' });
 
+        // UI Settings section
+        containerEl.createEl('h3', { text: 'UI' });
+
         new Setting(containerEl)
             .setName('Show note titles in All Notes and Collections')
             .setDesc('Display the filename/note title below highlights when viewing All Notes or Collections.')
@@ -742,11 +882,33 @@ class HighlightSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Show note timestamps')
-            .setDesc('Display creation timestamps for highlights')
+            .setDesc('Display creation timestamps for highlights.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showTimestamps)
                 .onChange(async (value) => {
                     this.plugin.settings.showTimestamps = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName('Show highlight actions')
+            .setDesc('Display the actions area below each highlight (filename, stats, and buttons).')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showHighlightActions)
+                .onChange(async (value) => {
+                    this.plugin.settings.showHighlightActions = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName('Show toolbar')
+            .setDesc('Display the toolbar with search, grouping, and other action buttons.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showToolbar)
+                .onChange(async (value) => {
+                    this.plugin.settings.showToolbar = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
@@ -828,12 +990,13 @@ class CollectionsManager {
         return this.plugin.collections.get(collectionId);
     }
 
-    getCollectionStats(collectionId: string): { highlightCount: number; fileCount: number } {
+    getCollectionStats(collectionId: string): { highlightCount: number; fileCount: number; nativeCommentsCount: number } {
         const collection = this.plugin.collections.get(collectionId);
-        if (!collection) return { highlightCount: 0, fileCount: 0 };
+        if (!collection) return { highlightCount: 0, fileCount: 0, nativeCommentsCount: 0 };
 
         const uniqueFiles = new Set<string>();
         let highlightCount = 0;
+        let nativeCommentsCount = 0;
 
         for (const highlightId of collection.highlightIds) {
             // Find the highlight across all files
@@ -841,7 +1004,11 @@ class CollectionsManager {
                 const highlight = highlights.find(h => h.id === highlightId);
                 if (highlight) {
                     uniqueFiles.add(filePath);
-                    highlightCount++;
+                    if (highlight.isNativeComment) {
+                        nativeCommentsCount++;
+                    } else {
+                        highlightCount++;
+                    }
                     break; // Found the highlight, no need to check other files
                 }
             }
@@ -849,7 +1016,8 @@ class CollectionsManager {
 
         return {
             highlightCount,
-            fileCount: uniqueFiles.size
+            fileCount: uniqueFiles.size,
+            nativeCommentsCount
         };
     }
 

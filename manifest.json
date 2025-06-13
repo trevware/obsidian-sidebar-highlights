@@ -1,9 +1,9 @@
 {
 	"id": "sidebar-highlights",
 	"name": "Sidebar Highlights",
-	"version": "1.0.3",
+	"version": "1.0.5",
 	"minAppVersion": "1.8.10",
-	"description": "A sidebar plugin for viewing and managing text highlights, highlight comments and highlight collections.",
+	"description": "A sidebar plugin for viewing and managing text highlights, highlight comments, native comments, and highlight collections.",
 	"author": "trevware",
 	"authorUrl": "https://www.linkedin.com/in/trevortarakjian/",
 	"fundingUrl": "https://buymeacoffee.com/trevware",
