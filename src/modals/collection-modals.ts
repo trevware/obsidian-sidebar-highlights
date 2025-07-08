@@ -15,10 +15,10 @@ export class NewCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Create a New Collection' });
+        contentEl.createEl('h3', { text: 'Create a new collection' });
 
         new Setting(contentEl)
-            .setName('Collection Name')
+            .setName('Collection name')
             .setDesc('The name of your collection (Required)')
             .addText(text => {
                 this.nameInput = text.inputEl;
@@ -31,11 +31,11 @@ export class NewCollectionModal extends Modal {
                         }
                     });
                 // Focus the name input
-                setTimeout(() => text.inputEl.focus(), 100);
+                window.setTimeout(() => text.inputEl.focus(), 100);
             });
 
         new Setting(contentEl)
-            .setName('Collection Description')
+            .setName('Collection description')
             .setDesc('Provide more context about the collection (Optional)')
             .addText(text => {
                 this.descriptionInput = text.inputEl;
@@ -49,7 +49,7 @@ export class NewCollectionModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const submitBtn = buttonContainer.createEl('button', { 
-            text: 'Create Collection',
+            text: 'Create collection',
             cls: 'mod-cta'
         });
         submitBtn.disabled = true; // Start disabled
@@ -101,10 +101,10 @@ export class EditCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Edit Collection' });
+        contentEl.createEl('h3', { text: 'Edit collection' });
 
         new Setting(contentEl)
-            .setName('Collection Name')
+            .setName('Collection name')
             .setDesc('The name of your collection (Required)')
             .addText(text => {
                 this.nameInput = text.inputEl;
@@ -118,14 +118,14 @@ export class EditCollectionModal extends Modal {
                         }
                     });
                 // Focus the name input
-                setTimeout(() => {
+                window.setTimeout(() => {
                     text.inputEl.focus();
                     text.inputEl.select();
                 }, 100);
             });
 
         new Setting(contentEl)
-            .setName('Collection Description')
+            .setName('Collection description')
             .setDesc('Provide more context about the collection (Optional)')
             .addText(text => {
                 this.descriptionInput = text.inputEl;
@@ -140,7 +140,7 @@ export class EditCollectionModal extends Modal {
         cancelBtn.addEventListener('click', () => this.close());
 
         const submitBtn = buttonContainer.createEl('button', { 
-            text: 'Save Changes',
+            text: 'Save changes',
             cls: 'mod-cta'
         });
         submitBtn.addEventListener('click', () => this.handleSubmit());

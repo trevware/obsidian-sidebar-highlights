@@ -29,7 +29,6 @@ export interface Collection {
 interface CommentPluginSettings {
     highlightColor: string;
     sidebarPosition: 'left' | 'right';
-    autoOpenSidebar: boolean;
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc'; // Add grouping mode persistence
@@ -42,7 +41,6 @@ interface CommentPluginSettings {
 const DEFAULT_SETTINGS: CommentPluginSettings = {
     highlightColor: '#ffd700',
     sidebarPosition: 'right',
-    autoOpenSidebar: true,
     highlights: {},
     collections: {}, // Initialize empty collections
     groupingMode: 'none', // Default grouping mode
@@ -60,10 +58,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     collections: Map<string, Collection> = new Map();
     collectionsManager: CollectionsManager;
     private sidebarView: HighlightsSidebarView | null = null;
-    private detectHighlightsTimeout: NodeJS.Timeout | null = null;
+    private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
     private collectionCommands: Set<string> = new Set(); // Track registered collection commands
-    public deletedCollectionNames: Map<string, string> = new Map(); // Track names of deleted collections
 
     async onload() {
         await this.loadSettings();
@@ -80,7 +77,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         );
 
-        this.addRibbonIcon('highlighter', 'Open Highlights', () => {
+        this.addRibbonIcon('highlighter', 'Open highlights', () => {
             this.activateView();
         });
 
@@ -171,10 +168,6 @@ export default class HighlightCommentsPlugin extends Plugin {
             await this.fixDuplicateTimestamps();
             
             this.scanAllFilesForHighlights();
-            
-            if (this.settings.autoOpenSidebar) {
-                this.activateView();
-            }
         });
     }
 
@@ -333,13 +326,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         editor.replaceSelection(highlightedText);
         this.refreshSidebar();
         new Notice('Highlight created');
-
-        if (this.settings.autoOpenSidebar) {
-            const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_HIGHLIGHTS);
-            if (leaves.length === 0) { // Only activate if not already open/visible
-                this.activateView();
-            }
-        }
     }
 
     refreshSidebar() {
@@ -367,37 +353,13 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    // Update commands for deleted collections to show "(deleted)" in the name
-    public updateDeletedCollectionCommands() {
-        // Get all currently existing collection IDs
-        const existingCollectionIds = new Set(Array.from(this.collections.keys()));
-        
-        // Find commands for collections that no longer exist
-        const deletedCommands = Array.from(this.collectionCommands).filter(goToId => {
-            const collectionId = goToId.replace('go-to-collection-', '');
-            return !existingCollectionIds.has(collectionId);
-        });
-
-        // Re-register deleted collection commands with updated names
-        for (const goToId of deletedCommands) {
-            const collectionId = goToId.replace('go-to-collection-', '');
-            const deletedCollectionName = this.deletedCollectionNames.get(collectionId) || 'Collection';
-            
-            this.addCommand({
-                id: goToId,
-                name: `Go to ${deletedCollectionName} (deleted)`,
-                callback: () => {
-                    new Notice(`Collection "${deletedCollectionName}" has been deleted`);
-                }
-            });
-        }
-    }
 
     // Unregister all collection commands
     private unregisterCollectionCommands() {
-        // Note: Obsidian doesn't provide a direct way to unregister commands
-        // Commands are automatically cleaned up when the plugin is unloaded
-        // We'll track them and they'll be replaced when registerCollectionCommands is called
+        // Remove all tracked collection commands
+        for (const commandId of this.collectionCommands) {
+            this.removeCommand(commandId);
+        }
         this.collectionCommands.clear();
     }
 
@@ -479,9 +441,9 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
         if (this.detectHighlightsTimeout) {
-            clearTimeout(this.detectHighlightsTimeout);
+            window.clearTimeout(this.detectHighlightsTimeout);
         }
-        this.detectHighlightsTimeout = setTimeout(() => {
+        this.detectHighlightsTimeout = window.setTimeout(() => {
             this.detectMarkdownHighlights(editor, view);
         }, 1000);
     }
@@ -864,13 +826,10 @@ class HighlightSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'Sidebar Highlights' });
 
-        // UI Settings section
-        containerEl.createEl('h3', { text: 'UI' });
 
         new Setting(containerEl)
-            .setName('Show note titles in All Notes and Collections')
+            .setName('Show note titles in all notes and collections')
             .setDesc('Display the filename/note title below highlights when viewing All Notes or Collections.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showFilenames)
@@ -941,17 +900,15 @@ class CollectionsManager {
     }
 
     deleteCollection(collectionId: string) {
-        // Store the collection name before deleting it
-        const collection = this.plugin.collections.get(collectionId);
-        if (collection) {
-            this.plugin.deletedCollectionNames.set(collectionId, collection.name);
+        // Remove the command for this collection
+        const goToId = `go-to-collection-${collectionId}`;
+        if (this.plugin.collectionCommands.has(goToId)) {
+            this.plugin.removeCommand(goToId);
+            this.plugin.collectionCommands.delete(goToId);
         }
         
         this.plugin.collections.delete(collectionId);
         this.plugin.saveSettings();
-        
-        // Update dynamic commands to mark deleted collections
-        this.plugin.updateDeletedCollectionCommands();
     }
 
     async deleteCollectionWithConfirmation(collectionId: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, debounce, setIcon, Modal, Setting, App } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, debounce, setIcon, Modal, Setting, App, setTooltip } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
@@ -37,8 +37,8 @@ export class HighlightsSidebarView extends ItemView {
         this.highlightRenderer = new HighlightRenderer(plugin);
         // Load grouping mode from settings
         this.groupingMode = plugin.settings.groupingMode || 'none';
-        // Load native comments visibility from localStorage
-        this.showNativeComments = localStorage.getItem('sidebar-highlights-show-native-comments') !== 'false';
+        // Load native comments visibility from vault-specific localStorage
+        this.showNativeComments = this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments') !== 'false';
     }
 
     getViewType() { return VIEW_TYPE_HIGHLIGHTS; }
@@ -55,20 +55,20 @@ export class HighlightsSidebarView extends ItemView {
             
             // Replace search input with search button
             const searchButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Search' }
+                cls: 'highlights-group-button'
             });
             this.searchButton = searchButton;
             setIcon(searchButton, 'search');
+            setTooltip(searchButton, 'Search');
             searchButton.addEventListener('click', () => {
                 this.toggleSearch();
             });
 
             const groupButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Group highlights' }
+                cls: 'highlights-group-button'
             });
             setIcon(groupButton, 'group');
+            setTooltip(groupButton, 'Group highlights');
             this.updateGroupButtonState(groupButton);
             groupButton.addEventListener('click', (event) => {
                 const menu = new Menu();
@@ -204,9 +204,9 @@ export class HighlightsSidebarView extends ItemView {
 
             // Add toggle native comments button (positioned after group button)
             const nativeCommentsToggleButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Toggle native comments' }
+                cls: 'highlights-group-button'
             });
+            setTooltip(nativeCommentsToggleButton, 'Toggle native comments');
             this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
             nativeCommentsToggleButton.addEventListener('click', () => {
                 this.toggleNativeCommentsVisibility();
@@ -215,9 +215,9 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             const commentsToggleButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Toggle highlight comments' }
+                cls: 'highlights-group-button'
             });
+            setTooltip(commentsToggleButton, 'Toggle highlight comments');
             this.commentsToggleButton = commentsToggleButton;
             this.updateCommentsToggleIcon(commentsToggleButton);
             commentsToggleButton.addEventListener('click', () => {
@@ -227,18 +227,18 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             const resetColorsButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Revert highlight colors' }
+                cls: 'highlights-group-button'
             });
+            setTooltip(resetColorsButton, 'Revert highlight colors');
             setIcon(resetColorsButton, 'rotate-ccw');
             resetColorsButton.addEventListener('click', () => {
                 this.resetAllColors();
             });
 
             const tagFilterButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Filter by tags' }
+                cls: 'highlights-group-button'
             });
+            setTooltip(tagFilterButton, 'Filter by tags');
             setIcon(tagFilterButton, 'tag');
             
             tagFilterButton.addEventListener('click', (event) => {
@@ -247,9 +247,9 @@ export class HighlightsSidebarView extends ItemView {
 
             // Add collection navigation button (New Collection / Back to Collections)
             const collectionNavButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button',
-                attr: { 'aria-label': 'Collection Navigation' }
+                cls: 'highlights-group-button'
             });
+            setTooltip(collectionNavButton, 'Collection Navigation');
             this.updateCollectionNavButton(collectionNavButton);
             
             collectionNavButton.addEventListener('click', () => {
@@ -282,22 +282,22 @@ export class HighlightsSidebarView extends ItemView {
         const tabsContainer = this.contentEl.createDiv({ cls: 'highlights-tabs-container' });
         
         const currentNoteTab = tabsContainer.createEl('button', {
-            cls: 'highlights-tab active',
-            attr: { 'aria-label': 'Current Note' }
+            cls: 'highlights-tab active'
         });
         setIcon(currentNoteTab, 'file-text');
+        setTooltip(currentNoteTab, 'Current note');
         
         const allNotesTab = tabsContainer.createEl('button', {
-            cls: 'highlights-tab',
-            attr: { 'aria-label': 'All Notes' }
+            cls: 'highlights-tab'
         });
         setIcon(allNotesTab, 'files');
+        setTooltip(allNotesTab, 'All notes');
 
         const collectionsTab = tabsContainer.createEl('button', {
-            cls: 'highlights-tab',
-            attr: { 'aria-label': 'Collections' }
+            cls: 'highlights-tab'
         });
         setIcon(collectionsTab, 'folder-open');
+        setTooltip(collectionsTab, 'Collections');
 
         // Add click handlers
         currentNoteTab.addEventListener('click', () => {
@@ -863,7 +863,7 @@ export class HighlightsSidebarView extends ItemView {
         this.focusHighlightInEditor(highlight);
         
         // Wait a bit for the focus to complete, then add footnote
-        setTimeout(() => {
+        window.setTimeout(() => {
             const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
             if (!activeEditorView || !activeEditorView.editor || activeEditorView.file?.path !== highlight.filePath) {
                 // Ensure the editor is for the correct file, especially after focusHighlightInEditor might open a new one
@@ -972,10 +972,10 @@ export class HighlightsSidebarView extends ItemView {
                                 this.performHighlightFocus(newActiveView, highlight);
                             } else {
                                 // Retry if file isn't ready yet
-                                setTimeout(checkAndFocus, 50);
+                                window.setTimeout(checkAndFocus, 50);
                             }
                         };
-                        setTimeout(checkAndFocus, 100);
+                        window.setTimeout(checkAndFocus, 100);
                     });
                 return;
             }
@@ -1088,12 +1088,12 @@ export class HighlightsSidebarView extends ItemView {
             if (fileToOpen instanceof TFile) {
                 await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
                 // Wait for file to open and retry
-                setTimeout(() => this.focusFootnoteInEditor(highlight, footnoteIndex), 200);
+                window.setTimeout(() => this.focusFootnoteInEditor(highlight, footnoteIndex), 200);
                 return;
             }
         }
 
-        setTimeout(() => {
+        window.setTimeout(() => {
             const currentView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
             if (!currentView || !currentView.editor) {
                 new Notice('Could not access the editor.');
@@ -1700,12 +1700,12 @@ export class HighlightsSidebarView extends ItemView {
         if (this.viewMode === 'collections' && this.currentCollectionId) {
             // Show back button with accent color
             setIcon(button, 'arrow-left');
-            button.setAttribute('aria-label', 'Back to Collections');
+            setTooltip(button, 'Back to Collections');
             button.classList.add('active', 'collection-nav-back');
         } else {
             // Show new collection button with normal styling
             setIcon(button, 'folder-plus');
-            button.setAttribute('aria-label', 'New collection');
+            setTooltip(button, 'New collection');
             button.classList.remove('active', 'collection-nav-back');
         }
     }
@@ -1723,14 +1723,14 @@ export class HighlightsSidebarView extends ItemView {
             searchInputContainer.classList.remove('hidden');
             this.searchButton.classList.add('active');
             setIcon(this.searchButton, 'x');
-            this.searchButton.setAttribute('aria-label', 'Close search');
+            setTooltip(this.searchButton, 'Close search');
             // Focus the search input
-            setTimeout(() => this.searchInputEl.focus(), 100);
+            window.setTimeout(() => this.searchInputEl.focus(), 100);
         } else {
             searchInputContainer.classList.add('hidden');
             this.searchButton.classList.remove('active');
             setIcon(this.searchButton, 'search');
-            this.searchButton.setAttribute('aria-label', 'Search highlights');
+            setTooltip(this.searchButton, 'Search highlights');
             // Clear search when closing
             this.searchInputEl.value = '';
             this.renderContent();
@@ -1884,11 +1884,11 @@ export class HighlightsSidebarView extends ItemView {
         if (this.showNativeComments) {
             setIcon(button, 'captions');
             button.classList.remove('active');
-            button.setAttribute('aria-label', 'Toggle native comments');
+            setTooltip(button, 'Toggle native comments');
         } else {
             setIcon(button, 'captions-off');
             button.classList.add('active');
-            button.setAttribute('aria-label', 'Toggle native comments');
+            setTooltip(button, 'Toggle native comments');
         }
     }
 
@@ -1910,7 +1910,7 @@ export class HighlightsSidebarView extends ItemView {
                     collectionCard.classList.add('animating-in');
                     
                     // Clean up animation class after animation completes
-                    setTimeout(() => {
+                    window.setTimeout(() => {
                         collectionCard.classList.remove('animating-in');
                     }, 400); // Match animation duration
                 });
@@ -1937,7 +1937,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Wait for animation to complete, then delete
         return new Promise((resolve) => {
-            setTimeout(() => {
+            window.setTimeout(() => {
                 // Perform actual deletion
                 this.plugin.collectionsManager.deleteCollection(collectionId);
                 this.plugin.refreshSidebar();
@@ -1948,6 +1948,6 @@ export class HighlightsSidebarView extends ItemView {
 
     private toggleNativeCommentsVisibility() {
         this.showNativeComments = !this.showNativeComments;
-        localStorage.setItem('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
+        this.plugin.app.saveLocalStorage('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
     }
 }

@@ -189,7 +189,7 @@ export class DropdownManager {
         };
         
         this.documentClickHandlers.push(closeHandler);
-        setTimeout(() => {
+        window.setTimeout(() => {
             document.addEventListener('click', closeHandler);
         }, 100);
     }
@@ -217,7 +217,7 @@ export class DropdownManager {
         
         // Close dropdown if no items are checked
         if (!hasCheckedItems) {
-            setTimeout(() => {
+            window.setTimeout(() => {
                 this.closeActiveDropdown();
             }, 100);
         }

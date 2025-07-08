@@ -537,16 +537,16 @@ export class HighlightRenderer {
         });
 
         // Add hover events only to the left border hover zone
-        let hoverTimeout: NodeJS.Timeout;
+        let hoverTimeout: number;
         
         const showColorPicker = () => {
-            hoverTimeout = setTimeout(() => {
+            hoverTimeout = window.setTimeout(() => {
                 hoverColorPicker.classList.add('visible');
             }, 500); // Longer delay as requested
         };
 
         const hideColorPicker = () => {
-            clearTimeout(hoverTimeout);
+            window.clearTimeout(hoverTimeout);
             hoverColorPicker.classList.remove('visible');
         };
 
@@ -556,7 +556,7 @@ export class HighlightRenderer {
         
         // Color picker events (keep visible when hovering over the picker itself)
         hoverColorPicker.addEventListener('mouseenter', () => {
-            clearTimeout(hoverTimeout);
+            window.clearTimeout(hoverTimeout);
             hoverColorPicker.classList.add('visible');
         });
         hoverColorPicker.addEventListener('mouseleave', hideColorPicker);
