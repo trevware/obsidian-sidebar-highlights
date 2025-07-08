@@ -60,7 +60,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private sidebarView: HighlightsSidebarView | null = null;
     private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
-    private collectionCommands: Set<string> = new Set(); // Track registered collection commands
+    public collectionCommands: Set<string> = new Set(); // Track registered collection commands
 
     async onload() {
         await this.loadSettings();
