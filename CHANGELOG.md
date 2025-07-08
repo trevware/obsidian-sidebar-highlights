@@ -5,6 +5,23 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2025-07-08
+
+### Changed
+- **UI Text Consistency**: Updated all UI text elements to use proper sentence case formatting for better consistency and readability
+- **Settings Tab Cleanup**: Removed unnecessary plugin name heading from settings tab per Obsidian guidelines
+- **Accessibility Improvements**: Replaced aria-label attributes with setTooltip function for better accessibility and user experience
+- **Vault-Specific Storage**: Replaced localStorage with App.saveLocalStorage/loadLocalStorage for vault-specific data persistence
+- **Timeout Handling**: Updated timeout implementations to use proper web API methods (window.setTimeout/clearTimeout) with number types instead of Node.js-specific types
+
+### Fixed
+- **Command Cleanup**: Collection commands are now properly removed from the command palette when collections are deleted using removeCommand()
+- **Launch Behavior**: Plugin no longer forces the sidebar to open automatically when Obsidian launches
+- **TypeScript Build**: Fixed build error related to private property access in CollectionsManager
+
+### Removed
+- **Obsolete Code**: Removed obsolete command tracking code and deleted collection name tracking system
+
 ## [1.0.5] - 2025-06-13
 
 ### Added
