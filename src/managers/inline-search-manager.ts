@@ -114,7 +114,7 @@ export class InlineSearchManager {
     private getPlainText(): string {
         // Extract plain text while preserving tokens
         let text = '';
-        for (const node of this.editableDiv.childNodes) {
+        for (const node of Array.from(this.editableDiv.childNodes)) {
             if (node.nodeType === Node.TEXT_NODE) {
                 text += node.textContent || '';
             } else if ((node as HTMLElement).classList?.contains('inline-search-chip')) {
@@ -208,7 +208,7 @@ export class InlineSearchManager {
 
     private findTextNodeAtOffset(offset: number): Text | null {
         let currentOffset = 0;
-        for (const node of this.editableDiv.childNodes) {
+        for (const node of Array.from(this.editableDiv.childNodes)) {
             if (node.nodeType === Node.TEXT_NODE) {
                 const nodeLength = node.textContent?.length || 0;
                 if (currentOffset + nodeLength >= offset) {

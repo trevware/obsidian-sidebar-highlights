@@ -106,6 +106,30 @@ export class SearchParser {
                 continue;
             }
 
+            // Handle quoted strings
+            if (query[i] === '"') {
+                i++; // Skip opening quote
+                const textStart = i;
+                // Find closing quote
+                while (i < query.length && query[i] !== '"') {
+                    i++;
+                }
+                if (i < query.length) {
+                    // Found closing quote
+                    const textValue = query.substring(textStart, i);
+                    if (textValue.trim()) {
+                        tokens.push({ type: 'TEXT', value: textValue });
+                    }
+                    i++; // Skip closing quote
+                } else {
+                    // No closing quote found, treat as regular text
+                    const textValue = query.substring(textStart - 1); // Include opening quote
+                    tokens.push({ type: 'TEXT', value: textValue });
+                    i = query.length; // End tokenization
+                }
+                continue;
+            }
+
             // Handle filters and text
             const match = query.substr(i).match(/^(-?)([#@])([a-zA-Z0-9_-]+)/);
             if (match) {
@@ -122,22 +146,35 @@ export class SearchParser {
                 continue;
             }
 
-            // Handle regular text
+            // Handle regular text - capture everything until next operator/filter
             let textStart = i;
-            while (i < query.length && 
-                   !/\s/.test(query[i]) && 
-                   query[i] !== '(' && 
-                   query[i] !== ')' && 
-                   !query.substr(i).match(/^(-?)([#@])([a-zA-Z0-9_-]+)/) &&
-                   !query.substr(i, 3).startsWith('AND') &&
-                   !query.substr(i, 2).startsWith('OR')) {
+            let textContent = '';
+            
+            // Keep collecting text until we hit an operator, filter, or special character
+            while (i < query.length) {
+                // Check if we're at the start of an operator
+                if (query.substr(i, 3) === 'AND' && (i + 3 >= query.length || /\s/.test(query[i + 3]))) {
+                    break;
+                }
+                if (query.substr(i, 2) === 'OR' && (i + 2 >= query.length || /\s/.test(query[i + 2]))) {
+                    break;
+                }
+                
+                // Check for other special tokens
+                if (query[i] === '(' || query[i] === ')' || query[i] === '"' ||
+                    query.substr(i).match(/^(-?)([#@])([a-zA-Z0-9_-]+)/)) {
+                    break;
+                }
+                
+                textContent += query[i];
                 i++;
             }
             
-            if (i > textStart) {
-                const textValue = query.substring(textStart, i);
-                tokens.push({ type: 'TEXT', value: textValue });
-            } else {
+            // Clean up and add the text token
+            textContent = textContent.trim();
+            if (textContent) {
+                tokens.push({ type: 'TEXT', value: textContent });
+            } else if (i === textStart) {
                 // Safety: if no progress was made, advance by one character to prevent infinite loop
                 i++;
             }
@@ -259,7 +296,7 @@ export class SearchParser {
 
     private static isImplicitAnd(): boolean {
         const token = this.current();
-        return token && (token.type === 'FILTER' || token.type === 'TEXT' || token.type === 'LPAREN');
+        return !!token && (token.type === 'FILTER' || token.type === 'TEXT' || token.type === 'LPAREN');
     }
 
     static getTokensFromQuery(query: string): SearchToken[] {

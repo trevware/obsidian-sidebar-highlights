@@ -2158,13 +2158,6 @@ export class HighlightsSidebarView extends ItemView {
         } else if (node.type === 'operator') {
             const opNode = node as OperatorNode;
             
-            // Special case: consecutive text nodes connected by AND should be treated as phrase search
-            if (opNode.operator === 'AND' && this.isConsecutiveTextNodes(opNode)) {
-                const phrase = this.extractConsecutiveText(opNode);
-                return highlight.text.toLowerCase().includes(phrase.toLowerCase()) ||
-                       highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(phrase.toLowerCase());
-            }
-            
             const leftResult = this.evaluateASTNode(opNode.left, highlight);
             const rightResult = this.evaluateASTNode(opNode.right, highlight);
             

@@ -262,24 +262,26 @@ export class SimpleSearchManager {
             return 'Invalid';
         }
         
-        // Extract all filters and text terms in a flattened way
-        const filters: string[] = [];
-        const textTerms: string[] = [];
-        this.extractTerms(node, filters, textTerms);
-        
-        const parts: string[] = [];
-        
-        // Add filters
-        if (filters.length > 0) {
-            parts.push(filters.join(' '));
+        // Always show the actual logical structure (including implicit operators)
+        return this.generateNodeDescription(node);
+    }
+    
+    private generateNodeDescription(node: ASTNode): string {
+        if (node.type === 'filter') {
+            const filterNode = node as FilterNode;
+            const prefix = filterNode.exclude ? '-' : '';
+            const type = filterNode.filterType === 'tag' ? '#' : '@';
+            return `${prefix}${type}${filterNode.value}`;
+        } else if (node.type === 'text') {
+            const textNode = node as TextNode;
+            return `"${textNode.value}"`;
+        } else if (node.type === 'operator') {
+            const opNode = node as OperatorNode;
+            const leftDesc = this.generateNodeDescription(opNode.left);
+            const rightDesc = this.generateNodeDescription(opNode.right);
+            return `${leftDesc} ${opNode.operator} ${rightDesc}`;
         }
-        
-        // Add text terms as a single phrase
-        if (textTerms.length > 0) {
-            parts.push(`"${textTerms.join(' ')}"`);
-        }
-        
-        return parts.join(' AND ');
+        return '';
     }
     
     private extractTerms(node: ASTNode, filters: string[], textTerms: string[]): void {
