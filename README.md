@@ -159,6 +159,9 @@ Access plugin settings via **Settings** → **Sidebar Highlights**:
 **Q: Can I use this with PDF files?**
 A: PDF highlights aren't supported.
 
+**Q: Why can't I jump to highlights from within Reading View?**
+A: Jumping to highlights from within Reading View is not currently supported.
+
 ### Need More Help?
 
 - Report bugs or request features on [GitHub Issues](https://github.com/trevware/obsidian-sidebar-highlights/issues)
