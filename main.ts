@@ -27,7 +27,7 @@ export interface Collection {
     createdAt: number;
 }
 
-interface CommentPluginSettings {
+export interface CommentPluginSettings {
     highlightColor: string;
     sidebarPosition: 'left' | 'right';
     highlights: { [filePath: string]: Highlight[] };

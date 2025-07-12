@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, debounce, setIcon, Modal, Setting, App, setTooltip } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import type { Highlight, Collection } from '../../main';
+import type { Highlight, Collection, CommentPluginSettings } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
