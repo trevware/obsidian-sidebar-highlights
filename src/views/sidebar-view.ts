@@ -981,7 +981,34 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     async focusHighlightInEditor(highlight: Highlight) {
-        // Prevent multiple simultaneous highlight focusing operations
+        // Always update selection immediately, even if we're going to guard against file operations
+        const prevId = this.plugin.selectedHighlightId;
+        this.plugin.selectedHighlightId = highlight.id;
+        if (prevId) {
+            const prevEl = this.containerEl.querySelector(`[data-highlight-id="${prevId}"]`) as HTMLElement;
+            if (prevEl) {
+                prevEl.classList.remove('selected', 'highlight-selected');
+            }
+        }
+        const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
+        if (newEl) {
+            newEl.classList.add('selected');
+            // Find the highlight in the correct file (not just current file)
+            const fileHighlights = this.plugin.highlights.get(highlight.filePath);
+            const newHighlight = fileHighlights?.find(h => h.id === highlight.id);
+            if (newHighlight) {
+                newEl.classList.add('highlight-selected');
+                
+                // Update border color and box-shadow to reflect current color
+                const highlightColor = newHighlight.color || this.plugin.settings.highlightColor;
+                newEl.style.borderLeftColor = highlightColor;
+                if (!newHighlight.isNativeComment) {
+                    newEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                }
+            }
+        }
+        
+        // Prevent multiple simultaneous highlight focusing operations for file operations
         if (this.isHighlightFocusing) {
             return;
         }
@@ -1043,32 +1070,7 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        // Update selection class without re-rendering
-        const prevId = this.plugin.selectedHighlightId;
-        this.plugin.selectedHighlightId = highlight.id;
-        if (prevId) {
-            const prevEl = this.containerEl.querySelector(`[data-highlight-id="${prevId}"]`) as HTMLElement;
-            if (prevEl) {
-                prevEl.classList.remove('selected', 'highlight-selected');
-            }
-        }
-        const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
-        if (newEl) {
-            newEl.classList.add('selected');
-            // Find the highlight in the correct file (not just current file)
-            const fileHighlights = this.plugin.highlights.get(highlight.filePath);
-            const newHighlight = fileHighlights?.find(h => h.id === highlight.id);
-            if (newHighlight) {
-                newEl.classList.add('highlight-selected');
-                
-                // Update border color and box-shadow to reflect current color
-                const highlightColor = newHighlight.color || this.plugin.settings.highlightColor;
-                newEl.style.borderLeftColor = highlightColor;
-                if (!newHighlight.isNativeComment) {
-                    newEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-                }
-            }
-        }
+        // Selection is now handled in focusHighlightInEditor, so we just handle the editor focus
 
         // Only restore scroll position if we haven't already done it in refresh()
         // (refresh() handles scroll restoration during file switches)
