@@ -7,7 +7,7 @@
 /* Default highlight color */
 body .cm-highlight,
 body.theme-highlight-default .cm-highlight {
-    background-color: #ffd70066;
+    background-color: rgb(var(--text-highlight-bg-rgb));
 }
 
 /* Yellow highlight theme */
@@ -57,7 +57,7 @@ body.theme-highlight-green .cm-highlight {
 }
 
 .highlight-item-card.highlight-color-default {
-    border-left-color: #ffd700;
+    border-left-color: rgb(var(--text-highlight-bg-rgb));
 }
 
 /* Override default view-content padding for highlights sidebar */
@@ -461,7 +461,7 @@ body.theme-highlight-green .cm-highlight {
 .highlight-item-card {
     background: var(--background-secondary); 
     border: none; 
-    border-left: 5px solid #ffd700; /* Default color, overridden by color classes */
+    border-left: 5px solid rgb(var(--text-highlight-bg-rgb)); /* Default color, overridden by color classes */
     border-radius: 6px; 
     padding: 0; 
     margin-bottom: 10px; 
@@ -477,7 +477,28 @@ body.theme-highlight-green .cm-highlight {
 }
 
 .highlight-item-card.highlight-selected {
-    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s); /* Default selection color, overridden by color classes */
+    box-shadow: 0 0 0 1.5px rgb(var(--text-highlight-bg-rgb)), var(--shadow-s); /* Default selection color, overridden by color classes */
+}
+
+/* Color-specific selection box-shadows */
+.highlight-item-card.highlight-color-yellow.highlight-selected {
+    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-color-red.highlight-selected {
+    box-shadow: 0 0 0 1.5px #ff6b6b, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-color-teal.highlight-selected {
+    box-shadow: 0 0 0 1.5px #4ecdc4, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-color-blue.highlight-selected {
+    box-shadow: 0 0 0 1.5px #45b7d1, var(--shadow-s);
+}
+
+.highlight-item-card.highlight-color-green.highlight-selected {
+    box-shadow: 0 0 0 1.5px #96ceb4, var(--shadow-s);
 }
 
 /* Native comment highlight card styling - similar to regular highlights but with muted appearance */

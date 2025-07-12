@@ -51,20 +51,29 @@ export class HighlightRenderer {
             
             // Apply color class for border styling
             item.classList.add(colorClass);
+            
+            // Also set border color directly to ensure it always shows the correct color
+            item.style.borderLeftColor = highlightColor;
         }
         
         if (this.plugin.selectedHighlightId === highlight.id) {
             item.classList.add('highlight-selected');
+            
+            // For regular highlights, also set the selection box-shadow directly
+            if (!highlight.isNativeComment) {
+                const highlightColor = highlight.color || this.plugin.settings.highlightColor;
+                item.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+            }
         }
     }
 
     private getColorClassName(color: string): string {
         const colorMap: Record<string, string> = {
-            '#ffd700': 'highlight-color-yellow',
-            '#ff6b6b': 'highlight-color-red', 
-            '#4ecdc4': 'highlight-color-teal',
-            '#45b7d1': 'highlight-color-blue',
-            '#96ceb4': 'highlight-color-green'
+            [this.plugin.settings.customColors.yellow]: 'highlight-color-yellow',
+            [this.plugin.settings.customColors.red]: 'highlight-color-red', 
+            [this.plugin.settings.customColors.teal]: 'highlight-color-teal',
+            [this.plugin.settings.customColors.blue]: 'highlight-color-blue',
+            [this.plugin.settings.customColors.green]: 'highlight-color-green'
         };
         
         return colorMap[color] || 'highlight-color-default';
@@ -499,7 +508,13 @@ export class HighlightRenderer {
         
         const hoverColorPicker = item.createDiv({ cls: 'hover-color-picker' });
         const colorOptionsContainer = hoverColorPicker.createDiv({ cls: 'hover-color-options' });
-        const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'];
+        const colors = [
+            this.plugin.settings.customColors.yellow,
+            this.plugin.settings.customColors.red,
+            this.plugin.settings.customColors.teal,
+            this.plugin.settings.customColors.blue,
+            this.plugin.settings.customColors.green
+        ];
         
         colors.forEach((color, index) => {
             const colorOption = colorOptionsContainer.createDiv({

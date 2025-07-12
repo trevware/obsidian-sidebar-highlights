@@ -38,6 +38,14 @@ interface CommentPluginSettings {
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
     showToolbar: boolean; // Show/hide the toolbar container
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
+    excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
+    customColors: {
+        yellow: string;
+        red: string;
+        teal: string;
+        blue: string;
+        green: string;
+    };
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -50,7 +58,15 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showTimestamps: true, // Show timestamps by default
     showHighlightActions: true, // Show highlight actions by default
     showToolbar: true, // Show toolbar by default
-    useInlineFootnotes: false // Use standard footnotes by default
+    useInlineFootnotes: false, // Use standard footnotes by default
+    excludeExcalidraw: true, // Exclude .excalidraw files by default
+    customColors: {
+        yellow: '#ffd700',
+        red: '#ff6b6b',
+        teal: '#4ecdc4',
+        blue: '#45b7d1',
+        green: '#96ceb4'
+    }
 }
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
@@ -122,7 +138,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (file) {
                     this.loadHighlightsFromFile(file);
                 } else {
-                    this.highlights.clear();
+                    // Clear selection but preserve highlights when no file is active
                     this.selectedHighlightId = null;
                     this.refreshSidebar();
                 }
@@ -139,7 +155,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.registerEvent(
             this.app.vault.on('create', (file) => {
-                if (file instanceof TFile && file.extension === 'md') {
+                if (file instanceof TFile && this.shouldProcessFile(file)) {
                     this.handleFileCreate(file);
                 }
             })
@@ -147,7 +163,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.registerEvent(
             this.app.vault.on('rename', (file, oldPath) => {
-                if (file instanceof TFile && file.extension === 'md') {
+                if (file instanceof TFile && this.shouldProcessFile(file)) {
                     this.handleFileRename(file, oldPath);
                 }
             })
@@ -155,7 +171,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.registerEvent(
             this.app.vault.on('delete', (file) => {
-                if (file instanceof TFile && file.extension === 'md') {
+                if (file instanceof TFile && this.shouldProcessFile(file)) {
                     this.handleFileDelete(file);
                 }
             })
@@ -173,6 +189,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             await this.fixDuplicateTimestamps();
             
             this.scanAllFilesForHighlights();
+            
+            // Ensure custom color styles are applied on load
+            this.updateCustomColorStyles();
         });
     }
 
@@ -210,12 +229,17 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Apply theme color class to body
         this.applyHighlightTheme();
         
+        // Add dynamic custom color styles
+        this.updateCustomColorStyles();
+        
         document.head.appendChild(style);
     }
 
     updateStyles() {
         // Update theme color class when settings change
         this.applyHighlightTheme();
+        // Update custom color styles
+        this.updateCustomColorStyles();
     }
 
     removeStyles() {
@@ -223,6 +247,13 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (style) {
             style.remove();
         }
+        
+        // Clean up custom color styles
+        const customStyle = document.getElementById('highlight-comments-custom-colors');
+        if (customStyle) {
+            customStyle.remove();
+        }
+        
         // Clean up theme classes
         this.removeHighlightTheme();
     }
@@ -253,14 +284,66 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     private getHighlightThemeClass(color: string): string {
         const colorMap: Record<string, string> = {
-            '#ffd700': 'theme-highlight-yellow',
-            '#ff6b6b': 'theme-highlight-red', 
-            '#4ecdc4': 'theme-highlight-teal',
-            '#45b7d1': 'theme-highlight-blue',
-            '#96ceb4': 'theme-highlight-green'
+            [this.settings.customColors.yellow]: 'theme-highlight-yellow',
+            [this.settings.customColors.red]: 'theme-highlight-red', 
+            [this.settings.customColors.teal]: 'theme-highlight-teal',
+            [this.settings.customColors.blue]: 'theme-highlight-blue',
+            [this.settings.customColors.green]: 'theme-highlight-green'
         };
         
         return colorMap[color] || 'theme-highlight-default';
+    }
+
+    private updateCustomColorStyles() {
+        // Remove existing custom color styles
+        const existingCustomStyle = document.getElementById('highlight-comments-custom-colors');
+        if (existingCustomStyle) {
+            existingCustomStyle.remove();
+        }
+
+        // Create new custom color styles
+        const customStyle = document.createElement('style');
+        customStyle.id = 'highlight-comments-custom-colors';
+        
+        const css = `
+            /* Dynamic hover color options */
+            .hover-color-option[data-color="${this.settings.customColors.yellow}"] { background-color: ${this.settings.customColors.yellow} !important; }
+            .hover-color-option[data-color="${this.settings.customColors.red}"] { background-color: ${this.settings.customColors.red} !important; }
+            .hover-color-option[data-color="${this.settings.customColors.teal}"] { background-color: ${this.settings.customColors.teal} !important; }
+            .hover-color-option[data-color="${this.settings.customColors.blue}"] { background-color: ${this.settings.customColors.blue} !important; }
+            .hover-color-option[data-color="${this.settings.customColors.green}"] { background-color: ${this.settings.customColors.green} !important; }
+            
+            /* Dynamic group color squares */
+            .group-color-square[data-color="${this.settings.customColors.yellow}"] { background-color: ${this.settings.customColors.yellow} !important; }
+            .group-color-square[data-color="${this.settings.customColors.red}"] { background-color: ${this.settings.customColors.red} !important; }
+            .group-color-square[data-color="${this.settings.customColors.teal}"] { background-color: ${this.settings.customColors.teal} !important; }
+            .group-color-square[data-color="${this.settings.customColors.blue}"] { background-color: ${this.settings.customColors.blue} !important; }
+            .group-color-square[data-color="${this.settings.customColors.green}"] { background-color: ${this.settings.customColors.green} !important; }
+            
+            /* Dynamic highlight theme colors */
+            body.theme-highlight-yellow .cm-highlight { background-color: ${this.settings.customColors.yellow}66 !important; }
+            body.theme-highlight-red .cm-highlight { background-color: ${this.settings.customColors.red}66 !important; }
+            body.theme-highlight-teal .cm-highlight { background-color: ${this.settings.customColors.teal}66 !important; }
+            body.theme-highlight-blue .cm-highlight { background-color: ${this.settings.customColors.blue}66 !important; }
+            body.theme-highlight-green .cm-highlight { background-color: ${this.settings.customColors.green}66 !important; }
+            
+            /* Dynamic highlight card border colors */
+            .highlight-item-card.highlight-color-yellow { border-left-color: ${this.settings.customColors.yellow} !important; }
+            .highlight-item-card.highlight-color-red { border-left-color: ${this.settings.customColors.red} !important; }
+            .highlight-item-card.highlight-color-teal { border-left-color: ${this.settings.customColors.teal} !important; }
+            .highlight-item-card.highlight-color-blue { border-left-color: ${this.settings.customColors.blue} !important; }
+            .highlight-item-card.highlight-color-green { border-left-color: ${this.settings.customColors.green} !important; }
+            
+            /* Dynamic highlight card selection colors */
+            .highlight-item-card.highlight-color-yellow.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.yellow}, var(--shadow-s) !important; }
+            .highlight-item-card.highlight-color-red.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.red}, var(--shadow-s) !important; }
+            .highlight-item-card.highlight-color-teal.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.teal}, var(--shadow-s) !important; }
+            .highlight-item-card.highlight-color-blue.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.blue}, var(--shadow-s) !important; }
+            .highlight-item-card.highlight-color-green.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.green}, var(--shadow-s) !important; }
+        `;
+        
+        customStyle.textContent = css;
+        document.head.appendChild(customStyle);
     }
 
     async activateView() {
@@ -429,8 +512,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Clear any selection from previous file
         this.selectedHighlightId = null;
         
-        // Skip parsing PDF files
-        if (file.extension === 'pdf') {
+        // Skip parsing files that shouldn't be processed
+        if (!this.shouldProcessFile(file)) {
             // Clear any existing highlights for this file and refresh sidebar
             this.highlights.delete(file.path);
             this.refreshSidebar();
@@ -460,9 +543,11 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.detectAndStoreMarkdownHighlights(content, file);
     }
 
-    private async scanAllFilesForHighlights() {
+    async scanAllFilesForHighlights() {
         const markdownFiles = this.app.vault.getMarkdownFiles();
-        const existingFilePaths = new Set(markdownFiles.map(file => file.path));
+        // Filter files based on shouldProcessFile logic
+        const processableFiles = markdownFiles.filter(file => this.shouldProcessFile(file));
+        const existingFilePaths = new Set(processableFiles.map(file => file.path));
         let hasChanges = false;
         
         // First, clean up highlights for files that no longer exist
@@ -492,7 +577,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         
         // Now scan existing files for highlights
-        for (const file of markdownFiles) {
+        for (const file of processableFiles) {
             try {
                 const content = await this.app.vault.read(file);
                 const oldHighlights = this.highlights.get(file.path) || [];
@@ -775,6 +860,23 @@ export default class HighlightCommentsPlugin extends Plugin {
         return Math.random().toString(36).substr(2, 9);
     }
 
+    private shouldProcessFile(file: TFile): boolean {
+        if (file.extension !== 'md') {
+            return false;
+        }
+        
+        if (this.settings.excludeExcalidraw && file.extension === 'excalidraw') {
+            return false;
+        }
+        
+        // Also check for .excalidraw extension in the filename itself
+        if (this.settings.excludeExcalidraw && file.name.endsWith('.excalidraw.md')) {
+            return false;
+        }
+        
+        return true;
+    }
+
     /**
      * Fix duplicate timestamps in existing highlights by assigning unique timestamps
      * while preserving the relative order within each file
@@ -867,18 +969,7 @@ class HighlightSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Comment behaviour' });
-
-        new Setting(containerEl)
-            .setName('Use inline footnotes by default')
-            .setDesc('When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment).')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.useInlineFootnotes)
-                .onChange(async (value) => {
-                    this.plugin.settings.useInlineFootnotes = value;
-                    await this.plugin.saveSettings();
-                }));
-
+        // DISPLAY SECTION
         containerEl.createEl('h2', { text: 'Display' });
 
         new Setting(containerEl)
@@ -924,6 +1015,144 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
+
+        // STYLING SECTION
+        containerEl.createEl('h2', { text: 'Styling' });
+
+        new Setting(containerEl)
+            .setName('Yellow highlight color')
+            .setDesc('Customize the yellow highlight color.')
+            .addColorPicker(colorPicker => colorPicker
+                .setValue(this.plugin.settings.customColors.yellow)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColors.yellow = value;
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                }))
+            .addButton(button => button
+                .setButtonText('Reset')
+                .setTooltip('Reset to default yellow (#ffd700)')
+                .onClick(async () => {
+                    this.plugin.settings.customColors.yellow = '#ffd700';
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                    this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Red highlight color')
+            .setDesc('Customize the red highlight color.')
+            .addColorPicker(colorPicker => colorPicker
+                .setValue(this.plugin.settings.customColors.red)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColors.red = value;
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                }))
+            .addButton(button => button
+                .setButtonText('Reset')
+                .setTooltip('Reset to default red (#ff6b6b)')
+                .onClick(async () => {
+                    this.plugin.settings.customColors.red = '#ff6b6b';
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                    this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Teal highlight color')
+            .setDesc('Customize the teal highlight color.')
+            .addColorPicker(colorPicker => colorPicker
+                .setValue(this.plugin.settings.customColors.teal)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColors.teal = value;
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                }))
+            .addButton(button => button
+                .setButtonText('Reset')
+                .setTooltip('Reset to default teal (#4ecdc4)')
+                .onClick(async () => {
+                    this.plugin.settings.customColors.teal = '#4ecdc4';
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                    this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Blue highlight color')
+            .setDesc('Customize the blue highlight color.')
+            .addColorPicker(colorPicker => colorPicker
+                .setValue(this.plugin.settings.customColors.blue)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColors.blue = value;
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                }))
+            .addButton(button => button
+                .setButtonText('Reset')
+                .setTooltip('Reset to default blue (#45b7d1)')
+                .onClick(async () => {
+                    this.plugin.settings.customColors.blue = '#45b7d1';
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                    this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Green highlight color')
+            .setDesc('Customize the green highlight color.')
+            .addColorPicker(colorPicker => colorPicker
+                .setValue(this.plugin.settings.customColors.green)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColors.green = value;
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                }))
+            .addButton(button => button
+                .setButtonText('Reset')
+                .setTooltip('Reset to default green (#96ceb4)')
+                .onClick(async () => {
+                    this.plugin.settings.customColors.green = '#96ceb4';
+                    await this.plugin.saveSettings();
+                    this.updateColorMappings();
+                    this.display(); // Refresh settings display
+                }));
+
+        // COMMENTS SECTION
+        containerEl.createEl('h2', { text: 'Comments' });
+
+        new Setting(containerEl)
+            .setName('Use inline footnotes by default')
+            .setDesc('When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment).')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.useInlineFootnotes)
+                .onChange(async (value) => {
+                    this.plugin.settings.useInlineFootnotes = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        // PLUGINS SECTION
+        containerEl.createEl('h2', { text: 'Plugins' });
+
+        new Setting(containerEl)
+            .setName('Exclude Excalidraw files')
+            .setDesc('Skip .excalidraw files when scanning for highlights. This prevents highlights from being detected in Excalidraw drawing files.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.excludeExcalidraw)
+                .onChange(async (value) => {
+                    this.plugin.settings.excludeExcalidraw = value;
+                    await this.plugin.saveSettings();
+                    // Refresh highlights to apply the new exclusion setting
+                    this.plugin.scanAllFilesForHighlights();
+                }));
+    }
+
+    private updateColorMappings(): void {
+        // Refresh the sidebar to apply new colors
+        this.plugin.refreshSidebar();
+        // Update theme classes if needed
+        this.plugin.updateStyles();
     }
 }
 
