@@ -807,7 +807,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.isColorChanging = true;
                 
                 // Safety timeout to clear flag in case something goes wrong
-                setTimeout(() => {
+                window.setTimeout(() => {
                     this.isColorChanging = false;
                 }, 2000);
                 
@@ -819,6 +819,22 @@ export class HighlightsSidebarView extends ItemView {
                     if (this.contentAreaEl && this.isColorChanging) {
                         this.contentAreaEl.scrollTop = this.preservedScrollTop;
                         this.isColorChanging = false;
+                        
+                        // Ensure the selected highlight styling is correct after color group change
+                        if (this.plugin.selectedHighlightId) {
+                            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+                            if (selectedEl) {
+                                // Find the highlight data to get the updated color
+                                const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
+                                if (selectedHighlight) {
+                                    const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
+                                    selectedEl.style.borderLeftColor = highlightColor;
+                                    if (!selectedHighlight.isNativeComment) {
+                                        selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
             },
@@ -970,7 +986,7 @@ export class HighlightsSidebarView extends ItemView {
         this.isHighlightFocusing = true;
         
         // Safety timeout to clear flag in case something goes wrong
-        setTimeout(() => {
+        window.setTimeout(() => {
             this.isHighlightFocusing = false;
         }, 2000);
         
@@ -993,20 +1009,18 @@ export class HighlightsSidebarView extends ItemView {
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
             if (fileToOpen instanceof TFile) {
-                this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false)
-                    .then(() => {
-                        // Use a more reliable approach for file opening
-                        const checkAndFocus = () => {
-                            const newActiveView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-                            if (newActiveView && newActiveView.file?.path === highlight.filePath) {
-                                this.performHighlightFocus(newActiveView, highlight);
-                            } else {
-                                // Retry if file isn't ready yet
-                                window.setTimeout(checkAndFocus, 50);
-                            }
-                        };
-                        window.setTimeout(checkAndFocus, 100);
-                    });
+                const openResult = await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
+                // Use a more reliable approach for file opening
+                const checkAndFocus = () => {
+                    const newActiveView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+                    if (newActiveView && newActiveView.file?.path === highlight.filePath) {
+                        this.performHighlightFocus(newActiveView, highlight);
+                    } else {
+                        // Retry if file isn't ready yet
+                        window.setTimeout(checkAndFocus, 50);
+                    }
+                };
+                window.setTimeout(checkAndFocus, 100);
                 return;
             }
         }
@@ -1036,9 +1050,18 @@ export class HighlightsSidebarView extends ItemView {
         const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
         if (newEl) {
             newEl.classList.add('selected');
-            const newHighlight = this.plugin.getCurrentFileHighlights().find(h => h.id === highlight.id);
+            // Find the highlight in the correct file (not just current file)
+            const fileHighlights = this.plugin.highlights.get(highlight.filePath);
+            const newHighlight = fileHighlights?.find(h => h.id === highlight.id);
             if (newHighlight) {
                 newEl.classList.add('highlight-selected');
+                
+                // Update border color and box-shadow to reflect current color
+                const highlightColor = newHighlight.color || this.plugin.settings.highlightColor;
+                newEl.style.borderLeftColor = highlightColor;
+                if (!newHighlight.isNativeComment) {
+                    newEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                }
             }
         }
 
@@ -2135,6 +2158,16 @@ export class HighlightsSidebarView extends ItemView {
             tags: this.getAvailableTags(),
             collections: this.getAvailableCollections()
         });
+    }
+
+    private getHighlightById(highlightId: string): Highlight | null {
+        for (const [filePath, highlights] of this.plugin.highlights) {
+            const highlight = highlights.find(h => h.id === highlightId);
+            if (highlight) {
+                return highlight;
+            }
+        }
+        return null;
     }
 
     private onChipClick(token: SearchToken): void {

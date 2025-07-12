@@ -175,7 +175,17 @@ export class InlineSearchManager {
         const range = selection?.getRangeAt(0);
         const cursorOffset = range?.startOffset || 0;
 
-        this.editableDiv.innerHTML = html;
+        // Clear existing content safely
+        this.editableDiv.empty();
+        
+        // Create a temporary container to parse HTML safely
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // Move all child nodes to the editableDiv
+        while (tempDiv.firstChild) {
+            this.editableDiv.appendChild(tempDiv.firstChild);
+        }
 
         // Add click handlers to remove buttons
         this.editableDiv.querySelectorAll('.inline-search-chip-remove').forEach(btn => {

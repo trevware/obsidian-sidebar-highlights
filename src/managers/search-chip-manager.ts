@@ -102,7 +102,7 @@ export class SearchChipManager {
         const removeBtn = chip.createSpan({
             cls: 'search-chip-remove'
         });
-        removeBtn.innerHTML = '×';
+        removeBtn.textContent = '×';
         
         removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
