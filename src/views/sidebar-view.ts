@@ -980,7 +980,12 @@ export class HighlightsSidebarView extends ItemView {
         }, 150);
     }
 
-    focusHighlightInEditor(highlight: Highlight) {
+    async focusHighlightInEditor(highlight: Highlight) {
+        // Prevent multiple simultaneous highlight focusing operations
+        if (this.isHighlightFocusing) {
+            return;
+        }
+        
         // Store current scroll position and set flag to prevent other scroll restorations
         this.preservedScrollTop = this.contentAreaEl.scrollTop;
         this.isHighlightFocusing = true;

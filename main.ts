@@ -865,11 +865,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             return false;
         }
         
-        if (this.settings.excludeExcalidraw && file.extension === 'excalidraw') {
-            return false;
-        }
-        
-        // Also check for .excalidraw extension in the filename itself
+        // Check for .excalidraw extension in the filename
         if (this.settings.excludeExcalidraw && file.name.endsWith('.excalidraw.md')) {
             return false;
         }
