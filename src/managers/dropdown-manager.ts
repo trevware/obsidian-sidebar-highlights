@@ -4,9 +4,11 @@ export interface DropdownItem {
     id?: string;
     text: string;
     icon?: string;
+    uncheckedIcon?: string;
     checked?: boolean;
     className?: string;
-    onClick: () => void;
+    separator?: boolean;
+    onClick?: () => void;
 }
 
 export interface DropdownOptions {
@@ -17,6 +19,7 @@ export interface DropdownOptions {
 export class DropdownManager {
     private activeDropdown: HTMLElement | null = null;
     private documentClickHandlers: Array<(e: MouseEvent) => void> = [];
+    private keydownHandlers: Array<(e: KeyboardEvent) => void> = [];
     private isOpen: boolean = false;
     private checkboxElements: Map<string, { element: HTMLElement, checkDiv: HTMLElement }> = new Map();
     private activeItems: DropdownItem[] = [];
@@ -44,6 +47,11 @@ export class DropdownManager {
             document.removeEventListener('click', handler);
         });
         this.documentClickHandlers = [];
+        
+        this.keydownHandlers.forEach(handler => {
+            document.removeEventListener('keydown', handler);
+        });
+        this.keydownHandlers = [];
     }
 
     showDropdown(
@@ -68,10 +76,34 @@ export class DropdownManager {
         this.isOpen = true;
         this.activeItems = [...items]; // Store copy of items
 
+        // Find first and last non-separator items for corner radius styling
+        const nonSeparatorItems = items.filter(item => !item.separator);
+        const firstNonSeparatorIndex = items.findIndex(item => !item.separator);
+        const lastNonSeparatorIndex = items.length - 1 - [...items].reverse().findIndex(item => !item.separator);
+
         // Add items
         items.forEach((item, index) => {
             const element = document.createElement('div');
+            
+            if (item.separator) {
+                // Create separator
+                element.className = 'menu-separator';
+                dropdown.appendChild(element);
+                return;
+            }
+            
             element.className = `menu-item ${item.className || 'highlights-dropdown-item'}`;
+            
+            // Add corner radius classes
+            if (index === firstNonSeparatorIndex) {
+                element.classList.add('first-menu-item');
+            }
+            if (index === lastNonSeparatorIndex) {
+                element.classList.add('last-menu-item');
+            }
+            if (nonSeparatorItems.length === 1 && index === firstNonSeparatorIndex) {
+                element.classList.add('only-menu-item');
+            }
             
             if (item.checked !== undefined) {
                 // Add checkbox for checkable items
@@ -81,6 +113,9 @@ export class DropdownManager {
                 if (item.checked) {
                     setIcon(checkDiv, 'check');
                     element.classList.add('is-checked');
+                } else if (item.uncheckedIcon) {
+                    // Show unchecked icon when item is not checked
+                    setIcon(checkDiv, item.uncheckedIcon);
                 }
                 element.appendChild(checkDiv);
                 
@@ -103,8 +138,10 @@ export class DropdownManager {
                 e.preventDefault();
                 e.stopPropagation();
                 
-                // Call the original onClick
-                item.onClick();
+                // Call the original onClick if it exists
+                if (item.onClick) {
+                    item.onClick();
+                }
                 
                 // Update checkbox state if this is a checkable item
                 if (item.checked !== undefined) {
@@ -192,6 +229,16 @@ export class DropdownManager {
         window.setTimeout(() => {
             document.addEventListener('click', closeHandler);
         }, 100);
+        
+        // Set up ESC key handler
+        const escHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                this.closeActiveDropdown();
+            }
+        };
+        
+        this.keydownHandlers.push(escHandler);
+        document.addEventListener('keydown', escHandler);
     }
 
     private updateCheckboxState(itemKey: string, checked: boolean): void {
@@ -200,12 +247,23 @@ export class DropdownManager {
         
         const { element, checkDiv } = checkboxInfo;
         
+        // Find the corresponding item to get its uncheckedIcon
+        const item = this.activeItems.find(item => {
+            const itemId = item.id || `item-${this.activeItems.indexOf(item)}`;
+            return itemId === itemKey;
+        });
+        
         if (checked) {
             setIcon(checkDiv, 'check');
             element.classList.add('is-checked');
         } else {
-            checkDiv.empty(); // Use DOM API instead of innerHTML
+            checkDiv.empty(); // Clear the check icon
             element.classList.remove('is-checked');
+            
+            // Show unchecked icon if available
+            if (item && item.uncheckedIcon) {
+                setIcon(checkDiv, item.uncheckedIcon);
+            }
         }
     }
 

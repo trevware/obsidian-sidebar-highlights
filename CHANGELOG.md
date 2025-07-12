@@ -5,6 +5,36 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.10.0] - 2025-07-12
+
+### Added
+- **Advanced Search System**: Complete search system overhaul with AST-based parsing and proper operator precedence
+  - Support for `#tag` and `@collection` filters with intelligent autocomplete
+  - Logical operators: `AND`, `OR` with correct precedence (AND binds tighter than OR)
+  - Parentheses support for grouping: `(#urgent OR #work) AND @archive`
+  - Exclude filters: `-#spam` and `-@archive` for negative filtering
+  - Full-text search integration: `phishing #malware` combines text and tag filtering
+  - Real-time search preview showing parsed query logic
+  - Obsidian-style autocomplete with keyboard navigation (↑↓ arrows, Enter, Esc)
+- **Inline Comment Support**: New `^[comment content]` syntax for immediate comments attached to highlights
+  - Mixed footnote support: combine standard `[^key]` and inline `^[content]` on same highlight
+  - Setting option: "Use inline footnotes by default" for controlling comment creation method
+  - Automatic text selection when adding new inline comments via "Add comment" button
+- **Enhanced Filter Dropdown**: Improved tag and collection filtering with better UX
+  - Alphabetical sorting with proper locale-aware comparison (supports multiple languages)
+  - Unicode character support for international tags (Chinese, Japanese, Arabic, etc.)
+  - Improved visual organization and accessibility
+
+### Enhanced
+- **Search Parser Architecture**: Moved from simple token matching to full Abstract Syntax Tree (AST) parsing
+- **Filter Integration**: Smart search works seamlessly with existing tag/collection filter dropdowns
+- **Real-time Feedback**: Live preview shows exactly how complex queries will be interpreted
+- **Unified Filtering**: All filtering systems (search, dropdowns, native comments) work together with AND logic
+- **Tag Recognition**: Improved hashtag extraction with full Unicode support for international characters
+- **Internationalization**: Better support for non-Latin scripts in tag names and filtering
+
 ## [1.0.6] - 2025-07-08
 
 ### Changed

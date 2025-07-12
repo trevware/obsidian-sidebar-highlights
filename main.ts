@@ -1,6 +1,7 @@
 // main.ts
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TAbstractFile, WorkspaceLeaf, ItemView, Menu, debounce, setIcon } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
+import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 
 export interface Highlight {
     id: string;
@@ -36,6 +37,7 @@ interface CommentPluginSettings {
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
     showToolbar: boolean; // Show/hide the toolbar container
+    useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -47,7 +49,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showFilenames: true, // Show filenames by default
     showTimestamps: true, // Show timestamps by default
     showHighlightActions: true, // Show highlight actions by default
-    showToolbar: true // Show toolbar by default
+    showToolbar: true, // Show toolbar by default
+    useInlineFootnotes: false // Use standard footnotes by default
 }
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
@@ -57,6 +60,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     highlights: Map<string, Highlight[]> = new Map();
     collections: Map<string, Collection> = new Map();
     collectionsManager: CollectionsManager;
+    inlineFootnoteManager: InlineFootnoteManager;
     private sidebarView: HighlightsSidebarView | null = null;
     private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
@@ -68,6 +72,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.highlights = new Map(Object.entries(this.settings.highlights || {}));
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
+        this.inlineFootnoteManager = new InlineFootnoteManager();
         
         this.registerView(
             VIEW_TYPE_HIGHLIGHTS,
@@ -573,22 +578,58 @@ export default class HighlightCommentsPlugin extends Plugin {
             let footnoteCount = 0;
             
             if (type === 'highlight') {
-                // For highlights, look for footnotes immediately after
+                // For highlights, extract footnotes in the order they appear in the text
                 const afterHighlight = content.substring(match.index + match[0].length);
-                const footnoteMatches = afterHighlight.match(/^(\[\^\w+\])+/);
                 
-                if (footnoteMatches) {
-                    const footnoteRefs = footnoteMatches[0].match(/\[\^(\w+)\]/g) || [];
-                    footnoteRefs.forEach(ref => {
-                        const key = ref.slice(2, -1); // Remove [^ and ]
+                // Find all footnotes (both standard and inline) in order
+                const allFootnotes: Array<{type: 'standard' | 'inline', index: number, content: string}> = [];
+                
+                // First, get all inline footnotes with their positions
+                const inlineFootnotes = this.inlineFootnoteManager.extractInlineFootnotes(content, match.index + match[0].length);
+                inlineFootnotes.forEach(footnote => {
+                    if (footnote.content.trim()) {
+                        allFootnotes.push({
+                            type: 'inline',
+                            index: footnote.startIndex,
+                            content: footnote.content.trim()
+                        });
+                    }
+                });
+                
+                // Then, get all standard footnotes with their positions (using same validation logic)
+                const standardFootnoteRegex = /(\s*\[\^(\w+)\])/g;
+                let match_sf;
+                let lastValidPosition = 0;
+                
+                while ((match_sf = standardFootnoteRegex.exec(afterHighlight)) !== null) {
+                    // Check if this standard footnote is in a valid position
+                    const precedingText = afterHighlight.substring(lastValidPosition, match_sf.index);
+                    const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                    
+                    if (match_sf.index === lastValidPosition || isValid) {
+                        const key = match_sf[2]; // The key inside [^key]
                         if (footnoteMap.has(key)) {
                             const fnContent = footnoteMap.get(key)!.trim();
                             if (fnContent) { // Only add non-empty content
-                                footnoteContents.push(fnContent);
+                                allFootnotes.push({
+                                    type: 'standard',
+                                    index: match.index + match[0].length + match_sf.index,
+                                    content: fnContent
+                                });
                             }
                         }
-                    });
+                        lastValidPosition = match_sf.index + match_sf[0].length;
+                    } else {
+                        // Stop if we encounter a footnote that's not in the valid sequence
+                        break;
+                    }
                 }
+                
+                // Sort footnotes by their position in the text
+                allFootnotes.sort((a, b) => a.index - b.index);
+                
+                // Extract content in the correct order
+                footnoteContents = allFootnotes.map(f => f.content);
                 footnoteCount = footnoteContents.length;
             } else {
                 // For comments, the text itself IS the comment content
@@ -775,7 +816,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (hasChanges) {
             await this.saveSettings();
             this.refreshSidebar();
-            console.log('Fixed duplicate timestamps in highlights');
         }
     }
 
@@ -827,6 +867,19 @@ class HighlightSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
+        containerEl.createEl('h2', { text: 'Comment behaviour' });
+
+        new Setting(containerEl)
+            .setName('Use inline footnotes by default')
+            .setDesc('When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment).')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.useInlineFootnotes)
+                .onChange(async (value) => {
+                    this.plugin.settings.useInlineFootnotes = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        containerEl.createEl('h2', { text: 'Display' });
 
         new Setting(containerEl)
             .setName('Show note titles in all notes and collections')
@@ -1005,6 +1058,16 @@ class CollectionsManager {
             }
         }
         return collectionCount;
+    }
+
+    getCollectionsForHighlight(highlightId: string): Collection[] {
+        const collections: Collection[] = [];
+        for (const collection of this.plugin.collections.values()) {
+            if (collection.highlightIds.includes(highlightId)) {
+                collections.push(collection);
+            }
+        }
+        return collections;
     }
 }
 

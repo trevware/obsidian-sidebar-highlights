@@ -4,6 +4,9 @@ import type { Highlight, Collection } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
+import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
+import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
+import { SimpleSearchManager } from '../managers/simple-search-manager';
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
@@ -13,11 +16,11 @@ export class HighlightsSidebarView extends ItemView {
     private listContainerEl!: HTMLElement;
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
-    private highlightColorPickerVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' = 'none';
     private commentsExpanded: boolean = false;
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
+    private selectedCollections: Set<string> = new Set();
     private tagDropdownOpen: boolean = false;
     private collectionsDropdownOpen: boolean = false;
     private viewMode: 'current' | 'all' | 'collections' = 'current';
@@ -26,6 +29,9 @@ export class HighlightsSidebarView extends ItemView {
     private isPreservingScroll: boolean = false;
     private searchExpanded: boolean = false;
     private searchButton!: HTMLElement;
+    private simpleSearchManager!: SimpleSearchManager;
+    private currentSearchTokens: SearchToken[] = [];
+    private currentParsedSearch: ParsedSearch = { ast: null };
     private dropdownManager: DropdownManager = new DropdownManager();
     private highlightRenderer: HighlightRenderer;
     private savedScrollPosition: number = 0; // Store scroll position during rebuilds
@@ -236,10 +242,10 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             const tagFilterButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button highlights-tag-filter-button'
             });
-            setTooltip(tagFilterButton, 'Filter by tags');
-            setIcon(tagFilterButton, 'tag');
+            setTooltip(tagFilterButton, 'Filter');
+            setIcon(tagFilterButton, 'list-filter');
             
             tagFilterButton.addEventListener('click', (event) => {
                 this.showTagFilterMenu(event);
@@ -268,14 +274,23 @@ export class HighlightsSidebarView extends ItemView {
                 cls: 'highlights-search-input-container hidden'
             });
             
+            // Create the search input
             this.searchInputEl = searchInputContainer.createEl('input', {
                 type: 'text',
-                placeholder: 'Search...',
+                placeholder: 'Search highlights, use #tag @collection (-# to exclude)...',
                 cls: 'highlights-search-input'
             });
-            this.searchInputEl.addEventListener('input', debounce(() => {
-                this.renderContent();
-            }, 300));
+            
+            // Initialize simple search manager
+            this.simpleSearchManager = new SimpleSearchManager(
+                this.searchInputEl,
+                searchInputContainer,
+                (query, parsed) => this.handleSearchInput(query, parsed),
+                {
+                    tags: this.getAvailableTags(),
+                    collections: this.getAvailableCollections()
+                }
+            );
         }
 
         // Add tabs container
@@ -307,6 +322,7 @@ export class HighlightsSidebarView extends ItemView {
                 collectionsTab.classList.remove('active');
                 this.viewMode = 'current';
                 this.selectedTags.clear();
+                this.selectedCollections.clear();
                 this.renderContent();
             }
         });
@@ -318,6 +334,7 @@ export class HighlightsSidebarView extends ItemView {
                 collectionsTab.classList.remove('active');
                 this.viewMode = 'all';
                 this.selectedTags.clear();
+                this.selectedCollections.clear();
                 this.renderContent();
             }
         });
@@ -330,6 +347,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.viewMode = 'collections';
                 this.currentCollectionId = null;
                 this.selectedTags.clear();
+                this.selectedCollections.clear();
                 this.renderContent();
             }
         });
@@ -350,7 +368,6 @@ export class HighlightsSidebarView extends ItemView {
         
         // Clear maps to free memory
         this.highlightCommentsVisible.clear();
-        this.highlightColorPickerVisible.clear();
         this.selectedTags.clear();
     }
 
@@ -621,31 +638,9 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private renderCollectionHighlights(highlights: Highlight[]) {
-        // Apply search filtering if there's a search term
+        // Apply all filtering (smart search + existing filters)
         const searchTerm = this.searchInputEl?.value.toLowerCase().trim() || '';
-        let filteredHighlights = highlights;
-
-        if (searchTerm) {
-            filteredHighlights = highlights.filter(highlight =>
-                highlight.text.toLowerCase().includes(searchTerm) ||
-                highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(searchTerm)
-            );
-        }
-
-        // Apply tag filtering
-        if (this.selectedTags.size > 0) {
-            filteredHighlights = filteredHighlights.filter(highlight => {
-                const highlightTags = this.extractTagsFromHighlight(highlight);
-                return Array.from(this.selectedTags).some(selectedTag => 
-                    highlightTags.includes(selectedTag)
-                );
-            });
-        }
-
-        // Apply native comments filtering
-        if (!this.showNativeComments) {
-            filteredHighlights = filteredHighlights.filter(highlight => !highlight.isNativeComment);
-        }
+        let filteredHighlights = this.applyAllFilters(highlights);
 
         if (filteredHighlights.length === 0) {
             const message = searchTerm ? 'No matching highlights in collection.' : 'No highlights in collection.';
@@ -710,28 +705,7 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        let filteredHighlights = allHighlights;
-
-        if (searchTerm) {
-            filteredHighlights = allHighlights.filter(highlight =>
-                highlight.text.toLowerCase().includes(searchTerm)
-            );
-        }
-
-        // Apply tag filtering
-        if (this.selectedTags.size > 0) {
-            filteredHighlights = filteredHighlights.filter(highlight => {
-                const highlightTags = this.extractTagsFromHighlight(highlight);
-                return Array.from(this.selectedTags).some(selectedTag => 
-                    highlightTags.includes(selectedTag)
-                );
-            });
-        }
-
-        // Apply native comments filtering
-        if (!this.showNativeComments) {
-            filteredHighlights = filteredHighlights.filter(highlight => !highlight.isNativeComment);
-        }
+        let filteredHighlights = this.applyAllFilters(allHighlights);
 
         if (filteredHighlights.length === 0) {
             let message: string;
@@ -785,13 +759,18 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private createHighlightItem(container: HTMLElement, highlight: Highlight, searchTerm?: string, showFilename: boolean = false) {
+        // Extract text search terms from current tokens for highlighting
+        const textSearchTerms = this.currentSearchTokens
+            .filter(token => token.type === 'text' && !token.exclude)
+            .map(token => token.value)
+            .join(' ');
+        const effectiveSearchTerm = textSearchTerms || searchTerm;
         const options: HighlightRenderOptions = {
-            searchTerm,
+            searchTerm: effectiveSearchTerm,
             showFilename: this.plugin.settings.showFilenames && showFilename,
             showTimestamp: this.plugin.settings.showTimestamps,
             showHighlightActions: this.plugin.settings.showHighlightActions,
             isCommentsVisible: this.highlightCommentsVisible.get(highlight.id) || false,
-            isColorPickerVisible: this.highlightColorPickerVisible.get(highlight.id) || false,
             onCommentToggle: (highlightId) => {
                 const currentVisibility = this.highlightCommentsVisible.get(highlightId) || false;
                 this.highlightCommentsVisible.set(highlightId, !currentVisibility);
@@ -800,14 +779,8 @@ export class HighlightsSidebarView extends ItemView {
             onCollectionsMenu: (event, highlight) => {
                 this.showCollectionsMenu(event, highlight);
             },
-            onColorPickerToggle: (highlightId) => {
-                const newVisibility = !this.highlightColorPickerVisible.get(highlightId);
-                this.highlightColorPickerVisible.set(highlightId, newVisibility);
-                this.rerenderCurrentView();
-            },
             onColorChange: (highlight, color) => {
                 this.changeHighlightColor(highlight, color);
-                this.highlightColorPickerVisible.set(highlight.id, false);
                 this.rerenderCurrentView();
             },
             onHighlightClick: (highlight) => {
@@ -929,11 +902,23 @@ export class HighlightsSidebarView extends ItemView {
                 editor.setCursor(insertPos);
                 editor.focus();
                 
-                // Use Obsidian's built-in Insert Footnote command
-                (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
-                
-                // Update the highlight in storage and refresh sidebar
-                this.plugin.updateHighlight(highlight.id, { footnoteCount: highlight.footnoteCount }, highlight.filePath);
+                // Check user preference for footnote type
+                if (this.plugin.settings.useInlineFootnotes) {
+                    // Use inline footnote manager
+                    const success = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, 'New comment');
+                    if (success) {
+                        // Update the highlight in storage and refresh sidebar
+                        this.plugin.updateHighlight(highlight.id, { footnoteCount: highlight.footnoteCount }, highlight.filePath);
+                    } else {
+                        new Notice('Could not insert inline footnote.');
+                    }
+                } else {
+                    // Use Obsidian's built-in Insert Footnote command
+                    (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
+                    
+                    // Update the highlight in storage and refresh sidebar
+                    this.plugin.updateHighlight(highlight.id, { footnoteCount: highlight.footnoteCount }, highlight.filePath);
+                }
             } else {
                 new Notice('Could not find the highlight in the editor. It might have been modified.');
             }
@@ -1127,43 +1112,95 @@ export class HighlightsSidebarView extends ItemView {
                 return;
             }
 
-            // Find footnotes after the highlight
+            // Find footnotes after the highlight using inline footnote manager
+            const inlineFootnoteManager = new InlineFootnoteManager();
             const afterHighlight = content.substring(bestMatch.index + bestMatch.length);
-            const footnoteMatches = afterHighlight.match(/^(\[\^\w+\])+/);
             
-            if (!footnoteMatches) {
+            // Get all footnotes (both standard and inline) in order
+            const allFootnotes: Array<{type: 'standard' | 'inline', content: string, startIndex: number, endIndex: number}> = [];
+            
+            // Get inline footnotes
+            const inlineFootnotes = inlineFootnoteManager.extractInlineFootnotes(content, bestMatch.index + bestMatch.length);
+            inlineFootnotes.forEach(footnote => {
+                allFootnotes.push({
+                    type: 'inline',
+                    content: footnote.content,
+                    startIndex: footnote.startIndex,
+                    endIndex: footnote.endIndex
+                });
+            });
+            
+            // Get standard footnotes
+            const standardFootnoteRegex = /(\s*\[\^(\w+)\])/g;
+            let match_sf;
+            let lastValidPosition = 0;
+            
+            while ((match_sf = standardFootnoteRegex.exec(afterHighlight)) !== null) {
+                // Check if this standard footnote is in a valid position
+                const precedingText = afterHighlight.substring(lastValidPosition, match_sf.index);
+                const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                
+                if (match_sf.index === lastValidPosition || isValid) {
+                    allFootnotes.push({
+                        type: 'standard',
+                        content: match_sf[2], // The key without [^ and ]
+                        startIndex: bestMatch.index + bestMatch.length + match_sf.index,
+                        endIndex: bestMatch.index + bestMatch.length + match_sf.index + match_sf[0].length
+                    });
+                    lastValidPosition = match_sf.index + match_sf[0].length;
+                } else {
+                    // Stop if we encounter a footnote that's not in the valid sequence
+                    break;
+                }
+            }
+            
+            // Sort footnotes by their position
+            allFootnotes.sort((a, b) => a.startIndex - b.startIndex);
+            
+            if (allFootnotes.length === 0) {
                 new Notice('No footnotes found for this highlight.');
                 return;
             }
-
-            const footnoteRefs = footnoteMatches[0].match(/\[\^(\w+)\]/g) || [];
-            if (footnoteIndex >= footnoteRefs.length) {
+            
+            if (footnoteIndex >= allFootnotes.length) {
                 new Notice('Footnote index out of range.');
                 return;
             }
+            
+            const targetFootnote = allFootnotes[footnoteIndex];
+            
+            if (targetFootnote.type === 'inline') {
+                // For inline footnotes, focus on the footnote content directly
+                // Find the position of the ^ character (skip any leading spaces)
+                const footnoteText = content.substring(targetFootnote.startIndex, targetFootnote.endIndex);
+                const caretIndex = footnoteText.indexOf('^');
+                const caretPosition = targetFootnote.startIndex + caretIndex;
+                const footnoteStartPos = editor.offsetToPos(caretPosition);
+                
+                // Scroll to and position cursor right before the ^ character
+                editor.scrollIntoView({ from: footnoteStartPos, to: footnoteStartPos }, true);
+                editor.setCursor(footnoteStartPos);
+                editor.focus();
+            } else {
+                // For standard footnotes, find the footnote definition
+                const footnoteKey = targetFootnote.content;
+                const footnoteDefRegex = new RegExp(`^\\[\\^${this.escapeRegex(footnoteKey)}\\]:\\s*(.+)$`, 'm');
+                const footnoteDefMatch = content.match(footnoteDefRegex);
 
-            // Get the specific footnote reference we want to focus
-            const targetFootnoteRef = footnoteRefs[footnoteIndex];
-            const footnoteKey = targetFootnoteRef.slice(2, -1); // Remove [^ and ]
+                if (!footnoteDefMatch) {
+                    new Notice('Could not find footnote definition.');
+                    return;
+                }
 
-            // Find the footnote definition in the content
-            const footnoteDefRegex = new RegExp(`^\\[\\^${this.escapeRegex(footnoteKey)}\\]:\\s*(.+)$`, 'm');
-            const footnoteDefMatch = content.match(footnoteDefRegex);
+                // Calculate position of footnote definition
+                const footnoteDefIndex = content.indexOf(footnoteDefMatch[0]);
+                const footnoteDefStartPos = editor.offsetToPos(footnoteDefIndex);
 
-            if (!footnoteDefMatch) {
-                new Notice('Could not find footnote definition.');
-                return;
+                // Scroll to and position cursor at the footnote definition
+                editor.scrollIntoView({ from: footnoteDefStartPos, to: footnoteDefStartPos }, true);
+                editor.setCursor(footnoteDefStartPos);
+                editor.focus();
             }
-
-            // Calculate position of footnote definition
-            const footnoteDefIndex = content.indexOf(footnoteDefMatch[0]);
-            const footnoteDefStartPos = editor.offsetToPos(footnoteDefIndex);
-            const footnoteDefEndPos = editor.offsetToPos(footnoteDefIndex + footnoteDefMatch[0].length);
-
-            // Scroll to and select the footnote definition
-            editor.scrollIntoView({ from: footnoteDefStartPos, to: footnoteDefEndPos }, true);
-            editor.setSelection(footnoteDefStartPos, footnoteDefEndPos);
-            editor.focus();
 
         }, 150);
     }
@@ -1517,8 +1554,8 @@ export class HighlightsSidebarView extends ItemView {
             // Process footnotes in order and collect tags
             for (const content of highlight.footnoteContents) {
                 if (content.trim() !== '') {
-                    // Extract hashtags from footnote content
-                    const tagMatches = content.match(/#[\w-]+/g);
+                    // Extract hashtags from footnote content (including unicode characters)
+                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_-]+/gu);
                     if (tagMatches) {
                         tagMatches.forEach(tag => {
                             const tagName = tag.substring(1); // Remove the # symbol
@@ -1560,17 +1597,52 @@ export class HighlightsSidebarView extends ItemView {
             });
         }
         
-        return Array.from(allTags).sort();
+        return Array.from(allTags).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    }
+
+    private getAllCollectionsInCurrentScope(): { id: string, name: string }[] {
+        const allCollections = new Set<string>();
+        let highlights: Highlight[] = [];
+        
+        if (this.viewMode === 'current') {
+            highlights = this.plugin.getCurrentFileHighlights();
+        } else if (this.viewMode === 'all') {
+            // Get highlights from all files
+            for (const [filePath, fileHighlights] of this.plugin.highlights) {
+                highlights.push(...fileHighlights);
+            }
+        } else if (this.viewMode === 'collections' && this.currentCollectionId) {
+            // Get highlights from current collection
+            highlights = this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
+        }
+        
+        // Get all collections that contain these highlights
+        highlights.forEach(highlight => {
+            const highlightCollections = this.plugin.collectionsManager.getCollectionsForHighlight(highlight.id);
+            highlightCollections.forEach(collection => {
+                allCollections.add(collection.id);
+            });
+        });
+        
+        // Convert to collection objects
+        const collections = this.plugin.collectionsManager.getAllCollections();
+        return collections.filter(collection => allCollections.has(collection.id));
     }
 
     private showTagFilterMenu(event: MouseEvent) {
         const availableTags = this.getAllTagsInFile();
+        const availableCollections = this.getAllCollectionsInCurrentScope();
         
-        if (availableTags.length === 0) {
-            new Notice('No tags found in current file');
+        if (availableTags.length === 0 && availableCollections.length === 0) {
+            new Notice('No tags or collections found');
             return;
         }
 
+        // Sort collections alphabetically with locale-aware sorting
+        const sortedCollections = availableCollections.sort((a, b) => 
+            a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        
         const items: DropdownItem[] = [
             {
                 text: 'Clear',
@@ -1578,6 +1650,7 @@ export class HighlightsSidebarView extends ItemView {
                 className: 'highlights-dropdown-clear',
                 onClick: () => {
                     this.selectedTags.clear();
+                this.selectedCollections.clear();
                     this.renderContent();
                     this.showTagActive();
                     
@@ -1586,12 +1659,20 @@ export class HighlightsSidebarView extends ItemView {
                     availableTags.forEach(tag => {
                         newStates[`tag-${tag}`] = false;
                     });
+                    sortedCollections.forEach(collection => {
+                        newStates[`collection-${collection.id}`] = false;
+                    });
                     this.dropdownManager.updateAllCheckboxStates(newStates);
                 }
-            },
-            ...availableTags.map(tag => ({
+            }
+        ];
+
+        // Add tags if any exist
+        if (availableTags.length > 0) {
+            items.push(...availableTags.map(tag => ({
                 id: `tag-${tag}`,
                 text: `#${tag}`,
+                uncheckedIcon: 'tag',
                 checked: this.selectedTags.has(tag),
                 onClick: () => {
                     if (this.selectedTags.has(tag)) {
@@ -1602,8 +1683,35 @@ export class HighlightsSidebarView extends ItemView {
                     this.renderContent();
                     this.showTagActive();
                 }
-            }))
-        ];
+            })));
+        }
+
+        // Add separator if both tags and collections exist
+        if (availableTags.length > 0 && sortedCollections.length > 0) {
+            items.push({
+                text: '',
+                separator: true
+            });
+        }
+
+        // Add collections if any exist
+        if (sortedCollections.length > 0) {
+            items.push(...sortedCollections.map(collection => ({
+                id: `collection-${collection.id}`,
+                text: collection.name,
+                uncheckedIcon: 'folder-open',
+                checked: this.selectedCollections.has(collection.name),
+                onClick: () => {
+                    if (this.selectedCollections.has(collection.name)) {
+                        this.selectedCollections.delete(collection.name);
+                    } else {
+                        this.selectedCollections.add(collection.name);
+                    }
+                    this.renderContent();
+                    this.showTagActive();
+                }
+            })));
+        }
 
         this.dropdownManager.showDropdown(
             event.currentTarget as HTMLElement,
@@ -1656,6 +1764,7 @@ export class HighlightsSidebarView extends ItemView {
             items.push(...availableCollections.map(collection => ({
                 id: `collection-${collection.id}`,
                 text: collection.name,
+                uncheckedIcon: 'folder-open',
                 checked: collection.highlightIds.includes(highlight.id),
                 onClick: () => {
                     const isInCollection = collection.highlightIds.includes(highlight.id);
@@ -1732,7 +1841,9 @@ export class HighlightsSidebarView extends ItemView {
             setIcon(this.searchButton, 'search');
             setTooltip(this.searchButton, 'Search highlights');
             // Clear search when closing
-            this.searchInputEl.value = '';
+            this.simpleSearchManager?.clear();
+            this.currentSearchTokens = [];
+            this.currentParsedSearch = { ast: null };
             this.renderContent();
         }
     }
@@ -1822,9 +1933,9 @@ export class HighlightsSidebarView extends ItemView {
         // Only proceed if toolbar is enabled
         if (!this.plugin.settings.showToolbar) return;
         
-        const tagFilterButton = this.contentEl.querySelector('.highlights-search-container button[aria-label="Filter by tags"]') as HTMLElement;
+        const tagFilterButton = this.contentEl.querySelector('.highlights-tag-filter-button') as HTMLElement;
         if (tagFilterButton) {
-            if (this.selectedTags.size > 0) {
+            if (this.selectedTags.size > 0 || this.selectedCollections.size > 0) {
                 tagFilterButton.classList.add('active');
             } else {
                 tagFilterButton.classList.remove('active');
@@ -1949,5 +2060,160 @@ export class HighlightsSidebarView extends ItemView {
     private toggleNativeCommentsVisibility() {
         this.showNativeComments = !this.showNativeComments;
         this.plugin.app.saveLocalStorage('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
+    }
+
+    private handleSearchInput(query: string, parsed: ParsedSearch): void {
+        this.currentParsedSearch = parsed;
+        this.currentSearchTokens = SearchParser.getTokensFromQuery(query);
+        this.renderContent();
+    }
+
+    private removeSearchToken(token: SearchToken): void {
+        // Update the suggestions when tags/collections change
+        this.simpleSearchManager.updateSuggestions({
+            tags: this.getAvailableTags(),
+            collections: this.getAvailableCollections()
+        });
+    }
+
+    private onChipClick(token: SearchToken): void {
+        // Optional: Could implement editing or additional actions for chips
+    }
+
+    private removeTokenFromQuery(query: string, tokenToRemove: SearchToken): string {
+        // This is a simplified approach - in practice, you might want more sophisticated parsing
+        const prefix = tokenToRemove.exclude ? '-' : '';
+        const symbol = tokenToRemove.type === 'tag' ? '#' : tokenToRemove.type === 'collection' ? '@' : '';
+        const tokenString = prefix + symbol + tokenToRemove.value;
+        
+        return query.replace(new RegExp('\\s*' + tokenString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ').trim();
+    }
+
+    private getAvailableTags(): string[] {
+        const tags = new Set<string>();
+        for (const highlights of this.plugin.highlights.values()) {
+            for (const highlight of highlights) {
+                const extractedTags = this.extractTagsFromHighlight(highlight);
+                extractedTags.forEach(tag => tags.add(tag));
+            }
+        }
+        return Array.from(tags).sort();
+    }
+
+    private getAvailableCollections(): string[] {
+        return this.plugin.collectionsManager.getAllCollections().map(c => c.name).sort();
+    }
+
+
+    private applyAllFilters(highlights: Highlight[]): Highlight[] {
+        return highlights.filter(highlight => {
+            // 1. Apply smart search filtering
+            const smartSearchMatch = this.passesSmartSearchFilter(highlight);
+            if (!smartSearchMatch) return false;
+
+            // 2. Apply existing tag filter dropdown (AND with smart search)
+            if (this.selectedTags.size > 0) {
+                const highlightTags = this.extractTagsFromHighlight(highlight);
+                const tagFilterMatch = Array.from(this.selectedTags).some(selectedTag => 
+                    highlightTags.includes(selectedTag)
+                );
+                if (!tagFilterMatch) return false;
+            }
+
+            // 3. Apply existing collection filter dropdown (AND with smart search) 
+            if (this.selectedCollections.size > 0) {
+                const highlightCollections = this.plugin.collectionsManager.getCollectionsForHighlight(highlight.id);
+                const collectionFilterMatch = Array.from(this.selectedCollections).some(selectedCollection => 
+                    highlightCollections.some(collection => collection.name === selectedCollection)
+                );
+                if (!collectionFilterMatch) return false;
+            }
+
+            // 4. Apply native comments filtering
+            if (!this.showNativeComments && highlight.isNativeComment) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    private passesSmartSearchFilter(highlight: Highlight): boolean {
+        if (!this.currentParsedSearch.ast) {
+            return true;
+        }
+
+        return this.evaluateASTNode(this.currentParsedSearch.ast, highlight);
+    }
+
+    private evaluateASTNode(node: ASTNode, highlight: Highlight): boolean {
+        if (node.type === 'filter') {
+            const filterNode = node as FilterNode;
+            const matches = this.highlightMatchesFilter(highlight, filterNode);
+            return filterNode.exclude ? !matches : matches;
+        } else if (node.type === 'text') {
+            const textNode = node as TextNode;
+            return highlight.text.toLowerCase().includes(textNode.value.toLowerCase()) ||
+                   highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(textNode.value.toLowerCase());
+        } else if (node.type === 'operator') {
+            const opNode = node as OperatorNode;
+            
+            // Special case: consecutive text nodes connected by AND should be treated as phrase search
+            if (opNode.operator === 'AND' && this.isConsecutiveTextNodes(opNode)) {
+                const phrase = this.extractConsecutiveText(opNode);
+                return highlight.text.toLowerCase().includes(phrase.toLowerCase()) ||
+                       highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(phrase.toLowerCase());
+            }
+            
+            const leftResult = this.evaluateASTNode(opNode.left, highlight);
+            const rightResult = this.evaluateASTNode(opNode.right, highlight);
+            
+            return opNode.operator === 'AND' 
+                ? leftResult && rightResult 
+                : leftResult || rightResult;
+        }
+        return false;
+    }
+
+    private isConsecutiveTextNodes(opNode: OperatorNode): boolean {
+        // Check if this AND operation connects only text nodes (directly or through other AND operations)
+        return this.containsOnlyTextNodes(opNode.left) && this.containsOnlyTextNodes(opNode.right);
+    }
+
+    private containsOnlyTextNodes(node: ASTNode): boolean {
+        if (node.type === 'text') {
+            return true;
+        } else if (node.type === 'operator') {
+            const opNode = node as OperatorNode;
+            return opNode.operator === 'AND' && 
+                   this.containsOnlyTextNodes(opNode.left) && 
+                   this.containsOnlyTextNodes(opNode.right);
+        }
+        return false;
+    }
+
+    private extractConsecutiveText(node: ASTNode): string {
+        if (node.type === 'text') {
+            const textNode = node as TextNode;
+            return textNode.value;
+        } else if (node.type === 'operator') {
+            const opNode = node as OperatorNode;
+            const leftText = this.extractConsecutiveText(opNode.left);
+            const rightText = this.extractConsecutiveText(opNode.right);
+            return `${leftText} ${rightText}`;
+        }
+        return '';
+    }
+
+    private highlightMatchesFilter(highlight: Highlight, filterNode: FilterNode): boolean {
+        if (filterNode.filterType === 'tag') {
+            const extractedTags = this.extractTagsFromHighlight(highlight);
+            return extractedTags.includes(filterNode.value);
+        } else if (filterNode.filterType === 'collection') {
+            const highlightCollections = this.plugin.collectionsManager.getCollectionsForHighlight(highlight.id);
+            const collectionNames = highlightCollections.map(collection => collection.name);
+            return collectionNames.includes(filterNode.value);
+        }
+        return false;
     }
 }

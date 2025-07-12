@@ -8,10 +8,8 @@ export interface HighlightRenderOptions {
     showTimestamp?: boolean;
     showHighlightActions?: boolean;
     isCommentsVisible?: boolean;
-    isColorPickerVisible?: boolean;
     onCommentToggle?: (highlightId: string) => void;
     onCollectionsMenu?: (event: MouseEvent, highlight: Highlight) => void;
-    onColorPickerToggle?: (highlightId: string) => void;
     onColorChange?: (highlight: Highlight, color: string) => void;
     onHighlightClick?: (highlight: Highlight) => void;
     onAddComment?: (highlight: Highlight) => void;
@@ -38,7 +36,6 @@ export class HighlightRenderer {
         this.createQuoteSection(item, highlight, options);
         this.createActionsSection(item, highlight, options);
         this.createCommentsSection(item, highlight, options);
-        this.createColorPickerSection(item, highlight, options);
 
         return item;
     }
@@ -261,24 +258,6 @@ export class HighlightRenderer {
         });
     }
 
-    private createColorPickerSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        if (!options.isColorPickerVisible || highlight.isNativeComment) return;
-
-        const colorPickerContainer = item.createDiv({ cls: 'highlight-color-picker' });
-        const colorOptionsContainer = colorPickerContainer.createDiv({ cls: 'color-picker-options' });
-        const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4'];
-        
-        colors.forEach(color => {
-            const colorOption = colorOptionsContainer.createDiv({
-                cls: 'color-option',
-                attr: { 'data-color': color }
-            });
-            colorOption.addEventListener('click', (event) => {
-                event.stopPropagation();
-                options.onColorChange?.(highlight, color);
-            });
-        });
-    }
 
     private highlightSearchMatches(element: HTMLElement, searchTerm: string): void {
         if (!searchTerm) return;
@@ -495,7 +474,7 @@ export class HighlightRenderer {
         if (highlight.footnoteContents) {
             for (const content of highlight.footnoteContents) {
                 if (content.trim() !== '') {
-                    const tagMatches = content.match(/#[\w-]+/g);
+                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_-]+/gu);
                     if (tagMatches) {
                         tagMatches.forEach(tag => {
                             const tagName = tag.substring(1);

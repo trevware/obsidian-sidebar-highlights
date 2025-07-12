@@ -35,9 +35,248 @@ body.theme-highlight-green .cm-highlight {
     background-color: #96ceb466;
 }
 
+/* Individual highlight color classes for sidebar items */
+.highlight-item-card.highlight-color-yellow {
+    border-left-color: #ffd700;
+}
+
+.highlight-item-card.highlight-color-red {
+    border-left-color: #ff6b6b;
+}
+
+.highlight-item-card.highlight-color-teal {
+    border-left-color: #4ecdc4;
+}
+
+.highlight-item-card.highlight-color-blue {
+    border-left-color: #45b7d1;
+}
+
+.highlight-item-card.highlight-color-green {
+    border-left-color: #96ceb4;
+}
+
+.highlight-item-card.highlight-color-default {
+    border-left-color: #ffd700;
+}
+
 /* Override default view-content padding for highlights sidebar */
 .workspace-leaf-content[data-type="highlights-sidebar"] .view-content {
     padding: 0;
+}
+
+/* Search chip styles */
+.search-chip {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-radius: 12px;
+    padding: 2px 8px;
+    margin: 2px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.search-chip:hover {
+    background-color: var(--interactive-accent-hover);
+    transform: translateY(-1px);
+}
+
+.search-chip-exclude {
+    background-color: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+.search-chip-exclude:hover {
+    background-color: var(--text-error);
+    opacity: 0.8;
+}
+
+.search-chip-icon {
+    font-weight: bold;
+    margin-right: 4px;
+}
+
+.search-chip-value {
+    margin-right: 4px;
+}
+
+.search-chip-remove {
+    cursor: pointer;
+    font-weight: bold;
+    opacity: 0.7;
+    padding: 0 2px;
+    border-radius: 50%;
+    transition: opacity 0.2s ease;
+}
+
+.search-chip-remove:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.search-chip-group {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--background-modifier-border);
+    border-radius: 16px;
+    padding: 4px 8px;
+    margin: 2px;
+    gap: 4px;
+}
+
+.search-chip-group-label {
+    color: var(--text-muted);
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.search-chip-or-indicator {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: bold;
+    margin: 0 2px;
+}
+
+.search-chip-grouped {
+    background-color: var(--interactive-accent);
+    margin: 0;
+}
+
+.search-chip-tag {
+    border-left: 3px solid var(--color-green);
+}
+
+.search-chip-collection {
+    border-left: 3px solid var(--color-blue);
+}
+
+.search-chip-text {
+    border-left: 3px solid var(--text-muted);
+}
+
+/* Autocomplete dropdown styles */
+.search-autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-s);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.highlights-search-input-container {
+    position: relative;
+}
+
+.search-autocomplete-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.search-autocomplete-item:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+.search-chips-container {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    margin-right: 4px;
+}
+
+.highlights-search-input-container {
+    position: relative;
+    padding: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+}
+
+.highlights-search-input-container .highlights-search-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    padding: 4px;
+    display: block;
+}
+
+/* Simple search styles */
+.simple-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 0 0 6px 6px;
+    box-shadow: var(--shadow-s);
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.simple-search-suggestion {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+}
+
+.simple-search-suggestion:hover,
+.simple-search-suggestion.selected {
+    background-color: var(--background-modifier-hover);
+}
+
+.simple-search-suggestion-icon {
+    font-weight: bold;
+    margin-right: 6px;
+    color: var(--interactive-accent);
+    font-size: 12px;
+}
+
+.simple-search-suggestion-icon.exclude {
+    color: var(--text-error);
+}
+
+.simple-search-suggestion-text {
+    flex: 1;
+    font-size: 13px;
+}
+
+.simple-search-preview {
+    margin-top: 4px;
+    padding: 4px 8px;
+    background-color: var(--background-modifier-form-field);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+    width: 100%;
+    clear: both;
+}
+
+.simple-search-preview-text {
+    font-style: italic;
+}
+
+.simple-search-preview-label {
+    font-style: italic;
+}
+
+.simple-search-preview-logic {
+    font-family: var(--font-monospace);
+    font-weight: 500;
 }
 
 /* Sidebar styles */
@@ -487,51 +726,6 @@ body.theme-highlight-green .cm-highlight {
     gap: 6px;
 }
 
-.color-option {
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: border-color 0.2s ease, transform 0.1s ease;
-}
-
-.color-option[data-color] {
-    background-color: attr(data-color);
-}
-
-.color-option[data-color="#ffd700"] { background-color: #ffd700; }
-.color-option[data-color="#ff6b6b"] { background-color: #ff6b6b; }
-.color-option[data-color="#4ecdc4"] { background-color: #4ecdc4; }
-.color-option[data-color="#45b7d1"] { background-color: #45b7d1; }
-.color-option[data-color="#96ceb4"] { background-color: #96ceb4; }
-
-.color-option:hover {
-    border-color: var(--text-normal);
-    transform: scale(1.1);
-}
-
-/* Color picker section */
-.highlight-color-picker {
-    border-top: 0.5px solid var(--background-modifier-border);
-    padding: 8px 15px;
-    background-color: var(--background-modifier-form-field);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-
-.color-picker-label {
-    font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
-    margin-right: 4px;
-}
-
-.color-picker-options {
-    display: flex;
-    gap: 6px;
-}
 
 /* Accordion-style comment toggle */
 .comment-toggle {
@@ -557,8 +751,8 @@ body.theme-highlight-green .cm-highlight {
     100% { background-color: transparent; }
 }
 
-/* Override menu item border-radius for tag filter dropdown */
-.menu .menu-item {
+/* Override menu item border-radius for tag filter dropdown - scoped to plugin context only */
+.highlights-dropdown-menu .menu .menu-item {
     border-radius: 0 !important;
 }
 
@@ -1084,6 +1278,38 @@ body.theme-highlight-green .cm-highlight {
     min-width: 200px;
 }
 
+.highlights-dropdown-menu.dropdown-positioned {
+    top: var(--dropdown-top);
+    left: var(--dropdown-left);
+}
+
+.highlights-dropdown-menu.dropdown-constrained-height {
+    max-height: var(--dropdown-max-height);
+}
+
+.highlights-dropdown-menu .menu-separator {
+    height: 1px;
+    background: var(--background-modifier-border);
+    margin: 4px 8px;
+}
+
+/* Corner radius for dropdown items - need !important to override existing rule */
+.highlights-dropdown-menu .menu-item {
+    border-radius: 0 !important;
+}
+
+.highlights-dropdown-menu .menu-item.first-menu-item {
+    border-radius: var(--radius-m) var(--radius-m) 0 0 !important;
+}
+
+.highlights-dropdown-menu .menu-item.last-menu-item {
+    border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
+}
+
+.highlights-dropdown-menu .menu-item.only-menu-item {
+    border-radius: var(--radius-m) !important;
+}
+
 /* Dropdown clear item styling */
 .highlights-dropdown-clear {
     padding: 8px 16px;
@@ -1150,142 +1376,3 @@ body.theme-highlight-green .cm-highlight {
     pointer-events: none !important;
 }
 
-/* Modal button container */
-.modal-button-container {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 20px;
-}
-
-/* Collections container for special layout */
-.highlights-list.collections-container {
-    container-type: inline-size;
-}
-
-/* Collection animation classes */
-.collection-card.animating-in {
-    animation: collectionPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-}
-
-.collection-card.animating-out {
-    animation: collectionPopOut 0.2s cubic-bezier(0.55, 0.055, 0.675, 0.19) forwards;
-}
-
-/* Ensure animations start from the correct state */
-.collection-card.preparing-animation {
-    transform: scale(0.3);
-    opacity: 0;
-}
-
-/* Dropdown positioning classes - fully CSS-driven approach */
-.dropdown-positioned-below {
-    top: var(--dropdown-top);
-}
-
-.dropdown-positioned-above {
-    top: var(--dropdown-top);
-}
-
-.dropdown-positioned-above-constrained {
-    top: 8px;
-}
-
-.dropdown-positioned-below-constrained {
-    top: var(--dropdown-top);
-}
-
-.dropdown-left-aligned {
-    left: var(--dropdown-left);
-}
-
-.dropdown-right-aligned {
-    left: var(--dropdown-left);
-}
-
-/* Dropdown sizing - width is auto-calculated, height uses max-height when constrained */
-.highlights-dropdown-menu {
-    width: auto;
-    max-width: calc(100vw - 16px);
-}
-
-.highlights-dropdown-menu.dropdown-constrained-height {
-    max-height: var(--dropdown-max-height);
-    overflow-y: auto;
-}
-
-/* Highlight color classes - replaces inline border color styling */
-.highlight-item-card.highlight-color-default {
-    border-left-color: #ffd700;
-}
-
-.highlight-item-card.highlight-color-yellow {
-    border-left-color: #ffd700;
-}
-
-.highlight-item-card.highlight-color-red {
-    border-left-color: #ff6b6b;
-}
-
-.highlight-item-card.highlight-color-teal {
-    border-left-color: #4ecdc4;
-}
-
-.highlight-item-card.highlight-color-blue {
-    border-left-color: #45b7d1;
-}
-
-.highlight-item-card.highlight-color-green {
-    border-left-color: #96ceb4;
-}
-
-/* Highlight selection color classes - replaces inline selection color styling */
-.highlight-item-card.highlight-selected.highlight-color-default {
-    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
-}
-
-.highlight-item-card.highlight-selected.highlight-color-yellow {
-    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
-}
-
-.highlight-item-card.highlight-selected.highlight-color-red {
-    box-shadow: 0 0 0 1.5px #ff6b6b, var(--shadow-s);
-}
-
-.highlight-item-card.highlight-selected.highlight-color-teal {
-    box-shadow: 0 0 0 1.5px #4ecdc4, var(--shadow-s);
-}
-
-.highlight-item-card.highlight-selected.highlight-color-blue {
-    box-shadow: 0 0 0 1.5px #45b7d1, var(--shadow-s);
-}
-
-.highlight-item-card.highlight-selected.highlight-color-green {
-    box-shadow: 0 0 0 1.5px #96ceb4, var(--shadow-s);
-}
-
-/* Collection animation keyframes */
-@keyframes collectionPopIn {
-    0% {
-        transform: scale(0.3);
-        opacity: 0;
-    }
-    50% {
-        transform: scale(1.05);
-    }
-    100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes collectionPopOut {
-    0% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    100% {
-        transform: scale(0.3);
-        opacity: 0;
-    }
-}
