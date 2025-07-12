@@ -2,7 +2,11 @@
 
 Simplify and streamline how you work with highlights and comments in Obsidian. This plugin helps you capture, organize, and navigate your thoughts across your entire vault with advanced search capabilities and a flexible comment system.
 
-<img width="600" height="366" alt="CleanShot 2025-07-12 at 12 42 21@2x" src="https://github.com/user-attachments/assets/eebaa062-adee-4bda-b3ce-bdc0a536ecaf" />
+<p align="center">
+  <picture>
+    <img src="https://github.com/user-attachments/assets/eebaa062-adee-4bda-b3ce-bdc0a536ecaf" alt="Preview">
+  </picture>
+</p>
 
 ### **Flexible Comment System using Obsidian's Footnote Syntax**
 - **Standard comments**: `==highlight==[^1]` with `[^1]: Your comment` 
