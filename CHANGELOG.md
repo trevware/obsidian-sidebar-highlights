@@ -5,7 +5,17 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.11.0] - 2025-07-12
+
+### Fixed
+- **Scroll Position Preservation**: Fixed sidebar scroll position jumping to top when changing highlight colors
+- **Highlight Persistence**: Fixed highlights being lost when creating new tabs or switching between tabs
+
+### Enhanced
+- **Settings Redesign**: Revamped settings interface with improved layout and custom color options
+- **Excalidraw Filtering**: Added option to hide Excalidraw files that might clutter the "All Notes" tab
+- **Visual Consistency**: Highlight card borders now correctly use the corresponding highlight color
+- **Theme Integration**: Default highlight color now uses your theme's highlight color instead of a fixed color
 
 ## [1.10.0] - 2025-07-12
 

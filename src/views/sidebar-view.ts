@@ -26,6 +26,8 @@ export class HighlightsSidebarView extends ItemView {
     private viewMode: 'current' | 'all' | 'collections' = 'current';
     private currentCollectionId: string | null = null;
     private preservedScrollTop: number = 0;
+    private isHighlightFocusing: boolean = false;
+    private isColorChanging: boolean = false;
     private isPreservingScroll: boolean = false;
     private searchExpanded: boolean = false;
     private searchButton!: HTMLElement;
@@ -417,6 +419,15 @@ export class HighlightsSidebarView extends ItemView {
         const currentViewMode = this.viewMode;
         const currentCollectionId = this.currentCollectionId;
         
+        // If we're in the middle of highlighting focus or color change, preserve that scroll position instead
+        const shouldUseHighlightScroll = this.isHighlightFocusing || this.isColorChanging;
+        const highlightScrollPosition = this.preservedScrollTop;
+        
+        // Capture current scroll position before rebuild (unless we're highlighting)
+        if (!shouldUseHighlightScroll) {
+            this.captureScrollPosition();
+        }
+        
         this.onOpen();
         
         // Restore the view mode and collection state after DOM recreation
@@ -425,6 +436,19 @@ export class HighlightsSidebarView extends ItemView {
         
         // Update the tab states to reflect the current view mode
         this.updateTabStates();
+        
+        // Restore appropriate scroll position after full rebuild
+        if (shouldUseHighlightScroll) {
+            // Use the preserved highlight scroll position
+            requestAnimationFrame(() => {
+                if (this.contentAreaEl) {
+                    this.contentAreaEl.scrollTop = highlightScrollPosition;
+                }
+            });
+        } else {
+            // Use normal scroll restoration
+            this.restoreScrollPosition();
+        }
     }
 
     private updateTabStates() {
@@ -462,7 +486,7 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private restoreScrollPosition(): void {
-        if (this.contentAreaEl) {
+        if (this.contentAreaEl && !this.isHighlightFocusing && !this.isColorChanging) {
             // Use requestAnimationFrame to ensure DOM is updated before restoring scroll
             requestAnimationFrame(() => {
                 this.contentAreaEl.scrollTop = this.savedScrollPosition;
@@ -679,7 +703,6 @@ export class HighlightsSidebarView extends ItemView {
 
         // Get search term - if no search input (toolbar disabled), use empty string
         const searchTerm = this.searchInputEl ? this.searchInputEl.value.toLowerCase().trim() : '';
-        const scrollTop = this.contentAreaEl.scrollTop;
 
         this.listContainerEl.empty();
 
@@ -689,7 +712,7 @@ export class HighlightsSidebarView extends ItemView {
             const file = this.plugin.app.workspace.getActiveFile();
             if (!file) {
                 this.listContainerEl.createEl('p', { text: 'No file open.' });
-                this.contentAreaEl.scrollTop = scrollTop;
+                this.restoreScrollPosition();
                 this.showTagActive();
                 return;
             }
@@ -738,7 +761,6 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderGroupedHighlights(filteredHighlights, searchTerm, this.viewMode === 'all');
             }
         }
-        this.contentAreaEl.scrollTop = scrollTop;
         this.showTagActive();
         
         // Restore scroll position after DOM rebuild
@@ -780,8 +802,25 @@ export class HighlightsSidebarView extends ItemView {
                 this.showCollectionsMenu(event, highlight);
             },
             onColorChange: (highlight, color) => {
+                // Store current scroll position and set flag to prevent other scroll restorations
+                this.preservedScrollTop = this.contentAreaEl.scrollTop;
+                this.isColorChanging = true;
+                
+                // Safety timeout to clear flag in case something goes wrong
+                setTimeout(() => {
+                    this.isColorChanging = false;
+                }, 2000);
+                
                 this.changeHighlightColor(highlight, color);
                 this.rerenderCurrentView();
+                
+                // Restore scroll position after DOM rebuild and clear flag
+                requestAnimationFrame(() => {
+                    if (this.contentAreaEl && this.isColorChanging) {
+                        this.contentAreaEl.scrollTop = this.preservedScrollTop;
+                        this.isColorChanging = false;
+                    }
+                });
             },
             onHighlightClick: (highlight) => {
                 this.focusHighlightInEditor(highlight);
@@ -926,8 +965,14 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     focusHighlightInEditor(highlight: Highlight) {
-        // Store current scroll position without the judder-prone setTimeout approach
+        // Store current scroll position and set flag to prevent other scroll restorations
         this.preservedScrollTop = this.contentAreaEl.scrollTop;
+        this.isHighlightFocusing = true;
+        
+        // Safety timeout to clear flag in case something goes wrong
+        setTimeout(() => {
+            this.isHighlightFocusing = false;
+        }, 2000);
         
         let targetView: MarkdownView | null = null;
         const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
@@ -997,8 +1042,21 @@ export class HighlightsSidebarView extends ItemView {
             }
         }
 
-        // Restore preserved scroll position immediately
-        this.contentAreaEl.scrollTop = this.preservedScrollTop;
+        // Only restore scroll position if we haven't already done it in refresh()
+        // (refresh() handles scroll restoration during file switches)
+        const needsScrollRestore = this.contentAreaEl.scrollTop !== this.preservedScrollTop;
+        
+        if (needsScrollRestore) {
+            // Use requestAnimationFrame to restore scroll position after any potential DOM updates
+            requestAnimationFrame(() => {
+                this.contentAreaEl.scrollTop = this.preservedScrollTop;
+                // Clear the flag after restoration is complete
+                this.isHighlightFocusing = false;
+            });
+        } else {
+            // Scroll position already correct (handled by refresh), just clear the flag
+            this.isHighlightFocusing = false;
+        }
 
         const content = targetView.editor.getValue();
         
@@ -1212,11 +1270,11 @@ export class HighlightsSidebarView extends ItemView {
 
     private getColorName(hex: string): string {
         const colorMap: { [key: string]: string } = {
-            '#ffd700': 'Yellow',
-            '#ff6b6b': 'Red', 
-            '#4ecdc4': 'Turquoise',
-            '#45b7d1': 'Blue',
-            '#96ceb4': 'Green'
+            [this.plugin.settings.customColors.yellow]: 'Yellow',
+            [this.plugin.settings.customColors.red]: 'Red', 
+            [this.plugin.settings.customColors.teal]: 'Turquoise',
+            [this.plugin.settings.customColors.blue]: 'Blue',
+            [this.plugin.settings.customColors.green]: 'Green'
         };
         return colorMap[hex] || hex;
     }
@@ -1231,7 +1289,7 @@ export class HighlightsSidebarView extends ItemView {
             
             if (this.groupingMode === 'color') {
                 const color = highlight.color || this.plugin.settings.highlightColor;
-                groupKey = this.getColorName(color);
+                groupKey = color; // Use hex code directly instead of color name
                 groupColors.set(groupKey, color); // Store the hex color
             } else if (this.groupingMode === 'comments-asc' || this.groupingMode === 'comments-desc') {
                 // For comment grouping, only count footnote comments from regular highlights (not native comments)
@@ -1346,10 +1404,13 @@ export class HighlightsSidebarView extends ItemView {
             
             // Add color square if grouping by color
             if (this.groupingMode === 'color' && groupColors.has(groupName)) {
+                const color = groupColors.get(groupName)!;
                 const colorSquare = headerTextContainer.createDiv({ 
                     cls: 'group-color-square',
-                    attr: { 'data-color': groupColors.get(groupName)! }
+                    attr: { 'data-color': color }
                 });
+                // Set the color directly via style to ensure it always shows
+                colorSquare.style.backgroundColor = color;
             }
             
             // Add tag icon if grouping by tag
