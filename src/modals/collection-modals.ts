@@ -15,7 +15,7 @@ export class NewCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Create a new collection' });
+        new Setting(contentEl).setHeading().setName('Create a new collection');
 
         new Setting(contentEl)
             .setName('Collection name')
@@ -101,7 +101,7 @@ export class EditCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Edit collection' });
+        new Setting(contentEl).setHeading().setName('Edit collection');
 
         new Setting(contentEl)
             .setName('Collection name')

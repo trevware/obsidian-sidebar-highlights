@@ -25,10 +25,6 @@ export class HighlightsSidebarView extends ItemView {
     private collectionsDropdownOpen: boolean = false;
     private viewMode: 'current' | 'all' | 'collections' = 'current';
     private currentCollectionId: string | null = null;
-    private preservedScrollTop: number = 0;
-    private isHighlightFocusing: boolean = false;
-    private isColorChanging: boolean = false;
-    private isPreservingScroll: boolean = false;
     private searchExpanded: boolean = false;
     private searchButton!: HTMLElement;
     private simpleSearchManager!: SimpleSearchManager;
@@ -36,7 +32,6 @@ export class HighlightsSidebarView extends ItemView {
     private currentParsedSearch: ParsedSearch = { ast: null };
     private dropdownManager: DropdownManager = new DropdownManager();
     private highlightRenderer: HighlightRenderer;
-    private savedScrollPosition: number = 0; // Store scroll position during rebuilds
     private showNativeComments: boolean = true; // Track native comments visibility
 
     constructor(leaf: WorkspaceLeaf, plugin: HighlightCommentsPlugin) {
@@ -88,10 +83,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'none')
                         .onClick(() => {
                             this.groupingMode = 'none';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            // Use renderContent instead of renderFilteredList to handle all view modes
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -104,9 +97,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'color')
                         .onClick(() => {
                             this.groupingMode = 'color';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -119,9 +111,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'comments-asc')
                         .onClick(() => {
                             this.groupingMode = 'comments-asc';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -132,9 +123,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'comments-desc')
                         .onClick(() => {
                             this.groupingMode = 'comments-desc';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -147,9 +137,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'date-created-asc')
                         .onClick(() => {
                             this.groupingMode = 'date-created-asc';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -160,9 +149,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'date-created-desc')
                         .onClick(() => {
                             this.groupingMode = 'date-created-desc';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -175,9 +163,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'parent')
                         .onClick(() => {
                             this.groupingMode = 'parent';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -188,9 +175,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'collection')
                         .onClick(() => {
                             this.groupingMode = 'collection';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -201,9 +187,8 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'filename')
                         .onClick(() => {
                             this.groupingMode = 'filename';
-                            this.updateGroupButtonState(groupButton);
                             this.saveGroupingModeToSettings();
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true, toolbar: true });
                         });
                 });
 
@@ -218,8 +203,7 @@ export class HighlightsSidebarView extends ItemView {
             this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
             nativeCommentsToggleButton.addEventListener('click', () => {
                 this.toggleNativeCommentsVisibility();
-                this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
-                this.renderContent();
+                this.conditionalRefresh({ highlights: true, toolbar: true });
             });
 
             const commentsToggleButton = searchContainer.createEl('button', {
@@ -230,8 +214,7 @@ export class HighlightsSidebarView extends ItemView {
             this.updateCommentsToggleIcon(commentsToggleButton);
             commentsToggleButton.addEventListener('click', () => {
                 this.toggleAllComments();
-                this.updateCommentsToggleIcon(commentsToggleButton);
-                this.renderContent(); // Use renderContent instead of renderFilteredList
+                this.conditionalRefresh({ highlights: true, toolbar: true });
             });
 
             const resetColorsButton = searchContainer.createEl('button', {
@@ -264,7 +247,7 @@ export class HighlightsSidebarView extends ItemView {
                 if (this.viewMode === 'collections' && this.currentCollectionId) {
                     // Back to collections
                     this.currentCollectionId = null;
-                    this.renderContent();
+                    this.conditionalRefresh({ structure: true, toolbar: true });
                 } else {
                     // New collection
                     this.showNewCollectionDialog();
@@ -319,38 +302,29 @@ export class HighlightsSidebarView extends ItemView {
         // Add click handlers
         currentNoteTab.addEventListener('click', () => {
             if (this.viewMode !== 'current') {
-                currentNoteTab.classList.add('active');
-                allNotesTab.classList.remove('active');
-                collectionsTab.classList.remove('active');
                 this.viewMode = 'current';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.conditionalRefresh({ structure: true });
             }
         });
 
         allNotesTab.addEventListener('click', () => {
             if (this.viewMode !== 'all') {
-                allNotesTab.classList.add('active');
-                currentNoteTab.classList.remove('active');
-                collectionsTab.classList.remove('active');
                 this.viewMode = 'all';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.conditionalRefresh({ structure: true });
             }
         });
 
         collectionsTab.addEventListener('click', () => {
             if (this.viewMode !== 'collections') {
-                collectionsTab.classList.add('active');
-                currentNoteTab.classList.remove('active');
-                allNotesTab.classList.remove('active');
                 this.viewMode = 'collections';
                 this.currentCollectionId = null;
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.conditionalRefresh({ structure: true });
             }
         });
 
@@ -386,85 +360,254 @@ export class HighlightsSidebarView extends ItemView {
         this.viewMode = 'collections';
         this.currentCollectionId = collectionId;
         
-        // Update the tab state to show collections tab as active
-        // Get tabs by their order since they don't have data-tab attributes
-        const tabs = this.contentEl.querySelectorAll('.highlights-tab');
-        if (tabs.length >= 3) {
-            const currentNoteTab = tabs[0] as HTMLElement;  // First tab
-            const allNotesTab = tabs[1] as HTMLElement;     // Second tab  
-            const collectionsTab = tabs[2] as HTMLElement;  // Third tab
-            
-            // Remove active class from all tabs
-            currentNoteTab.classList.remove('active');
-            allNotesTab.classList.remove('active');
-            collectionsTab.classList.remove('active');
-            
-            // Add active class to collections tab
-            collectionsTab.classList.add('active');
-        }
-        
         // Clear any tag filters
         this.selectedTags.clear();
         
-        // Render the collection detail view
-        this.renderContent();
+        // Use conditional refresh for structure change
+        this.conditionalRefresh({ structure: true, toolbar: true });
     }
 
     refresh() {
-        this.selectedTags.clear();
-        // When toolbar setting changes, we need to rebuild the entire view structure
-        // because onOpen() conditionally creates toolbar elements
-        
-        // Preserve current view mode and collection state
-        const currentViewMode = this.viewMode;
-        const currentCollectionId = this.currentCollectionId;
-        
-        // If we're in the middle of highlighting focus or color change, preserve that scroll position instead
-        const shouldUseHighlightScroll = this.isHighlightFocusing || this.isColorChanging;
-        const highlightScrollPosition = this.preservedScrollTop;
-        
-        // Capture current scroll position before rebuild (unless we're highlighting)
-        if (!shouldUseHighlightScroll) {
-            this.captureScrollPosition();
+        // Use conditional update instead of full DOM rebuild
+        this.conditionalRefresh({ highlights: true, toolbar: true });
+    }
+    
+    // Conditional refresh system - only updates what actually changed
+    private conditionalRefresh(changes: {
+        highlights?: boolean;
+        toolbar?: boolean;
+        tabs?: boolean;
+        structure?: boolean; // For major structural changes like view mode switches
+    }) {
+        // If structure changed, do a full rebuild
+        if (changes.structure) {
+            this.renderContent();
+            // Always update tabs after structure changes since view mode may have changed
+            this.updateTabStates();
+            return;
         }
         
-        this.onOpen();
+        // Update toolbar if needed
+        if (changes.toolbar) {
+            this.updateToolbar();
+        }
         
-        // Restore the view mode and collection state after DOM recreation
-        this.viewMode = currentViewMode;
-        this.currentCollectionId = currentCollectionId;
+        // Update tabs if needed  
+        if (changes.tabs) {
+            this.updateTabStates();
+        }
         
-        // Update the tab states to reflect the current view mode
-        this.updateTabStates();
-        
-        // Restore appropriate scroll position after full rebuild
-        if (shouldUseHighlightScroll) {
-            // Use the preserved highlight scroll position
-            requestAnimationFrame(() => {
-                if (this.contentAreaEl) {
-                    this.contentAreaEl.scrollTop = highlightScrollPosition;
-                }
-            });
-        } else {
-            // Use normal scroll restoration
-            this.restoreScrollPosition();
+        // Update highlights list if needed
+        if (changes.highlights) {
+            this.updateHighlightsList();
         }
     }
+    
+    // Update just the highlights list content without rebuilding DOM structure
+    private updateHighlightsList() {
+        if (!this.listContainerEl) {
+            // Structure doesn't exist, need full rebuild
+            this.conditionalRefresh({ structure: true });
+            return;
+        }
+        
+        // Preserve scroll position during updates
+        const scrollTop = this.contentAreaEl?.scrollTop || 0;
+        
+        // Clear just the list container content
+        this.listContainerEl.empty();
+        
+        // Render highlights based on current view mode
+        this.renderHighlightsContent();
+        
+        // Restore scroll position
+        if (this.contentAreaEl) {
+            this.contentAreaEl.scrollTop = scrollTop;
+        }
+        
+        this.showTagActive();
+        
+        // Ensure selected highlight styling is maintained after DOM updates
+        this.restoreSelectedHighlight();
+    }
+    
+    // Render highlights content into existing container
+    private renderHighlightsContent() {
+        if (!this.listContainerEl) return;
+        
+        if (this.viewMode === 'collections') {
+            if (this.currentCollectionId) {
+                this.renderCollectionHighlightsContent();
+            } else {
+                this.renderCollectionsContent();
+            }
+        } else {
+            this.renderFilteredHighlightsContent();
+        }
+        
+        // Ensure selected highlight styling is maintained after rendering
+        if (this.plugin.selectedHighlightId) {
+            this.restoreSelectedHighlight();
+        }
+    }
+    
+    // Render highlights without clearing contentAreaEl
+    private renderFilteredHighlightsContent() {
+        if (!this.listContainerEl) return;
+        
+        const searchTerm = this.searchInputEl ? this.searchInputEl.value.toLowerCase().trim() : '';
+        let allHighlights: Highlight[];
+        
+        if (this.viewMode === 'current') {
+            const file = this.plugin.app.workspace.getActiveFile();
+            if (!file) {
+                this.listContainerEl.createEl('p', { text: 'No file open.' });
+                return;
+            }
+            allHighlights = this.plugin.getCurrentFileHighlights();
+        } else {
+            // Get all highlights from all files
+            allHighlights = [];
+            for (const [filePath, highlights] of this.plugin.highlights) {
+                allHighlights.push(...highlights);
+            }
+        }
 
+        const filteredHighlights = this.applyAllFilters(allHighlights);
+
+        if (filteredHighlights.length === 0) {
+            let message: string;
+            if (this.viewMode === 'current') {
+                const file = this.plugin.app.workspace.getActiveFile();
+                if (file && file.extension === 'pdf') {
+                    message = 'PDF highlights are not supported.';
+                } else {
+                    message = searchTerm ? 'No matching highlights.' : 'No highlights in this file.';
+                }
+            } else {
+                message = searchTerm ? 'No matching highlights across all files.' : 'No highlights found across all files.';
+            }
+            this.listContainerEl.createEl('p', { text: message });
+            return;
+        }
+
+        if (this.groupingMode === 'none') {
+            const sortedHighlights = filteredHighlights.sort((a, b) => {
+                if (a.filePath !== b.filePath) {
+                    return a.filePath.localeCompare(b.filePath);
+                }
+                return a.startOffset - b.startOffset;
+            });
+            
+            sortedHighlights.forEach(highlight => {
+                this.createHighlightItem(this.listContainerEl, highlight, searchTerm, this.viewMode === 'all');
+            });
+        } else {
+            this.renderGroupedHighlights(filteredHighlights, searchTerm, this.viewMode === 'all');
+        }
+    }
+    
+    // Render collections content without clearing contentAreaEl
+    private renderCollectionsContent() {
+        if (!this.listContainerEl) return;
+        
+        const collections = this.plugin.collectionsManager.getAllCollections();
+        
+        if (collections.length === 0) {
+            this.listContainerEl.createEl('p', { text: 'No collections.' });
+        } else {
+            this.renderCollectionsGrid(this.listContainerEl, collections);
+        }
+    }
+    
+    // Render collection highlights content without clearing contentAreaEl
+    private renderCollectionHighlightsContent() {
+        if (!this.listContainerEl || !this.currentCollectionId) return;
+        
+        const collection = this.plugin.collectionsManager.getCollection(this.currentCollectionId);
+        if (!collection) {
+            new Notice('Collection not found');
+            this.currentCollectionId = null;
+            this.conditionalRefresh({ structure: true });
+            return;
+        }
+
+        const highlights = this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
+        
+        if (highlights.length === 0) {
+            this.listContainerEl.createEl('p', { text: 'No highlights in collection.' });
+            return;
+        }
+
+        const searchTerm = this.searchInputEl?.value.toLowerCase().trim() || '';
+        const filteredHighlights = this.applyAllFilters(highlights);
+
+        if (filteredHighlights.length === 0) {
+            const message = searchTerm ? 'No matching highlights in collection.' : 'No highlights in collection.';
+            this.listContainerEl.createEl('p', { text: message });
+            return;
+        }
+
+        if (this.groupingMode === 'none') {
+            const sortedHighlights = filteredHighlights.sort((a, b) => {
+                if (a.filePath !== b.filePath) {
+                    return a.filePath.localeCompare(b.filePath);
+                }
+                return a.startOffset - b.startOffset;
+            });
+            
+            sortedHighlights.forEach(highlight => {
+                this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true);
+            });
+        } else {
+            this.renderGroupedHighlights(filteredHighlights, searchTerm, true);
+        }
+    }
+    
+    // Update toolbar state without rebuilding
+    private updateToolbar() {
+        if (!this.plugin.settings.showToolbar) return;
+        
+        // Update button states
+        const searchContainer = this.contentEl.querySelector('.highlights-search-container');
+        if (searchContainer) {
+            // Update group button state
+            const groupButton = searchContainer.querySelector('.highlights-group-button:nth-child(2)') as HTMLElement;
+            if (groupButton) {
+                this.updateGroupButtonState(groupButton);
+            }
+            
+            // Update comments toggle button
+            if (this.commentsToggleButton) {
+                this.updateCommentsToggleIcon(this.commentsToggleButton);
+            }
+            
+            // Update native comments toggle
+            const nativeCommentsButton = searchContainer.querySelector('.highlights-group-button:nth-child(3)') as HTMLElement;
+            if (nativeCommentsButton) {
+                this.updateNativeCommentsToggleState(nativeCommentsButton);
+            }
+            
+            // Update collection nav button
+            const collectionNavButton = searchContainer.querySelector('.highlights-group-button:last-of-type') as HTMLElement;
+            if (collectionNavButton) {
+                this.updateCollectionNavButton(collectionNavButton);
+            }
+        }
+    }
+    
+    // Update tab states without rebuilding
     private updateTabStates() {
-        // Get tabs by their order since they don't have data-tab attributes
         const tabs = this.contentEl.querySelectorAll('.highlights-tab');
         if (tabs.length >= 3) {
-            const currentNoteTab = tabs[0] as HTMLElement;  // First tab
-            const allNotesTab = tabs[1] as HTMLElement;     // Second tab  
-            const collectionsTab = tabs[2] as HTMLElement;  // Third tab
+            const currentNoteTab = tabs[0] as HTMLElement;
+            const allNotesTab = tabs[1] as HTMLElement;
+            const collectionsTab = tabs[2] as HTMLElement;
             
-            // Remove active class from all tabs
-            currentNoteTab.classList.remove('active');
-            allNotesTab.classList.remove('active');
-            collectionsTab.classList.remove('active');
+            // Remove active class from all
+            [currentNoteTab, allNotesTab, collectionsTab].forEach(tab => tab.classList.remove('active'));
             
-            // Add active class to the correct tab based on current view mode
+            // Add active class to current view
             switch (this.viewMode) {
                 case 'current':
                     currentNoteTab.classList.add('active');
@@ -478,26 +621,54 @@ export class HighlightsSidebarView extends ItemView {
             }
         }
     }
-
-    private captureScrollPosition(): void {
-        if (this.contentAreaEl) {
-            this.savedScrollPosition = this.contentAreaEl.scrollTop;
-        }
+    
+    // Method for forcing full rebuild when structure changes (settings, etc.)
+    refreshStructure() {
+        // Preserve current view mode and collection state
+        const currentViewMode = this.viewMode;
+        const currentCollectionId = this.currentCollectionId;
+        
+        this.onOpen();
+        
+        // Restore the view mode and collection state after DOM recreation
+        this.viewMode = currentViewMode;
+        this.currentCollectionId = currentCollectionId;
+        
+        // Update the tab states to reflect the current view mode
+        this.updateTabStates();
+        
+        // Restore selected highlight styling after DOM rebuild
+        this.restoreSelectedHighlight();
     }
 
-    private restoreScrollPosition(): void {
-        if (this.contentAreaEl && !this.isHighlightFocusing && !this.isColorChanging) {
-            // Use requestAnimationFrame to ensure DOM is updated before restoring scroll
-            requestAnimationFrame(() => {
-                this.contentAreaEl.scrollTop = this.savedScrollPosition;
-            });
+    private restoreSelectedHighlight() {
+        if (!this.plugin.selectedHighlightId) {
+            return;
         }
+        
+        // Use a small delay to ensure DOM is stable after updates
+        window.setTimeout(() => {
+            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+            if (selectedEl) {
+                selectedEl.classList.add('selected');
+                
+                // Find the highlight data to apply correct styling
+                const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId!);
+                if (selectedHighlight) {
+                    selectedEl.classList.add('highlight-selected');
+                    
+                    // Apply the correct border color and box-shadow
+                    const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
+                    selectedEl.style.borderLeftColor = highlightColor;
+                    if (!selectedHighlight.isNativeComment) {
+                        selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                    }
+                }
+            }
+        }, 50);
     }
 
     private renderContent() {
-        // Capture scroll position before DOM rebuild
-        this.captureScrollPosition();
-        
         if (this.viewMode === 'collections') {
             if (this.currentCollectionId) {
                 this.enableSearchAndToolbar();
@@ -516,15 +687,9 @@ export class HighlightsSidebarView extends ItemView {
         if (collectionNavButton) {
             this.updateCollectionNavButton(collectionNavButton);
         }
-        
-        // Restore scroll position after DOM rebuild
-        this.restoreScrollPosition();
     }
 
     private renderCollectionsView() {
-        // Capture scroll position before DOM rebuild
-        this.captureScrollPosition();
-        
         this.contentAreaEl.empty();
         
         // Create the standard list container (same structure as other views)
@@ -540,9 +705,6 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             this.renderCollectionsGrid(this.listContainerEl, collections);
         }
-        
-        // Restore scroll position after DOM rebuild
-        this.restoreScrollPosition();
     }
 
     private renderEmptyCollectionsState(container: HTMLElement) {
@@ -619,20 +781,17 @@ export class HighlightsSidebarView extends ItemView {
             
             card.addEventListener('click', () => {
                 this.currentCollectionId = collection.id;
-                this.renderContent();
+                this.conditionalRefresh({ structure: true, toolbar: true });
             });
         });
     }
 
     private renderCollectionDetailView(collectionId: string) {
-        // Capture scroll position before DOM rebuild
-        this.captureScrollPosition();
-        
         const collection = this.plugin.collectionsManager.getCollection(collectionId);
         if (!collection) {
             new Notice('Collection not found');
             this.currentCollectionId = null;
-            this.renderContent();
+            this.conditionalRefresh({ structure: true });
             return;
         }
 
@@ -650,9 +809,6 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             this.renderCollectionHighlights(highlights);
         }
-        
-        // Restore scroll position after DOM rebuild
-        this.restoreScrollPosition();
     }
 
     private renderEmptyCollectionState(container: HTMLElement, collection: Collection) {
@@ -694,9 +850,6 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        // Capture scroll position before DOM rebuild
-        this.captureScrollPosition();
-
         // Reset to normal list area structure for highlights
         this.contentAreaEl.empty();
         this.listContainerEl = this.contentAreaEl.createDiv({ cls: 'highlights-list' });
@@ -712,7 +865,6 @@ export class HighlightsSidebarView extends ItemView {
             const file = this.plugin.app.workspace.getActiveFile();
             if (!file) {
                 this.listContainerEl.createEl('p', { text: 'No file open.' });
-                this.restoreScrollPosition();
                 this.showTagActive();
                 return;
             }
@@ -762,9 +914,6 @@ export class HighlightsSidebarView extends ItemView {
             }
         }
         this.showTagActive();
-        
-        // Restore scroll position after DOM rebuild
-        this.restoreScrollPosition();
     }
 
     private updateGroupButtonState(button: HTMLElement) {
@@ -802,36 +951,21 @@ export class HighlightsSidebarView extends ItemView {
                 this.showCollectionsMenu(event, highlight);
             },
             onColorChange: (highlight, color) => {
-                // Store current scroll position and set flag to prevent other scroll restorations
-                this.preservedScrollTop = this.contentAreaEl.scrollTop;
-                this.isColorChanging = true;
-                
-                // Safety timeout to clear flag in case something goes wrong
-                window.setTimeout(() => {
-                    this.isColorChanging = false;
-                }, 2000);
-                
                 this.changeHighlightColor(highlight, color);
-                this.rerenderCurrentView();
+                this.conditionalRefresh({ highlights: true });
                 
-                // Restore scroll position after DOM rebuild and clear flag
+                // Ensure the selected highlight styling is correct after color change
                 requestAnimationFrame(() => {
-                    if (this.contentAreaEl && this.isColorChanging) {
-                        this.contentAreaEl.scrollTop = this.preservedScrollTop;
-                        this.isColorChanging = false;
-                        
-                        // Ensure the selected highlight styling is correct after color group change
-                        if (this.plugin.selectedHighlightId) {
-                            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
-                            if (selectedEl) {
-                                // Find the highlight data to get the updated color
-                                const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
-                                if (selectedHighlight) {
-                                    const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
-                                    selectedEl.style.borderLeftColor = highlightColor;
-                                    if (!selectedHighlight.isNativeComment) {
-                                        selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-                                    }
+                    if (this.plugin.selectedHighlightId) {
+                        const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+                        if (selectedEl) {
+                            // Find the highlight data to get the updated color
+                            const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
+                            if (selectedHighlight) {
+                                const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
+                                selectedEl.style.borderLeftColor = highlightColor;
+                                if (!selectedHighlight.isNativeComment) {
+                                    selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
                                 }
                             }
                         }
@@ -883,6 +1017,11 @@ export class HighlightsSidebarView extends ItemView {
             this.renderCollectionDetailView(this.currentCollectionId);
         } else {
             this.renderFilteredList();
+        }
+        
+        // Ensure selected highlight styling is maintained after rerender
+        if (this.plugin.selectedHighlightId) {
+            this.restoreSelectedHighlight();
         }
     }
 
@@ -981,49 +1120,49 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     async focusHighlightInEditor(highlight: Highlight) {
-        // Always update selection immediately, even if we're going to guard against file operations
-        const prevId = this.plugin.selectedHighlightId;
+        // Always clear ALL existing selections first to prevent multiple selections
+        const allSelectedElements = this.containerEl.querySelectorAll('.selected, .highlight-selected');
+        allSelectedElements.forEach(el => {
+            el.classList.remove('selected', 'highlight-selected');
+            // Clear any inline styles that might have been applied
+            (el as HTMLElement).style.removeProperty('box-shadow');
+        });
+        
+        // Set the selection ID but defer visual styling until after potential file operations
         this.plugin.selectedHighlightId = highlight.id;
-        if (prevId) {
-            const prevEl = this.containerEl.querySelector(`[data-highlight-id="${prevId}"]`) as HTMLElement;
-            if (prevEl) {
-                prevEl.classList.remove('selected', 'highlight-selected');
-            }
-        }
-        const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
-        if (newEl) {
-            newEl.classList.add('selected');
-            // Find the highlight in the correct file (not just current file)
-            const fileHighlights = this.plugin.highlights.get(highlight.filePath);
-            const newHighlight = fileHighlights?.find(h => h.id === highlight.id);
-            if (newHighlight) {
-                newEl.classList.add('highlight-selected');
-                
-                // Update border color and box-shadow to reflect current color
-                const highlightColor = newHighlight.color || this.plugin.settings.highlightColor;
-                newEl.style.borderLeftColor = highlightColor;
-                if (!newHighlight.isNativeComment) {
-                    newEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+        
+        // Enhanced helper function to apply selection styling with retries
+        const applySelectionStyling = (maxRetries = 5, delay = 100) => {
+            const tryApplySelection = (attempt = 0) => {
+                const targetEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
+                if (targetEl) {
+                    targetEl.classList.add('selected');
+                    // Find the highlight in the correct file
+                    const fileHighlights = this.plugin.highlights.get(highlight.filePath);
+                    const targetHighlight = fileHighlights?.find(h => h.id === highlight.id);
+                    if (targetHighlight) {
+                        targetEl.classList.add('highlight-selected');
+                        
+                        // Update border color and box-shadow to reflect current color
+                        const highlightColor = targetHighlight.color || this.plugin.settings.highlightColor;
+                        targetEl.style.borderLeftColor = highlightColor;
+                        if (!targetHighlight.isNativeComment) {
+                            targetEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                        }
+                    }
+                } else if (attempt < maxRetries) {
+                    // Element not found yet, retry after delay
+                    window.setTimeout(() => tryApplySelection(attempt + 1), delay);
                 }
-            }
-        }
+            };
+            tryApplySelection();
+        };
         
-        // Prevent multiple simultaneous highlight focusing operations for file operations
-        if (this.isHighlightFocusing) {
-            return;
-        }
-        
-        // Store current scroll position and set flag to prevent other scroll restorations
-        this.preservedScrollTop = this.contentAreaEl.scrollTop;
-        this.isHighlightFocusing = true;
-        
-        // Safety timeout to clear flag in case something goes wrong
-        window.setTimeout(() => {
-            this.isHighlightFocusing = false;
-        }, 2000);
+        // Check if we need to switch files
+        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        const needsFileSwitch = !activeEditorView || activeEditorView.file?.path !== highlight.filePath;
         
         let targetView: MarkdownView | null = null;
-        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
 
         if (activeEditorView && activeEditorView.file && activeEditorView.file.path === highlight.filePath) {
             targetView = activeEditorView;
@@ -1041,27 +1180,34 @@ export class HighlightsSidebarView extends ItemView {
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
             if (fileToOpen instanceof TFile) {
-                const openResult = await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
-                // Use a more reliable approach for file opening
-                const checkAndFocus = () => {
+                const openResult = this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
+                // Use a more reliable approach for file opening with enhanced retry logic
+                const checkAndFocus = (attempt = 0) => {
                     const newActiveView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
                     if (newActiveView && newActiveView.file?.path === highlight.filePath) {
                         this.performHighlightFocus(newActiveView, highlight);
-                    } else {
-                        // Retry if file isn't ready yet
-                        window.setTimeout(checkAndFocus, 50);
+                        // Apply selection styling after file switch is complete with longer delay for DOM updates
+                        window.setTimeout(() => applySelectionStyling(), 150);
+                    } else if (attempt < 10) {
+                        // Retry if file isn't ready yet, with exponential backoff
+                        window.setTimeout(() => checkAndFocus(attempt + 1), Math.min(50 * Math.pow(1.2, attempt), 200));
                     }
                 };
-                window.setTimeout(checkAndFocus, 100);
+                window.setTimeout(() => checkAndFocus(), 100);
                 return;
             }
         }
 
         if (targetView) {
-            // Use requestAnimationFrame for smoother focus
+            // Use requestAnimationFrame for smoother focus and ensure styling is applied after DOM updates
             requestAnimationFrame(() => {
                 this.performHighlightFocus(targetView!, highlight);
+                // Apply selection styling with a small delay to ensure DOM is stable
+                window.setTimeout(() => applySelectionStyling(), 50);
             });
+        } else if (!needsFileSwitch) {
+            // Same file but no targetView found - still apply styling with retry logic
+            applySelectionStyling();
         }
     }
 
@@ -1071,22 +1217,6 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // Selection is now handled in focusHighlightInEditor, so we just handle the editor focus
-
-        // Only restore scroll position if we haven't already done it in refresh()
-        // (refresh() handles scroll restoration during file switches)
-        const needsScrollRestore = this.contentAreaEl.scrollTop !== this.preservedScrollTop;
-        
-        if (needsScrollRestore) {
-            // Use requestAnimationFrame to restore scroll position after any potential DOM updates
-            requestAnimationFrame(() => {
-                this.contentAreaEl.scrollTop = this.preservedScrollTop;
-                // Clear the flag after restoration is complete
-                this.isHighlightFocusing = false;
-            });
-        } else {
-            // Scroll position already correct (handled by refresh), just clear the flag
-            this.isHighlightFocusing = false;
-        }
 
         const content = targetView.editor.getValue();
         
@@ -1634,7 +1764,7 @@ export class HighlightsSidebarView extends ItemView {
         
         if (hasChanges) {
             this.plugin.saveSettings(); // Save changes to disk
-            this.renderContent(); // Use renderContent instead of renderFilteredList
+            this.conditionalRefresh({ highlights: true }); // Update highlights list only
         }
     }
 
@@ -1742,7 +1872,7 @@ export class HighlightsSidebarView extends ItemView {
                 onClick: () => {
                     this.selectedTags.clear();
                 this.selectedCollections.clear();
-                    this.renderContent();
+                    this.conditionalRefresh({ highlights: true });
                     this.showTagActive();
                     
                     // Update all checkbox states to unchecked
@@ -1771,7 +1901,7 @@ export class HighlightsSidebarView extends ItemView {
                     } else {
                         this.selectedTags.add(tag);
                     }
-                    this.renderContent();
+                    this.conditionalRefresh({ highlights: true });
                     this.showTagActive();
                 }
             })));
@@ -1798,7 +1928,7 @@ export class HighlightsSidebarView extends ItemView {
                     } else {
                         this.selectedCollections.add(collection.name);
                     }
-                    this.renderContent();
+                    this.conditionalRefresh({ highlights: true });
                     this.showTagActive();
                 }
             })));
@@ -1825,11 +1955,11 @@ export class HighlightsSidebarView extends ItemView {
                     });
                     this.updateHighlightCollectionCount(highlight);
                     if (this.viewMode === 'collections') {
-                        this.renderContent();
+                        this.conditionalRefresh({ highlights: true });
                     }
                     // Refresh sidebar if we're grouping by collection
                     if (this.groupingMode === 'collection') {
-                        this.renderContent();
+                        this.conditionalRefresh({ highlights: true });
                     }
                     
                     // Update all checkbox states to unchecked
@@ -1864,18 +1994,18 @@ export class HighlightsSidebarView extends ItemView {
                         this.plugin.collectionsManager.removeHighlightFromCollection(collection.id, highlight.id);
                         this.updateHighlightCollectionCount(highlight);
                         if (this.viewMode === 'collections' && this.currentCollectionId === collection.id) {
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true });
                         }
                         // Refresh sidebar if we're grouping by collection
                         if (this.groupingMode === 'collection') {
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true });
                         }
                     } else {
                         this.plugin.collectionsManager.addHighlightToCollection(collection.id, highlight.id);
                         this.updateHighlightCollectionCount(highlight);
                         // Refresh sidebar if we're grouping by collection
                         if (this.groupingMode === 'collection') {
-                            this.renderContent();
+                            this.conditionalRefresh({ highlights: true });
                         }
                     }
                 }
@@ -1935,7 +2065,7 @@ export class HighlightsSidebarView extends ItemView {
             this.simpleSearchManager?.clear();
             this.currentSearchTokens = [];
             this.currentParsedSearch = { ast: null };
-            this.renderContent();
+            this.conditionalRefresh({ highlights: true });
         }
     }
 
@@ -2156,7 +2286,7 @@ export class HighlightsSidebarView extends ItemView {
     private handleSearchInput(query: string, parsed: ParsedSearch): void {
         this.currentParsedSearch = parsed;
         this.currentSearchTokens = SearchParser.getTokensFromQuery(query);
-        this.renderContent();
+        this.conditionalRefresh({ highlights: true });
     }
 
     private removeSearchToken(token: SearchToken): void {

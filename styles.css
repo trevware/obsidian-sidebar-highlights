@@ -1392,8 +1392,39 @@ body.theme-highlight-green .cm-highlight {
     pointer-events: none !important;
 }
 
-.highlights-search-input.disabled {
-    opacity: 0.5 !important;
-    pointer-events: none !important;
+/* Collection animation styles */
+.collection-card.preparing-animation {
+    transform: scale(0.8);
+    opacity: 0;
+}
+
+.collection-card.animating-in {
+    animation: collection-scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.collection-card.animating-out {
+    animation: collection-scale-out 0.2s ease-in forwards;
+}
+
+@keyframes collection-scale-in {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes collection-scale-out {
+    from {
+        transform: scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: scale(0.8);
+        opacity: 0;
+    }
 }
 

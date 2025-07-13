@@ -60,7 +60,7 @@ export class InlineSearchManager {
 
         this.editableDiv.addEventListener('blur', () => {
             // Delay hiding dropdown to allow clicking
-            setTimeout(() => this.hideDropdown(), 150);
+            window.setTimeout(() => this.hideDropdown(), 150);
         });
     }
 
@@ -157,19 +157,7 @@ export class InlineSearchManager {
 
     private renderTokensInline(): void {
         const text = this.editableDiv.textContent || '';
-        const html = text.replace(/-?[#@][a-zA-Z0-9_-]+/g, (match) => {
-            const isExclude = match.startsWith('-');
-            const symbol = match.includes('#') ? '#' : '@';
-            const type = symbol === '#' ? 'tag' : 'collection';
-            const value = match.replace(/^-?[#@]/, '');
-            
-            return `<span class="inline-search-chip inline-search-chip-${type} ${isExclude ? 'inline-search-chip-exclude' : ''}" data-token="${match}" contenteditable="false">
-                <span class="inline-search-chip-icon">${symbol}</span>
-                <span class="inline-search-chip-value">${value}</span>
-                <span class="inline-search-chip-remove" data-remove="${match}">×</span>
-            </span>`;
-        });
-
+        
         // Preserve cursor position
         const selection = window.getSelection();
         const range = selection?.getRangeAt(0);
@@ -178,14 +166,8 @@ export class InlineSearchManager {
         // Clear existing content safely
         this.editableDiv.empty();
         
-        // Create a temporary container to parse HTML safely
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        
-        // Move all child nodes to the editableDiv
-        while (tempDiv.firstChild) {
-            this.editableDiv.appendChild(tempDiv.firstChild);
-        }
+        // Parse and create DOM elements safely without innerHTML
+        this.parseAndCreateTokenElements(text);
 
         // Add click handlers to remove buttons
         this.editableDiv.querySelectorAll('.inline-search-chip-remove').forEach(btn => {
@@ -212,6 +194,63 @@ export class InlineSearchManager {
             } catch (e) {
                 // Cursor positioning failed, place at end
                 this.placeCursorAtEnd();
+            }
+        }
+    }
+
+    private parseAndCreateTokenElements(text: string): void {
+        // Split text by token pattern and create elements safely
+        const tokenPattern = /-?[#@][a-zA-Z0-9_-]+/g;
+        let lastIndex = 0;
+        let match;
+
+        while ((match = tokenPattern.exec(text)) !== null) {
+            // Add text before the token
+            if (match.index > lastIndex) {
+                const textBefore = text.substring(lastIndex, match.index);
+                if (textBefore) {
+                    this.editableDiv.appendChild(document.createTextNode(textBefore));
+                }
+            }
+
+            // Create token chip element
+            const tokenText = match[0];
+            const isExclude = tokenText.startsWith('-');
+            const symbol = tokenText.includes('#') ? '#' : '@';
+            const type = symbol === '#' ? 'tag' : 'collection';
+            const value = tokenText.replace(/^-?[#@]/, '');
+
+            const chipSpan = document.createElement('span');
+            chipSpan.className = `inline-search-chip inline-search-chip-${type}${isExclude ? ' inline-search-chip-exclude' : ''}`;
+            chipSpan.setAttribute('data-token', tokenText);
+            chipSpan.setAttribute('contenteditable', 'false');
+
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'inline-search-chip-icon';
+            iconSpan.textContent = symbol;
+            chipSpan.appendChild(iconSpan);
+
+            const valueSpan = document.createElement('span');
+            valueSpan.className = 'inline-search-chip-value';
+            valueSpan.textContent = value;
+            chipSpan.appendChild(valueSpan);
+
+            const removeSpan = document.createElement('span');
+            removeSpan.className = 'inline-search-chip-remove';
+            removeSpan.textContent = '×';
+            removeSpan.setAttribute('data-remove', tokenText);
+            chipSpan.appendChild(removeSpan);
+
+            this.editableDiv.appendChild(chipSpan);
+
+            lastIndex = match.index + match[0].length;
+        }
+
+        // Add remaining text after the last token
+        if (lastIndex < text.length) {
+            const remainingText = text.substring(lastIndex);
+            if (remainingText) {
+                this.editableDiv.appendChild(document.createTextNode(remainingText));
             }
         }
     }
