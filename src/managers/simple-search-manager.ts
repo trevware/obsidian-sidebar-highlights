@@ -30,14 +30,14 @@ export class SimpleSearchManager {
         this.dropdown = this.container.createDiv({
             cls: 'simple-search-dropdown'
         });
-        this.dropdown.style.display = 'none';
+        this.dropdown.classList.add('hidden');
     }
 
     private createPreview(): void {
         this.previewElement = this.container.createDiv({
             cls: 'simple-search-preview'
         });
-        this.previewElement.style.display = 'none';
+        this.previewElement.classList.add('hidden');
     }
 
     private setupEventListeners(): void {
@@ -69,7 +69,7 @@ export class SimpleSearchManager {
     }
 
     private handleKeydown(e: KeyboardEvent): void {
-        if (this.dropdown.style.display === 'none') return;
+        if (this.dropdown.classList.contains('hidden')) return;
 
         switch (e.key) {
             case 'ArrowDown':
@@ -156,7 +156,7 @@ export class SimpleSearchManager {
             });
         });
 
-        this.dropdown.style.display = 'block';
+        this.dropdown.classList.remove('hidden');
     }
 
     private selectNext(): void {
@@ -221,7 +221,7 @@ export class SimpleSearchManager {
     }
 
     private hideDropdown(): void {
-        this.dropdown.style.display = 'none';
+        this.dropdown.classList.add('hidden');
         this.selectedIndex = -1;
     }
 
@@ -230,11 +230,11 @@ export class SimpleSearchManager {
         
         // Only show preview if there's text in the input
         if (!this.input.value.trim()) {
-            this.previewElement.style.display = 'none';
+            this.previewElement.classList.add('hidden');
             return;
         }
 
-        this.previewElement.style.display = 'block';
+        this.previewElement.classList.remove('hidden');
 
         if (!parsed.ast) {
             this.previewElement.createSpan({
@@ -284,21 +284,6 @@ export class SimpleSearchManager {
         return '';
     }
     
-    private extractTerms(node: ASTNode, filters: string[], textTerms: string[]): void {
-        if (node.type === 'filter') {
-            const filterNode = node as FilterNode;
-            const prefix = filterNode.exclude ? '-' : '';
-            const type = filterNode.filterType === 'tag' ? '#' : '@';
-            filters.push(`${prefix}${type}${filterNode.value}`);
-        } else if (node.type === 'text') {
-            const textNode = node as TextNode;
-            textTerms.push(textNode.value);
-        } else if (node.type === 'operator') {
-            const opNode = node as OperatorNode;
-            this.extractTerms(opNode.left, filters, textTerms);
-            this.extractTerms(opNode.right, filters, textTerms);
-        }
-    }
 
     public updateSuggestions(suggestions: { tags: string[], collections: string[] }): void {
         this.suggestions = suggestions;

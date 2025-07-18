@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { setIcon, TFile, Menu, Notice, moment } from 'obsidian';
 import type { Highlight } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
 
@@ -8,18 +8,44 @@ export interface HighlightRenderOptions {
     showTimestamp?: boolean;
     showHighlightActions?: boolean;
     isCommentsVisible?: boolean;
+    dateFormat?: string;
     onCommentToggle?: (highlightId: string) => void;
     onCollectionsMenu?: (event: MouseEvent, highlight: Highlight) => void;
     onColorChange?: (highlight: Highlight, color: string) => void;
-    onHighlightClick?: (highlight: Highlight) => void;
+    onHighlightClick?: (highlight: Highlight, event?: MouseEvent) => void;
     onAddComment?: (highlight: Highlight) => void;
-    onCommentClick?: (highlight: Highlight, commentIndex: number) => void;
+    onCommentClick?: (highlight: Highlight, commentIndex: number, event?: MouseEvent) => void;
     onTagClick?: (tag: string) => void;
-    onFileNameClick?: (filePath: string) => void;
+    onFileNameClick?: (filePath: string, event: MouseEvent) => void;
 }
 
 export class HighlightRenderer {
     constructor(private plugin: HighlightCommentsPlugin) {}
+
+    private createFileContextMenu(file: TFile): Menu {
+        const menu = new Menu();
+        
+        // Add only our custom navigation options
+        menu.addItem((item) => {
+            item.setTitle('Open in new tab')
+                .setIcon('lucide-plus')
+                .onClick(() => {
+                    this.plugin.app.workspace.openLinkText(file.path, '', 'tab');
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle('Open to the right')
+                .setIcon('lucide-separator-vertical')
+                .onClick(() => {
+                    this.plugin.app.workspace.openLinkText(file.path, '', 'split');
+                });
+        });
+        
+        menu.addSeparator();
+        
+        return menu;
+    }
 
     createHighlightItem(
         container: HTMLElement, 
@@ -52,18 +78,16 @@ export class HighlightRenderer {
             // Apply color class for border styling
             item.classList.add(colorClass);
             
-            // Also set border color directly to ensure it always shows the correct color
-            item.style.borderLeftColor = highlightColor;
+            // For custom colors, use CSS custom property
+            if (colorClass === 'highlight-color-default') {
+                item.classList.remove('highlight-color-default');
+                item.classList.add('highlight-color-custom');
+                item.style.setProperty('--highlight-color', highlightColor);
+            }
         }
         
         if (this.plugin.selectedHighlightId === highlight.id) {
             item.classList.add('highlight-selected');
-            
-            // For regular highlights, also set the selection box-shadow directly
-            if (!highlight.isNativeComment) {
-                const highlightColor = highlight.color || this.plugin.settings.highlightColor;
-                item.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-            }
         }
     }
 
@@ -89,8 +113,21 @@ export class HighlightRenderer {
 
         this.addTagsToQuote(quoteEl, highlight, options);
 
-        quoteEl.addEventListener('click', () => {
-            options.onHighlightClick?.(highlight);
+        quoteEl.addEventListener('click', (event) => {
+            options.onHighlightClick?.(highlight, event);
+        });
+
+
+        // Add hover for highlight preview
+        quoteEl.addEventListener('mouseover', (event) => {
+            this.plugin.app.workspace.trigger('hover-link', {
+                event,
+                source: 'sidebar-highlights',
+                hoverParent: quoteEl,
+                targetEl: quoteEl,
+                linktext: highlight.filePath,
+                state: { scroll: highlight.startOffset }
+            });
         });
     }
 
@@ -140,7 +177,30 @@ export class HighlightRenderer {
             
             fileNameEl.addEventListener('click', (event) => {
                 event.stopPropagation();
-                options.onFileNameClick?.(highlight.filePath);
+                options.onFileNameClick?.(highlight.filePath, event);
+            });
+
+            // Add context menu for file operations
+            fileNameEl.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const file = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
+                if (file instanceof TFile) {
+                    const menu = this.createFileContextMenu(file);
+                    this.plugin.app.workspace.trigger('file-menu', menu, file, 'sidebar-highlights');
+                    menu.showAtMouseEvent(event);
+                }
+            });
+
+            // Add hover for link preview
+            fileNameEl.addEventListener('mouseover', (event) => {
+                this.plugin.app.workspace.trigger('hover-link', {
+                    event,
+                    source: 'sidebar-highlights',
+                    hoverParent: fileNameEl,
+                    targetEl: fileNameEl,
+                    linktext: highlight.filePath
+                });
             });
         }
     }
@@ -207,8 +267,8 @@ export class HighlightRenderer {
 
     private addTimestampToInfoLine(infoLineContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         if (options.showTimestamp && highlight.createdAt) {
-            const timestamp = new Date(highlight.createdAt);
-            const timeString = timestamp.toLocaleString();
+            const timestamp = moment(highlight.createdAt);
+            const timeString = options.dateFormat ? timestamp.format(options.dateFormat) : timestamp.format('YYYY-MM-DD HH:mm');
             
             // Create a separate timestamp container div
             const timestampContainer = infoLineContainer.createDiv({ cls: 'highlight-timestamp-container' });
@@ -239,8 +299,10 @@ export class HighlightRenderer {
                     this.renderMarkdownToElement(commentDiv, content);
                     commentDiv.addEventListener('click', (event) => {
                         event.stopPropagation();
-                        options.onCommentClick?.(highlight, index);
+                        options.onCommentClick?.(highlight, index, event);
                     });
+
+
                 });
             }
         }
@@ -317,15 +379,8 @@ export class HighlightRenderer {
     private renderMarkdownToElement(element: HTMLElement, text: string): void {
         element.empty(); // Clear existing content
         
-        // Escape HTML first (but keep apostrophes as normal characters)
-        let escaped = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-        
-        // Process markdown patterns safely
-        const segments = this.parseMarkdownSegments(escaped);
+        // Process markdown patterns safely (no HTML escaping needed since textContent handles it)
+        const segments = this.parseMarkdownSegments(text);
         
         for (const segment of segments) {
             if (segment.type === 'text') {

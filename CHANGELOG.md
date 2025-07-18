@@ -5,17 +5,27 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.11.0] - 2025-07-12
+## [1.12.0] - 2025-07-18
+
+### Added
+- **File Context Menu**: Added right-click context menu to file names in the sidebar with options to open in new tab, split right, and access default Obsidian file operations
+- **Link Hover Preview**: Added hover with modifier keys support in the sidebar for quick file previews
+- **File Exclusion System**: Added comprehensive file and folder exclusion settings to hide specific files/folders from highlight detection
+- **Moment.js Date Formatting**: Added new setting that supports moment.js timestamp formatting with customizable date display patterns
+- **Enhanced Comment Interaction**: Added setting to optionally select comment text when clicked in the sidebar, instead of just positioning the cursor
 
 ### Fixed
-- **Scroll Position Preservation**: Fixed sidebar scroll position jumping to top when changing highlight colors
-- **Highlight Persistence**: Fixed highlights being lost when creating new tabs or switching between tabs
+- **Duplicate Comments Bug**: Fixed duplicate comments appearing when a highlight had no markdown content after it
+- **Slow Launch Performance**: Fixed slow plugin startup on boot, especially with thousands of markdown files
+- **"All" Tab Performance**: Fixed hangs and performance issues by restricting display to 100 highlights per page with pagination
+- **Character Filtering**: Fixed unwanted characters appearing in highlights when they shouldn't
+- **Sequential Footnote Order**: Fixed footnotes being added in reverse order - now maintains chronological sequence
+- **Inline Footnote Positioning**: Fixed inline footnotes being inserted at footnote definitions instead of after highlights
 
 ### Enhanced
-- **Settings Redesign**: Revamped settings interface with improved layout and custom color options
-- **Excalidraw Filtering**: Added option to hide Excalidraw files that might clutter the "All Notes" tab
-- **Visual Consistency**: Highlight card borders now correctly use the corresponding highlight color
-- **Theme Integration**: Default highlight color now uses your theme's highlight color instead of a fixed color
+- **Settings Organization**: Cleaned up and reorganized color settings with better visual hierarchy
+- **Excalidraw Detection**: Made Excalidraw file filtering more robust with improved detection methods
+- **Footnote Spacing**: Removed unnecessary whitespace between footnote additions for cleaner formatting
 
 ## [1.10.0] - 2025-07-12
 

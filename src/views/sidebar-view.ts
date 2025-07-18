@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, debounce, setIcon, Modal, Setting, App, setTooltip } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection, CommentPluginSettings } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
@@ -21,14 +21,21 @@ export class HighlightsSidebarView extends ItemView {
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
     private selectedCollections: Set<string> = new Set();
-    private tagDropdownOpen: boolean = false;
-    private collectionsDropdownOpen: boolean = false;
     private viewMode: 'current' | 'all' | 'collections' = 'current';
     private currentCollectionId: string | null = null;
     private preservedScrollTop: number = 0;
     private isHighlightFocusing: boolean = false;
+    
+    // Pagination for "All Notes" performance
+    private currentPage: number = 0;
+    private itemsPerPage: number = 100;
+    private totalHighlights: Highlight[] = [];
+    private isPreservingPagination: boolean = false;
+    
+    // Pagination for grouped highlights
+    private currentGroupPage: number = 0;
+    private totalGroups: [string, Highlight[]][] = [];
     private isColorChanging: boolean = false;
-    private isPreservingScroll: boolean = false;
     private searchExpanded: boolean = false;
     private searchButton!: HTMLElement;
     private simpleSearchManager!: SimpleSearchManager;
@@ -325,7 +332,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.viewMode = 'current';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.updateContent(); // Content update instead of full rebuild
             }
         });
 
@@ -337,7 +344,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.viewMode = 'all';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.updateContent(); // Content update instead of full rebuild
             }
         });
 
@@ -350,7 +357,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.currentCollectionId = null;
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
-                this.renderContent();
+                this.updateContent(); // Content update instead of full rebuild
             }
         });
 
@@ -365,8 +372,6 @@ export class HighlightsSidebarView extends ItemView {
         this.dropdownManager.cleanup();
         
         // Reset flags
-        this.tagDropdownOpen = false;
-        this.collectionsDropdownOpen = false;
         
         // Clear maps to free memory
         this.highlightCommentsVisible.clear();
@@ -437,6 +442,9 @@ export class HighlightsSidebarView extends ItemView {
         // Update the tab states to reflect the current view mode
         this.updateTabStates();
         
+        // Restore selected highlight styling after DOM rebuild
+        this.restoreSelectedHighlight();
+        
         // Restore appropriate scroll position after full rebuild
         if (shouldUseHighlightScroll) {
             // Use the preserved highlight scroll position
@@ -492,6 +500,101 @@ export class HighlightsSidebarView extends ItemView {
                 this.contentAreaEl.scrollTop = this.savedScrollPosition;
             });
         }
+    }
+
+    private restoreSelectedHighlight() {
+        if (!this.plugin.selectedHighlightId) {
+            return;
+        }
+
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            // Clear all existing selections first to prevent multiples
+            const allSelectedElements = this.containerEl.querySelectorAll('.selected, .highlight-selected');
+            allSelectedElements.forEach(el => {
+                el.classList.remove('selected', 'highlight-selected');
+                // Clear any inline styles that might have been applied
+                (el as HTMLElement).style.removeProperty('border-left-color');
+                (el as HTMLElement).style.removeProperty('box-shadow');
+            });
+            
+            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+            if (selectedEl) {
+                selectedEl.classList.add('selected');
+                
+                // Find the highlight data to apply correct styling
+                const selectedHighlight = this.plugin.selectedHighlightId ? this.getHighlightById(this.plugin.selectedHighlightId) : null;
+                if (selectedHighlight) {
+                    selectedEl.classList.add('highlight-selected');
+                    this.applyHighlightColorStyling(selectedEl, selectedHighlight);
+                }
+            }
+        });
+    }
+
+    private applyHighlightColorStyling(element: HTMLElement, highlight: Highlight) {
+        const highlightColor = highlight.color || this.plugin.settings.highlightColor;
+        element.style.borderLeftColor = highlightColor;
+        if (!highlight.isNativeComment) {
+            element.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+        }
+    }
+
+    // === MINIMAL-REFRESH ARCHITECTURE ===
+    
+    /**
+     * Content-only update: repopulate highlight list without rebuilding structure
+     * Use for: file switches, search changes, bulk content updates
+     */
+    public updateContent() {
+        
+        // Simplified: just use renderContent() which handles all view modes properly with consistent grouping
+        // The performance benefit of the old populate methods was minimal compared to the maintenance burden
+        this.renderContent();
+    }
+
+
+    /**
+     * Update a single highlight item in-place without refreshing the entire sidebar
+     * This preserves scroll position and visual state
+     */
+    public updateItem(highlightId: string) {
+        const existingElement = this.containerEl.querySelector(`[data-highlight-id="${highlightId}"]`) as HTMLElement;
+        if (!existingElement) {
+            // Item not visible or doesn't exist, ignore silently
+            return;
+        }
+
+        // Find updated highlight data
+        const updatedHighlight = this.getHighlightById(highlightId);
+        if (!updatedHighlight) {
+            // Highlight was deleted, remove element
+            existingElement.remove();
+            return;
+        }
+
+        // Create new element with updated data
+        const tempContainer = document.createElement('div');
+        const showFilename = this.viewMode === 'all';
+        this.createHighlightItem(tempContainer, updatedHighlight, this.getSearchTerm(), showFilename);
+        
+        // Replace existing element with updated one
+        const newElement = tempContainer.firstElementChild as HTMLElement;
+        if (newElement) {
+            existingElement.parentNode?.replaceChild(newElement, existingElement);
+            
+            // Restore selection if this was the selected item
+            if (this.plugin.selectedHighlightId === highlightId) {
+                newElement.classList.add('selected');
+                newElement.classList.add('highlight-selected');
+                this.applyHighlightColorStyling(newElement, updatedHighlight);
+            }
+        }
+    }
+
+    private getSearchTerm(): string {
+        const searchInput = this.containerEl.querySelector('.highlights-search-input') as HTMLInputElement;
+        return searchInput?.value || '';
     }
 
     private renderContent() {
@@ -753,18 +856,507 @@ export class HighlightsSidebarView extends ItemView {
                     return a.startOffset - b.startOffset;
                 });
                 
-                // No grouping - just show individual highlights with filenames when in all notes mode
-                sortedHighlights.forEach(highlight => {
-                    this.createHighlightItem(this.listContainerEl, highlight, searchTerm, this.viewMode === 'all');
-                });
+                // No grouping - use pagination for "All Notes" performance
+                if (this.viewMode === 'all') {
+                    this.renderHighlightsWithPagination(sortedHighlights, searchTerm);
+                } else {
+                    // Current file - render all items directly (small dataset)
+                    sortedHighlights.forEach(highlight => {
+                        this.createHighlightItem(this.listContainerEl, highlight, searchTerm, false);
+                    });
+                }
             } else {
-                this.renderGroupedHighlights(filteredHighlights, searchTerm, this.viewMode === 'all');
+                // Use pagination for grouped highlights in "All Notes" mode
+                if (this.viewMode === 'all') {
+                    this.renderGroupedHighlightsWithPagination(filteredHighlights, searchTerm);
+                } else {
+                    // Current file - render all groups directly (small dataset)
+                    this.renderGroupedHighlights(filteredHighlights, searchTerm, false);
+                }
             }
         }
         this.showTagActive();
         
         // Restore scroll position after DOM rebuild
         this.restoreScrollPosition();
+    }
+
+    /**
+     * Render highlights with pagination for "All Notes" performance
+     * @param highlights Array of all highlights available
+     * @param searchTerm Optional search term for highlighting
+     */
+    private renderHighlightsWithPagination(highlights: Highlight[], searchTerm?: string): void {
+        this.totalHighlights = highlights;
+        
+        // Only reset to first page if we have new data AND we're not preserving pagination
+        // (e.g., when switching tabs or searching, but not when clicking highlights)
+        if (!this.isPreservingPagination) {
+            this.currentPage = 0;
+        }
+        
+        // Ensure current page is valid for the new data
+        const maxPage = Math.max(0, Math.ceil(highlights.length / this.itemsPerPage) - 1);
+        if (this.currentPage > maxPage) {
+            this.currentPage = maxPage;
+        }
+        
+        this.renderCurrentPage(searchTerm);
+        this.renderPaginationControls();
+        
+        // Reset the flag after rendering
+        this.isPreservingPagination = false;
+    }
+    
+    /**
+     * Render the current page of highlights
+     */
+    private renderCurrentPage(searchTerm?: string): void {
+        const startIndex = this.currentPage * this.itemsPerPage;
+        const endIndex = Math.min(startIndex + this.itemsPerPage, this.totalHighlights.length);
+        const pageHighlights = this.totalHighlights.slice(startIndex, endIndex);
+        
+        // Clear ALL content from the container (highlights AND pagination controls)
+        this.listContainerEl.empty();
+        
+        // Render current page items first
+        pageHighlights.forEach(highlight => {
+            this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true);
+        });
+    }
+    
+    /**
+     * Render pagination controls at the bottom
+     */
+    private renderPaginationControls(): void {
+        // Remove existing pagination
+        const existingPagination = this.listContainerEl.querySelector('.pagination-controls');
+        if (existingPagination) {
+            existingPagination.remove();
+        }
+        
+        const totalPages = Math.ceil(this.totalHighlights.length / this.itemsPerPage);
+        
+        // Only show pagination if we have more than one page
+        if (totalPages <= 1) {
+            return;
+        }
+        
+        const paginationContainer = this.listContainerEl.createDiv({
+            cls: 'pagination-controls'
+        });
+        
+        // Previous button
+        const prevButton = paginationContainer.createEl('button', {
+            cls: 'clickable-icon'
+        });
+        prevButton.disabled = this.currentPage === 0;
+        // Add Lucide chevron-left icon using Obsidian's setIcon
+        setIcon(prevButton, 'chevron-left');
+        prevButton.addEventListener('click', () => {
+            if (this.currentPage > 0) {
+                this.currentPage--;
+                this.renderCurrentPage(this.getSearchTerm());
+                this.renderPaginationControls();
+                // Ensure scroll to top happens after DOM updates
+                requestAnimationFrame(() => {
+                    this.contentAreaEl.scrollTop = 0;
+                });
+            }
+        });
+        
+        // Page info
+        const pageInfo = paginationContainer.createSpan({
+            text: `${this.currentPage + 1}/${totalPages}`,
+            cls: 'pagination-info pagination-info-compact'
+        });
+        
+        // Next button
+        const nextButton = paginationContainer.createEl('button', {
+            cls: 'clickable-icon'
+        });
+        nextButton.disabled = this.currentPage >= totalPages - 1;
+        // Add Lucide chevron-right icon using Obsidian's setIcon
+        setIcon(nextButton, 'chevron-right');
+        nextButton.addEventListener('click', () => {
+            if (this.currentPage < totalPages - 1) {
+                this.currentPage++;
+                this.renderCurrentPage(this.getSearchTerm());
+                this.renderPaginationControls();
+                // Ensure scroll to top happens after DOM updates
+                requestAnimationFrame(() => {
+                    this.contentAreaEl.scrollTop = 0;
+                });
+            }
+        });
+    }
+
+    /**
+     * Render grouped highlights with pagination for "All Notes" performance
+     * @param highlights Array of all highlights available
+     * @param searchTerm Optional search term for highlighting
+     */
+    private renderGroupedHighlightsWithPagination(highlights: Highlight[], searchTerm?: string): void {
+        // First, process highlights into groups (same logic as renderGroupedHighlights)
+        const groups = new Map<string, Highlight[]>();
+        const groupColors = new Map<string, string>();
+
+        // Group highlights based on grouping mode (same grouping logic)
+        highlights.forEach(highlight => {
+            let groupKey: string;
+            
+            if (this.groupingMode === 'color') {
+                const color = highlight.color || this.plugin.settings.highlightColor;
+                groupKey = color;
+                groupColors.set(groupKey, color);
+            } else if (this.groupingMode === 'comments-asc' || this.groupingMode === 'comments-desc') {
+                const commentCount = highlight.isNativeComment ? 0 : (highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0);
+                groupKey = commentCount === 0 ? 'No Comments' : 
+                          commentCount === 1 ? '1 Comment' : 
+                          `${commentCount} Comments`;
+            } else if (this.groupingMode === 'parent') {
+                const pathParts = highlight.filePath.split('/');
+                if (pathParts.length > 1) {
+                    groupKey = pathParts[pathParts.length - 2];
+                } else {
+                    groupKey = 'Root';
+                }
+            } else if (this.groupingMode === 'collection') {
+                const collections = this.plugin.collectionsManager.getAllCollections()
+                    .filter(collection => collection.highlightIds.includes(highlight.id));
+                
+                if (collections.length === 0) {
+                    groupKey = 'No Collections';
+                } else if (collections.length === 1) {
+                    groupKey = collections[0].name;
+                } else {
+                    groupKey = collections.map(c => c.name).sort().join(', ');
+                }
+            } else if (this.groupingMode === 'filename') {
+                const filename = highlight.filePath.split('/').pop() || highlight.filePath;
+                groupKey = filename.replace(/\.md$/, '');
+            } else if (this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
+                if (highlight.createdAt) {
+                    const date = new Date(highlight.createdAt);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    groupKey = `${year}-${month}-${day}`;
+                } else {
+                    groupKey = 'No Date';
+                }
+            } else {
+                groupKey = 'Default';
+            }
+
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, []);
+            }
+            groups.get(groupKey)!.push(highlight);
+        });
+
+        // Sort groups and sort highlights within each group
+        const sortedGroups = Array.from(groups.entries()).map(([groupName, groupHighlights]) => {
+            // Sort highlights within the group
+            let sortedHighlights: Highlight[];
+            if (this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
+                sortedHighlights = groupHighlights.sort((a, b) => {
+                    const timeA = a.createdAt || 0;
+                    const timeB = b.createdAt || 0;
+                    
+                    if (this.groupingMode === 'date-created-asc') {
+                        return timeA - timeB; // Earlier times first
+                    } else {
+                        return timeB - timeA; // Later times first
+                    }
+                });
+            } else {
+                sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+            }
+            return [groupName, sortedHighlights] as [string, Highlight[]];
+        }).sort(([a], [b]) => {
+            if (this.groupingMode === 'comments-asc' || this.groupingMode === 'comments-desc') {
+                if (a === 'No Comments' && b === 'No Comments') return 0;
+                if (a === 'No Comments') return this.groupingMode === 'comments-asc' ? -1 : 1;
+                if (b === 'No Comments') return this.groupingMode === 'comments-asc' ? 1 : -1;
+                
+                const aNum = parseInt(a.split(' ')[0]) || 0;
+                const bNum = parseInt(b.split(' ')[0]) || 0;
+                
+                return this.groupingMode === 'comments-asc' ? aNum - bNum : bNum - aNum;
+            } else if (this.groupingMode === 'tag') {
+                if (a === 'No Tags' && b === 'No Tags') return 0;
+                if (a === 'No Tags') return 1;
+                if (b === 'No Tags') return -1;
+                return a.localeCompare(b);
+            } else if (this.groupingMode === 'parent') {
+                if (a === 'Root' && b === 'Root') return 0;
+                if (a === 'Root') return -1;
+                if (b === 'Root') return 1;
+                return a.localeCompare(b);
+            } else if (this.groupingMode === 'collection') {
+                if (a === 'No Collections' && b === 'No Collections') return 0;
+                if (a === 'No Collections') return 1;
+                if (b === 'No Collections') return -1;
+                return a.localeCompare(b);
+            } else if (this.groupingMode === 'filename') {
+                return a.localeCompare(b);
+            } else if (this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
+                if (a === 'No Date' && b === 'No Date') return 0;
+                if (a === 'No Date') return 1;
+                if (b === 'No Date') return -1;
+                
+                const dateA = new Date(a);
+                const dateB = new Date(b);
+                
+                if (this.groupingMode === 'date-created-asc') {
+                    return dateA.getTime() - dateB.getTime();
+                } else {
+                    return dateB.getTime() - dateA.getTime();
+                }
+            }
+            return a.localeCompare(b);
+        });
+
+        this.totalGroups = sortedGroups;
+        
+        // Only reset to first page if we have new data AND we're not preserving pagination
+        if (!this.isPreservingPagination) {
+            this.currentGroupPage = 0;
+        }
+        
+        // Calculate total highlights across all groups
+        const totalHighlightCount = sortedGroups.reduce((sum, [, highlights]) => sum + highlights.length, 0);
+        const maxPage = Math.max(0, Math.ceil(totalHighlightCount / this.itemsPerPage) - 1);
+        if (this.currentGroupPage > maxPage) {
+            this.currentGroupPage = maxPage;
+        }
+        
+        this.renderCurrentGroupPage(searchTerm, groupColors);
+        this.renderGroupPaginationControls();
+        
+        // Reset the flag after rendering
+        this.isPreservingPagination = false;
+    }
+
+    /**
+     * Render the current page of groups (limited by highlight count, not group count)
+     */
+    private renderCurrentGroupPage(searchTerm?: string, groupColors?: Map<string, string>): void {
+        const startHighlightIndex = this.currentGroupPage * this.itemsPerPage;
+        const endHighlightIndex = startHighlightIndex + this.itemsPerPage;
+        
+        // Clear ALL content from the container
+        this.listContainerEl.empty();
+        
+        let currentHighlightIndex = 0;
+        let renderedHighlightCount = 0;
+        
+        // Iterate through groups and render highlights until we reach our limit
+        for (const [groupName, groupHighlights] of this.totalGroups) {
+            const groupSize = groupHighlights.length;
+            
+            // Check if this group intersects with our page range
+            if (currentHighlightIndex + groupSize > startHighlightIndex && 
+                currentHighlightIndex < endHighlightIndex) {
+                
+                // Determine which highlights from this group to show
+                const groupStartOffset = Math.max(0, startHighlightIndex - currentHighlightIndex);
+                const groupEndOffset = Math.min(groupSize, endHighlightIndex - currentHighlightIndex);
+                const groupHighlightsToShow = groupHighlights.slice(groupStartOffset, groupEndOffset);
+                
+                // Only render the group if we have highlights to show
+                if (groupHighlightsToShow.length > 0) {
+                    // Render group header
+                    this.renderGroupHeader(groupName, groupHighlights, groupColors);
+                    
+                    // Render the subset of highlights for this page (already sorted)
+                    groupHighlightsToShow.forEach(highlight => {
+                        this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true);
+                        renderedHighlightCount++;
+                    });
+                }
+            }
+            
+            currentHighlightIndex += groupSize;
+            
+            // Stop if we've rendered enough highlights or gone past our range
+            if (currentHighlightIndex >= endHighlightIndex) {
+                break;
+            }
+        }
+    }
+
+    /**
+     * Render just the group header with stats
+     */
+    private renderGroupHeader(groupName: string, groupHighlights: Highlight[], groupColors?: Map<string, string>): void {
+        // Create group header
+        const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
+        
+        // Create header text container for name and icons
+        const headerTextContainer = groupHeader.createSpan();
+        
+        // Add color square if grouping by color
+        if (this.groupingMode === 'color' && groupColors?.has(groupName)) {
+            const color = groupColors.get(groupName)!;
+            const colorSquare = headerTextContainer.createDiv({ 
+                cls: 'group-color-square',
+                attr: { 'data-color': color }
+            });
+            colorSquare.style.backgroundColor = color;
+        }
+        
+        // Add tag icon if grouping by tag
+        if (this.groupingMode === 'tag') {
+            const tagIcon = headerTextContainer.createDiv({ cls: 'group-tag-icon' });
+            setIcon(tagIcon, 'tag');
+        }
+        
+        const headerText = headerTextContainer.createSpan();
+        headerText.textContent = groupName;
+        
+        // Add collection-style stats underneath the group header
+        const statsContainer = groupHeader.createDiv({ cls: 'collection-stats' });
+        const infoLineContainer = statsContainer.createEl('small', { cls: 'collection-info-line' });
+        
+        // Calculate file count for this group
+        const uniqueFiles = new Set(groupHighlights.map(h => h.filePath));
+        const fileCount = uniqueFiles.size;
+        
+        // Calculate native comments count for this group
+        const nativeCommentsCount = groupHighlights.filter(h => h.isNativeComment).length;
+        
+        // Highlights count section (excluding native comments)
+        const regularHighlightsCount = groupHighlights.filter(h => !h.isNativeComment).length;
+        const highlightsContainer = infoLineContainer.createDiv({
+            cls: 'highlight-line-info'
+        });
+        
+        const highlightsIcon = highlightsContainer.createDiv({ cls: 'line-icon' });
+        setIcon(highlightsIcon, 'highlighter');
+        
+        highlightsContainer.createSpan({ text: `${regularHighlightsCount}` });
+
+        // Native comments count section (show when native comments are enabled)
+        if (this.showNativeComments) {
+            const nativeCommentsContainer = infoLineContainer.createDiv({
+                cls: 'highlight-line-info'
+            });
+            
+            const nativeCommentsIcon = nativeCommentsContainer.createDiv({ cls: 'line-icon' });
+            setIcon(nativeCommentsIcon, 'captions');
+            
+            nativeCommentsContainer.createSpan({ text: `${nativeCommentsCount}` });
+        }
+
+        // Files count section
+        const filesContainer = infoLineContainer.createDiv({
+            cls: 'highlight-line-info'
+        });
+        
+        const filesIcon = filesContainer.createDiv({ cls: 'line-icon' });
+        setIcon(filesIcon, 'files');
+        
+        filesContainer.createSpan({ text: `${fileCount}` });
+    }
+
+    /**
+     * Render a single group with its highlights (extracted from renderGroupedHighlights)
+     */
+    private renderSingleGroup(groupName: string, groupHighlights: Highlight[], searchTerm?: string, showFilename: boolean = false, groupColors?: Map<string, string>): void {
+        // Render group header
+        this.renderGroupHeader(groupName, groupHighlights, groupColors);
+
+        // Sort highlights within the group
+        let sortedHighlights: Highlight[];
+        if (this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
+            sortedHighlights = groupHighlights.sort((a, b) => {
+                const timeA = a.createdAt || 0;
+                const timeB = b.createdAt || 0;
+                
+                if (this.groupingMode === 'date-created-asc') {
+                    return timeA - timeB; // Earlier times first
+                } else {
+                    return timeB - timeA; // Later times first
+                }
+            });
+        } else {
+            sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+        }
+        
+        // Create highlights in this group
+        sortedHighlights.forEach(highlight => {
+            this.createHighlightItem(this.listContainerEl, highlight, searchTerm, showFilename);
+        });
+    }
+
+    /**
+     * Render pagination controls for groups
+     */
+    private renderGroupPaginationControls(): void {
+        // Remove existing pagination
+        const existingPagination = this.listContainerEl.querySelector('.pagination-controls');
+        if (existingPagination) {
+            existingPagination.remove();
+        }
+        
+        // Calculate total highlights across all groups
+        const totalHighlightCount = this.totalGroups.reduce((sum, [, highlights]) => sum + highlights.length, 0);
+        const totalPages = Math.ceil(totalHighlightCount / this.itemsPerPage);
+        
+        // Only show pagination if we have more than one page
+        if (totalPages <= 1) {
+            return;
+        }
+        
+        const paginationContainer = this.listContainerEl.createDiv({
+            cls: 'pagination-controls'
+        });
+        
+        // Previous button
+        const prevButton = paginationContainer.createEl('button', {
+            cls: 'clickable-icon'
+        });
+        prevButton.disabled = this.currentGroupPage === 0;
+        // Add Lucide chevron-left icon using Obsidian's setIcon
+        setIcon(prevButton, 'chevron-left');
+        prevButton.addEventListener('click', () => {
+            if (this.currentGroupPage > 0) {
+                this.currentGroupPage--;
+                this.renderCurrentGroupPage(this.getSearchTerm());
+                this.renderGroupPaginationControls();
+                // Ensure scroll to top happens after DOM updates
+                requestAnimationFrame(() => {
+                    this.contentAreaEl.scrollTop = 0;
+                });
+            }
+        });
+        
+        // Page info
+        const pageInfo = paginationContainer.createSpan({
+            text: `${this.currentGroupPage + 1}/${totalPages}`,
+            cls: 'pagination-info pagination-info-compact'
+        });
+        
+        // Next button
+        const nextButton = paginationContainer.createEl('button', {
+            cls: 'clickable-icon'
+        });
+        nextButton.disabled = this.currentGroupPage >= totalPages - 1;
+        // Add Lucide chevron-right icon using Obsidian's setIcon
+        setIcon(nextButton, 'chevron-right');
+        nextButton.addEventListener('click', () => {
+            if (this.currentGroupPage < totalPages - 1) {
+                this.currentGroupPage++;
+                this.renderCurrentGroupPage(this.getSearchTerm());
+                this.renderGroupPaginationControls();
+                // Ensure scroll to top happens after DOM updates
+                requestAnimationFrame(() => {
+                    this.contentAreaEl.scrollTop = 0;
+                });
+            }
+        });
     }
 
     private updateGroupButtonState(button: HTMLElement) {
@@ -793,6 +1385,7 @@ export class HighlightsSidebarView extends ItemView {
             showTimestamp: this.plugin.settings.showTimestamps,
             showHighlightActions: this.plugin.settings.showHighlightActions,
             isCommentsVisible: this.highlightCommentsVisible.get(highlight.id) || false,
+            dateFormat: this.plugin.settings.dateFormat,
             onCommentToggle: (highlightId) => {
                 const currentVisibility = this.highlightCommentsVisible.get(highlightId) || false;
                 this.highlightCommentsVisible.set(highlightId, !currentVisibility);
@@ -838,13 +1431,20 @@ export class HighlightsSidebarView extends ItemView {
                     }
                 });
             },
-            onHighlightClick: (highlight) => {
-                this.focusHighlightInEditor(highlight);
+            onHighlightClick: (highlight, event) => {
+                this.focusHighlightInEditor(highlight, event);
             },
-            onAddComment: (highlight) => {
-                this.addFootnoteToHighlight(highlight);
+            onAddComment: async (highlight) => {
+                
+                // Set flag to preserve pagination when adding comments
+                this.isPreservingPagination = true;
+                
+                // First focus the highlight in editor and wait for file switch to complete
+                await this.focusHighlightInEditor(highlight);
+                // Then add the footnote with targeted update
+                this.addFootnoteToHighlightWithTargetedUpdate(highlight);
             },
-            onCommentClick: (highlight, commentIndex) => {
+            onCommentClick: (highlight, commentIndex, event) => {
                 // Find the original index in highlight.footnoteContents
                 let originalIndex = -1;
                 let validIndexCounter = 0;
@@ -858,7 +1458,7 @@ export class HighlightsSidebarView extends ItemView {
                     }
                 }
                 if (originalIndex !== -1) {
-                    this.focusFootnoteInEditor(highlight, originalIndex);
+                    this.focusFootnoteInEditor(highlight, originalIndex, event);
                 }
             },
             onTagClick: (tag) => {
@@ -870,8 +1470,10 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderFilteredList();
                 this.showTagActive();
             },
-            onFileNameClick: (filePath) => {
-                this.plugin.app.workspace.openLinkText(filePath, filePath, false);
+            onFileNameClick: (filePath, event) => {
+                // Set flag to preserve pagination when clicking filenames
+                this.isPreservingPagination = true;
+                this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
             }
         };
 
@@ -886,110 +1488,205 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
-    private addFootnoteToHighlight(highlight: Highlight) {
-        // First, focus the highlight in the editor
-        this.focusHighlightInEditor(highlight);
+
+    private async addFootnoteToHighlightWithTargetedUpdate(highlight: Highlight) {
+        const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!activeView) return;
+
+        const editor = activeView.editor;
+        const file = activeView.file;
+        if (!file) return;
+
+        // Find the highlight in the editor content
+        const content = editor.getValue();
+        const lines = content.split('\n');
         
-        // Wait a bit for the focus to complete, then add footnote
-        window.setTimeout(() => {
-            const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-            if (!activeEditorView || !activeEditorView.editor || activeEditorView.file?.path !== highlight.filePath) {
-                // Ensure the editor is for the correct file, especially after focusHighlightInEditor might open a new one
-                const correctView = this.plugin.app.workspace.getLeavesOfType('markdown')
-                    .map(leaf => leaf.view as MarkdownView)
-                    .find(view => view.file?.path === highlight.filePath);
-                
-                if (!correctView || !correctView.editor) {
-                    new Notice('Could not access the editor for the target file.');
-                    return;
-                }
-                // If we found the correct view, proceed with its editor (though focusHighlightInEditor should handle activation)
-                // This check is more of a safeguard.
-            }
-
-            // Re-fetch active editor view as focusHighlightInEditor might have changed it
-            const currentEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-            if (!currentEditorView || !currentEditorView.editor || currentEditorView.file?.path !== highlight.filePath) {
-                 new Notice('Editor for the highlight\'s file is not active.');
-                 return;
-            }
-            const editor = currentEditorView.editor;
-            const content = editor.getValue();
-            const escapedText = this.escapeRegex(highlight.text);
-            
-            // Look for existing footnotes after this highlight
-            // Use different regex pattern based on whether it's a native comment or regular highlight
-            const regexPattern = highlight.isNativeComment 
-                ? `%%${escapedText}%%`
-                : `==${escapedText}==`;
-            const highlightRegex = new RegExp(regexPattern, 'g');
-            let match;
-            let bestMatch: { index: number, length: number } | null = null;
-            let minDistance = Infinity;
-
-            while ((match = highlightRegex.exec(content)) !== null) {
-                const distance = Math.abs(match.index - highlight.startOffset);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    bestMatch = { index: match.index, length: match[0].length };
-                }
-            }
-
-            if (bestMatch) {
-                let insertOffset = bestMatch.index + bestMatch.length;
-                
-                // Check for existing footnotes after the highlight (no spaces between footnotes)
-                const afterHighlight = content.substring(insertOffset);
-                const footnoteMatches = afterHighlight.match(/^(\[\^\w+\])+/);
-                
-                if (footnoteMatches) {
-                    // If there are existing footnotes, position cursor after them
-                    insertOffset += footnoteMatches[0].length;
-                    // Update footnote count
-                    const footnoteCount = (footnoteMatches[0].match(/\[\^\w+\]/g) || []).length;
-                    highlight.footnoteCount = footnoteCount + 1;
-                } else {
-                    // First footnote for this highlight
-                    highlight.footnoteCount = 1;
-                }
-
-                const insertPos = editor.offsetToPos(insertOffset);
-                editor.setCursor(insertPos);
-                editor.focus();
-                
-                // Check user preference for footnote type
-                if (this.plugin.settings.useInlineFootnotes) {
-                    // Use inline footnote manager
-                    const success = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, 'New comment');
-                    if (success) {
-                        // Update the highlight in storage and refresh sidebar
-                        this.plugin.updateHighlight(highlight.id, { footnoteCount: highlight.footnoteCount }, highlight.filePath);
-                    } else {
-                        new Notice('Could not insert inline footnote.');
-                    }
-                } else {
-                    // Use Obsidian's built-in Insert Footnote command
-                    (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
-                    
-                    // Update the highlight in storage and refresh sidebar
-                    this.plugin.updateHighlight(highlight.id, { footnoteCount: highlight.footnoteCount }, highlight.filePath);
+        // Find the line containing this highlight
+        let targetLine = -1;
+        let insertPos: { line: number; ch: number } | null = null;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (highlight.isNativeComment) {
+                if (line.includes(`%%${highlight.text}%%`)) {
+                    targetLine = i;
+                    const highlightEndIndex = line.indexOf(`%%${highlight.text}%%`) + `%%${highlight.text}%%`.length;
+                    // Find the end of any existing footnotes after the highlight
+                    const afterHighlight = line.substring(highlightEndIndex);
+                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*/);
+                    const footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
+                    break;
                 }
             } else {
-                new Notice('Could not find the highlight in the editor. It might have been modified.');
-            }
-        }, 150);
-    }
-
-    async focusHighlightInEditor(highlight: Highlight) {
-        // Always update selection immediately, even if we're going to guard against file operations
-        const prevId = this.plugin.selectedHighlightId;
-        this.plugin.selectedHighlightId = highlight.id;
-        if (prevId) {
-            const prevEl = this.containerEl.querySelector(`[data-highlight-id="${prevId}"]`) as HTMLElement;
-            if (prevEl) {
-                prevEl.classList.remove('selected', 'highlight-selected');
+                if (line.includes(`==${highlight.text}==`)) {
+                    targetLine = i;
+                    const highlightEndIndex = line.indexOf(`==${highlight.text}==`) + `==${highlight.text}==`.length;
+                    // Find the end of any existing footnotes after the highlight
+                    const afterHighlight = line.substring(highlightEndIndex);
+                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*/);
+                    const footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
+                    break;
+                }
             }
         }
+
+        if (!insertPos) {
+            new Notice('Could not find the highlight in the editor. It might have been modified.');
+            return;
+        }
+
+        // Position cursor at the end of the highlight
+        editor.setCursor(insertPos);
+        editor.focus();
+
+        // Add the footnote
+        if (this.plugin.settings.useInlineFootnotes) {
+            // Use inline footnote
+            const success = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, '');
+            if (success) {
+                // Wait a brief moment for the editor content to update
+                setTimeout(async () => {
+                    await this.updateSingleHighlightFromEditor(highlight, file);
+                }, 50);
+            } else {
+                new Notice('Could not insert inline footnote.');
+            }
+        } else {
+            // Use standard footnote
+            (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
+            // Wait for the footnote command to complete
+            setTimeout(async () => {
+                await this.updateSingleHighlightFromEditor(highlight, file);
+            }, 100);
+        }
+    }
+
+    private async updateSingleHighlightFromEditor(highlight: Highlight, file: TFile) {
+        // Re-parse just this highlight from the current editor content
+        const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!activeView) return;
+
+        const content = activeView.editor.getValue();
+        
+        // Extract footnotes
+        const footnoteMap = this.plugin.extractFootnotes(content);
+        
+        // Find the updated highlight in content
+        const updatedHighlight = this.findAndParseHighlight(content, highlight, footnoteMap);
+        
+        if (updatedHighlight) {
+            // Update in memory storage
+            const fileHighlights = this.plugin.highlights.get(file.path) || [];
+            const index = fileHighlights.findIndex(h => h.id === highlight.id);
+            if (index !== -1) {
+                fileHighlights[index] = updatedHighlight;
+                this.plugin.highlights.set(file.path, fileHighlights);
+                await this.plugin.saveSettings();
+                
+                // Update just this item in the sidebar
+                this.updateItem(highlight.id);
+            }
+        }
+    }
+
+    private findAndParseHighlight(content: string, originalHighlight: Highlight, footnoteMap: Map<string, string>): Highlight | null {
+        // This is a simplified version - we're looking for the same highlight text and updating its footnotes
+        const regex = originalHighlight.isNativeComment ? 
+            new RegExp(`%%${this.escapeRegex(originalHighlight.text)}%%`, 'g') :
+            new RegExp(`==${this.escapeRegex(originalHighlight.text)}==`, 'g');
+        
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            // Check if this is likely the same highlight (same position roughly)
+            if (Math.abs(match.index - originalHighlight.startOffset) < 100) { // Within 100 characters
+                // Parse footnotes for this highlight using same logic as main parsing
+                const afterHighlight = content.slice(match.index + match[0].length);
+                
+                // Find all footnotes (both standard and inline) in order
+                const allFootnotes: Array<{type: 'standard' | 'inline', index: number, content: string}> = [];
+                
+                // First, get all inline footnotes with their positions
+                const inlineFootnotes = this.plugin.inlineFootnoteManager.extractInlineFootnotes(content, match.index + match[0].length);
+                inlineFootnotes.forEach(footnote => {
+                    if (footnote.content.trim()) {
+                        allFootnotes.push({
+                            type: 'inline',
+                            index: footnote.startIndex,
+                            content: footnote.content.trim()
+                        });
+                    }
+                });
+                
+                // Then, get all standard footnotes with their positions (using same validation logic)
+                const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
+                let stdMatch;
+                let lastValidPosition = 0;
+                
+                while ((stdMatch = standardFootnoteRegex.exec(afterHighlight)) !== null) {
+                    // Check if this standard footnote is in a valid position
+                    const precedingText = afterHighlight.substring(lastValidPosition, stdMatch.index);
+                    const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                    
+                    if (stdMatch.index === lastValidPosition || isValid) {
+                        const key = stdMatch[2]; // The key inside [^key]
+                        if (footnoteMap.has(key)) {
+                            const fnContent = footnoteMap.get(key)!.trim();
+                            if (fnContent) { // Only add non-empty content
+                                allFootnotes.push({
+                                    type: 'standard',
+                                    index: match.index + match[0].length + stdMatch.index,
+                                    content: fnContent
+                                });
+                            }
+                        }
+                        lastValidPosition = stdMatch.index + stdMatch[0].length;
+                    } else {
+                        // Stop if we encounter a footnote that's not in the valid sequence
+                        break;
+                    }
+                }
+                
+                // Sort footnotes by their position in the text
+                allFootnotes.sort((a, b) => a.index - b.index);
+                
+                // Extract content in the correct order
+                const footnoteContents = allFootnotes.map(f => f.content);
+                const footnoteCount = footnoteContents.length;
+                
+                // Return updated highlight
+                return {
+                    ...originalHighlight,
+                    footnoteCount,
+                    footnoteContents,
+                    startOffset: match.index,
+                    endOffset: match.index + match[0].length
+                };
+            }
+        }
+        
+        return null;
+    }
+
+    async focusHighlightInEditor(highlight: Highlight, event?: MouseEvent) {
+        
+        // Set flag to preserve pagination when clicking highlights (especially from other pages)
+        this.isPreservingPagination = true;
+        
+        // Always clear ALL existing selections first to prevent multiple selections
+        const allSelectedElements = this.containerEl.querySelectorAll('.selected, .highlight-selected');
+        allSelectedElements.forEach(el => {
+            el.classList.remove('selected', 'highlight-selected');
+            // Clear any inline styles that might have been applied
+            (el as HTMLElement).style.removeProperty('border-left-color');
+            (el as HTMLElement).style.removeProperty('box-shadow');
+        });
+        
+        // Update selection state
+        const prevId = this.plugin.selectedHighlightId;
+        this.plugin.selectedHighlightId = highlight.id;
+        
         const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
         if (newEl) {
             newEl.classList.add('selected');
@@ -1041,19 +1738,22 @@ export class HighlightsSidebarView extends ItemView {
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
             if (fileToOpen instanceof TFile) {
-                const openResult = await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
-                // Use a more reliable approach for file opening
-                const checkAndFocus = () => {
-                    const newActiveView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-                    if (newActiveView && newActiveView.file?.path === highlight.filePath) {
-                        this.performHighlightFocus(newActiveView, highlight);
-                    } else {
-                        // Retry if file isn't ready yet
-                        window.setTimeout(checkAndFocus, 50);
-                    }
-                };
-                window.setTimeout(checkAndFocus, 100);
-                return;
+                const openResult = await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, event ? Keymap.isModEvent(event) : false);
+                
+                // Wait for the file to be properly opened and active
+                return new Promise<void>((resolve) => {
+                    const checkAndFocus = () => {
+                        const newActiveView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+                        if (newActiveView && newActiveView.file?.path === highlight.filePath) {
+                            this.performHighlightFocus(newActiveView, highlight);
+                            resolve(); // Resolve the promise when file is ready
+                        } else {
+                            // Retry if file isn't ready yet
+                            window.setTimeout(checkAndFocus, 50);
+                        }
+                    };
+                    window.setTimeout(checkAndFocus, 100);
+                });
             }
         }
 
@@ -1138,7 +1838,7 @@ export class HighlightsSidebarView extends ItemView {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    private async focusFootnoteInEditor(highlight: Highlight, footnoteIndex: number) {
+    private async focusFootnoteInEditor(highlight: Highlight, footnoteIndex: number, event?: MouseEvent) {
         // First, ensure the correct file is open
         let targetView: MarkdownView | null = null;
         const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
@@ -1159,9 +1859,9 @@ export class HighlightsSidebarView extends ItemView {
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
             if (fileToOpen instanceof TFile) {
-                await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, false);
+                await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, event ? Keymap.isModEvent(event) : false);
                 // Wait for file to open and retry
-                window.setTimeout(() => this.focusFootnoteInEditor(highlight, footnoteIndex), 200);
+                window.setTimeout(() => this.focusFootnoteInEditor(highlight, footnoteIndex, event), 200);
                 return;
             }
         }
@@ -1265,10 +1965,23 @@ export class HighlightsSidebarView extends ItemView {
                 const caretPosition = targetFootnote.startIndex + caretIndex;
                 const footnoteStartPos = editor.offsetToPos(caretPosition);
                 
-                // Scroll to and position cursor right before the ^ character
-                editor.scrollIntoView({ from: footnoteStartPos, to: footnoteStartPos }, true);
-                editor.setCursor(footnoteStartPos);
-                editor.focus();
+                if (this.plugin.settings.selectTextOnCommentClick) {
+                    // Select the content inside ^[content]
+                    const contentStart = targetFootnote.startIndex + footnoteText.indexOf('[') + 1;
+                    const contentEnd = targetFootnote.startIndex + footnoteText.lastIndexOf(']');
+                    const selectionStart = editor.offsetToPos(contentStart);
+                    const selectionEnd = editor.offsetToPos(contentEnd);
+                    
+                    // Scroll to and select the comment text
+                    editor.scrollIntoView({ from: selectionStart, to: selectionEnd }, true);
+                    editor.setSelection(selectionStart, selectionEnd);
+                    editor.focus();
+                } else {
+                    // Scroll to and position cursor right before the ^ character
+                    editor.scrollIntoView({ from: footnoteStartPos, to: footnoteStartPos }, true);
+                    editor.setCursor(footnoteStartPos);
+                    editor.focus();
+                }
             } else {
                 // For standard footnotes, find the footnote definition
                 const footnoteKey = targetFootnote.content;
@@ -1284,10 +1997,24 @@ export class HighlightsSidebarView extends ItemView {
                 const footnoteDefIndex = content.indexOf(footnoteDefMatch[0]);
                 const footnoteDefStartPos = editor.offsetToPos(footnoteDefIndex);
 
-                // Scroll to and position cursor at the footnote definition
-                editor.scrollIntoView({ from: footnoteDefStartPos, to: footnoteDefStartPos }, true);
-                editor.setCursor(footnoteDefStartPos);
-                editor.focus();
+                if (this.plugin.settings.selectTextOnCommentClick) {
+                    // Select the content after the colon and space
+                    const definitionContent = footnoteDefMatch[1];
+                    const contentStartIndex = footnoteDefIndex + footnoteDefMatch[0].indexOf(definitionContent);
+                    const contentEndIndex = contentStartIndex + definitionContent.length;
+                    const selectionStart = editor.offsetToPos(contentStartIndex);
+                    const selectionEnd = editor.offsetToPos(contentEndIndex);
+                    
+                    // Scroll to and select the comment text
+                    editor.scrollIntoView({ from: selectionStart, to: selectionEnd }, true);
+                    editor.setSelection(selectionStart, selectionEnd);
+                    editor.focus();
+                } else {
+                    // Scroll to and position cursor at the footnote definition
+                    editor.scrollIntoView({ from: footnoteDefStartPos, to: footnoteDefStartPos }, true);
+                    editor.setCursor(footnoteDefStartPos);
+                    editor.focus();
+                }
             }
 
         }, 150);
@@ -2177,18 +2904,6 @@ export class HighlightsSidebarView extends ItemView {
         return null;
     }
 
-    private onChipClick(token: SearchToken): void {
-        // Optional: Could implement editing or additional actions for chips
-    }
-
-    private removeTokenFromQuery(query: string, tokenToRemove: SearchToken): string {
-        // This is a simplified approach - in practice, you might want more sophisticated parsing
-        const prefix = tokenToRemove.exclude ? '-' : '';
-        const symbol = tokenToRemove.type === 'tag' ? '#' : tokenToRemove.type === 'collection' ? '@' : '';
-        const tokenString = prefix + symbol + tokenToRemove.value;
-        
-        return query.replace(new RegExp('\\s*' + tokenString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'g'), ' ').trim();
-    }
 
     private getAvailableTags(): string[] {
         const tags = new Set<string>();

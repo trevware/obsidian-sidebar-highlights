@@ -1,3 +1,24 @@
+/* Utility classes for show/hide functionality */
+.hidden {
+    display: none !important;
+}
+
+.visible {
+    display: block !important;
+}
+
+.visible-flex {
+    display: flex !important;
+}
+
+.visible-inline {
+    display: inline !important;
+}
+
+.visible-inline-block {
+    display: inline-block !important;
+}
+
 /* Style for markdown highlights - theme color classes */
 .cm-highlight {
     padding: 1px 2px;
@@ -58,6 +79,11 @@ body.theme-highlight-green .cm-highlight {
 
 .highlight-item-card.highlight-color-default {
     border-left-color: rgb(var(--text-highlight-bg-rgb));
+}
+
+/* Support for custom colors via CSS custom properties */
+.highlight-item-card.highlight-color-custom {
+    border-left-color: var(--highlight-color, rgb(var(--text-highlight-bg-rgb)));
 }
 
 /* Override default view-content padding for highlights sidebar */
@@ -435,6 +461,7 @@ body.theme-highlight-green .cm-highlight {
     border-radius: 2px;
     border: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
+    background-color: var(--group-color, var(--background-modifier-border));
 }
 
 .group-color-square[data-color="#ffd700"] { background-color: #ffd700; }
@@ -499,6 +526,11 @@ body.theme-highlight-green .cm-highlight {
 
 .highlight-item-card.highlight-color-green.highlight-selected {
     box-shadow: 0 0 0 1.5px #96ceb4, var(--shadow-s);
+}
+
+/* Support for custom colors in selection state */
+.highlight-item-card.highlight-color-custom.highlight-selected {
+    box-shadow: 0 0 0 1.5px var(--highlight-color, rgb(var(--text-highlight-bg-rgb))), var(--shadow-s);
 }
 
 /* Native comment highlight card styling - similar to regular highlights but with muted appearance */
@@ -1396,4 +1428,55 @@ body.theme-highlight-green .cm-highlight {
     opacity: 0.5 !important;
     pointer-events: none !important;
 }
+
+/* Pagination controls for "All Notes" performance */
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 15px 10px;
+    margin-top: 10px;
+    border-top: 1px solid var(--background-modifier-border);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+}
+
+.pagination-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: var(--font-ui-smaller);
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-info {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Using Obsidian's built-in .clickable-icon class for buttons */
+
+.pagination-info-compact {
+    font-size: var(--font-ui-smaller);
+    font-weight: 500;
+    color: var(--text-muted);
+    min-width: 40px;
+    text-align: center;
+}
+
 

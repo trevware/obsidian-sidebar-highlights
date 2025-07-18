@@ -97,7 +97,8 @@ export class InlineFootnoteManager {
         });
         
         // Get all standard footnotes with their positions (using same validation logic)
-        const standardFootnoteRegex = /(\s*\[\^(\w+)\])/g;
+        // Use negative lookahead to avoid matching footnote definitions [^key]: content
+        const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
         let match_sf;
         let lastValidPosition = 0;
         
@@ -126,19 +127,23 @@ export class InlineFootnoteManager {
             insertOffset = lastFootnote.endIndex;
         }
         
-        // Add space before the new inline footnote if there are existing footnotes
-        const hasExistingFootnotes = allFootnotes.length > 0;
-        const footnoteText = hasExistingFootnotes 
-            ? ` ^[${footnoteContent}]`
-            : `^[${footnoteContent}]`;
+        // Add inline footnote without extra spacing
+        const footnoteText = `^[${footnoteContent}]`;
         
         const insertPos = editor.offsetToPos(insertOffset);
         editor.replaceRange(footnoteText, insertPos);
         
-        // Select the footnote content for easy editing
-        const footnoteStartPos = editor.offsetToPos(insertOffset + footnoteText.indexOf(footnoteContent));
-        const footnoteEndPos = editor.offsetToPos(insertOffset + footnoteText.indexOf(footnoteContent) + footnoteContent.length);
-        editor.setSelection(footnoteStartPos, footnoteEndPos);
+        // Position cursor inside the brackets for easy editing
+        if (footnoteContent.length > 0) {
+            // Select the footnote content for easy editing
+            const footnoteStartPos = editor.offsetToPos(insertOffset + footnoteText.indexOf(footnoteContent));
+            const footnoteEndPos = editor.offsetToPos(insertOffset + footnoteText.indexOf(footnoteContent) + footnoteContent.length);
+            editor.setSelection(footnoteStartPos, footnoteEndPos);
+        } else {
+            // Position cursor between the brackets: ^[|]
+            const cursorPos = editor.offsetToPos(insertOffset + footnoteText.length - 1);
+            editor.setCursor(cursorPos);
+        }
         editor.focus();
         
         return true;
@@ -151,18 +156,4 @@ export class InlineFootnoteManager {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
     
-    /**
-     * Parses inline footnotes from a text string and returns their content
-     */
-    public parseInlineFootnotesFromText(text: string): string[] {
-        const footnotes: string[] = [];
-        const inlineFootnoteRegex = /\^\[([^\]]+)\]/g;
-        let match;
-        
-        while ((match = inlineFootnoteRegex.exec(text)) !== null) {
-            footnotes.push(match[1]);
-        }
-        
-        return footnotes;
-    }
 }

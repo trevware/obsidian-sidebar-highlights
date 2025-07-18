@@ -1,7 +1,8 @@
 // main.ts
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TAbstractFile, WorkspaceLeaf, ItemView, Menu, debounce, setIcon } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, debounce } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
+import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 
 export interface Highlight {
     id: string;
@@ -38,7 +39,10 @@ export interface CommentPluginSettings {
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
     showToolbar: boolean; // Show/hide the toolbar container
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
+    selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
+    excludedFiles: string[]; // Array of file/folder paths to exclude from highlight detection
+    dateFormat: string; // Moment.js format string for timestamp display
     customColors: {
         yellow: string;
         red: string;
@@ -59,7 +63,10 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showHighlightActions: true, // Show highlight actions by default
     showToolbar: true, // Show toolbar by default
     useInlineFootnotes: false, // Use standard footnotes by default
+    selectTextOnCommentClick: false, // Position to highlight by default
     excludeExcalidraw: true, // Exclude .excalidraw files by default
+    excludedFiles: [], // Empty array by default
+    dateFormat: 'YYYY-MM-DD HH:mm', // Default date format
     customColors: {
         yellow: '#ffd700',
         red: '#ff6b6b',
@@ -89,6 +96,15 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
         this.inlineFootnoteManager = new InlineFootnoteManager();
+        
+        // Register hover source for link previews
+        // Note: registerHoverLinkSource may not be available in all Obsidian versions
+        if ('registerHoverLinkSource' in this.app.workspace) {
+            (this.app.workspace as any).registerHoverLinkSource('sidebar-highlights', {
+                display: 'Sidebar Highlights',
+                defaultMod: true
+            });
+        }
         
         this.registerView(
             VIEW_TYPE_HIGHLIGHTS,
@@ -140,7 +156,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                 } else {
                     // Clear selection but preserve highlights when no file is active
                     this.selectedHighlightId = null;
-                    this.refreshSidebar();
+                    if (this.sidebarView) {
+                        this.sidebarView.updateContent(); // Content update instead of full refresh
+                    }
                 }
             })
         );
@@ -153,37 +171,13 @@ export default class HighlightCommentsPlugin extends Plugin {
             })
         );
 
-        this.registerEvent(
-            this.app.vault.on('create', (file) => {
-                if (file instanceof TFile && this.shouldProcessFile(file)) {
-                    this.handleFileCreate(file);
-                }
-            })
-        );
-
-        this.registerEvent(
-            this.app.vault.on('rename', (file, oldPath) => {
-                if (file instanceof TFile && this.shouldProcessFile(file)) {
-                    this.handleFileRename(file, oldPath);
-                }
-            })
-        );
-
-        this.registerEvent(
-            this.app.vault.on('delete', (file) => {
-                if (file instanceof TFile && this.shouldProcessFile(file)) {
-                    this.handleFileDelete(file);
-                }
-            })
-        );
-
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.addStyles();
 
         // Register collection commands
         this.registerCollectionCommands();
 
-        // Scan all files for highlights after workspace is ready
+        // Register all vault events after workspace is ready to avoid processing during initialization
         this.app.workspace.onLayoutReady(async () => {
             // Fix any duplicate timestamps from previous versions
             await this.fixDuplicateTimestamps();
@@ -192,6 +186,31 @@ export default class HighlightCommentsPlugin extends Plugin {
             
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
+
+            // Register vault events after layout is ready
+            this.registerEvent(
+                this.app.vault.on('create', (file) => {
+                    if (file instanceof TFile && this.shouldProcessFile(file)) {
+                        this.handleFileCreate(file);
+                    }
+                })
+            );
+
+            this.registerEvent(
+                this.app.vault.on('rename', (file, oldPath) => {
+                    if (file instanceof TFile && this.shouldProcessFile(file)) {
+                        this.handleFileRename(file, oldPath);
+                    }
+                })
+            );
+
+            this.registerEvent(
+                this.app.vault.on('delete', (file) => {
+                    if (file instanceof TFile && this.shouldProcessFile(file)) {
+                        this.handleFileDelete(file);
+                    }
+                })
+            );
         });
     }
 
@@ -504,27 +523,57 @@ export default class HighlightCommentsPlugin extends Plugin {
             
             this.highlights.set(determinedFilePath, newFileHighlightsList);
             this.saveSettings(); 
-            this.refreshSidebar(); 
+            
+            // Update individual item instead of full refresh to preserve scroll position
+            if (this.sidebarView) {
+                this.sidebarView.updateItem(highlightId);
+            }
         }
     }
 
     async loadHighlightsFromFile(file: TFile) {
-        // Clear any selection from previous file
-        this.selectedHighlightId = null;
+        // Only clear selection if it's not for a highlight-initiated file switch
+        // (if selectedHighlightId exists and matches a highlight in the target file, preserve it)
+        if (this.selectedHighlightId) {
+            const targetFileHighlights = this.highlights.get(file.path) || [];
+            const selectedHighlightInTargetFile = targetFileHighlights.find(h => h.id === this.selectedHighlightId);
+            if (!selectedHighlightInTargetFile) {
+                // Selection is not in target file, clear it
+                this.selectedHighlightId = null;
+            }
+            // If selection IS in target file, preserve it for restoration
+        } else {
+            // No selection to preserve
+            this.selectedHighlightId = null;
+        }
         
         // Skip parsing files that shouldn't be processed
         if (!this.shouldProcessFile(file)) {
-            // Clear any existing highlights for this file and refresh sidebar
+            // Clear any existing highlights for this file and update content
             this.highlights.delete(file.path);
-            this.refreshSidebar();
+            if (this.sidebarView) {
+                this.sidebarView.updateContent(); // Content update instead of full refresh
+            }
+            return;
+        }
+        
+        // Check if this is an Excalidraw file (deeper check)
+        if (await this.isExcalidrawFile(file)) {
+            // Clear any existing highlights for this file and update content
+            this.highlights.delete(file.path);
+            if (this.sidebarView) {
+                this.sidebarView.updateContent(); // Content update instead of full refresh
+            }
             return;
         }
         
         const content = await this.app.vault.read(file);
         // detectAndStoreMarkdownHighlights will call refreshSidebar if changes are detected
         this.detectAndStoreMarkdownHighlights(content, file);
-        // Always refresh sidebar when file changes, even if no highlights detected
-        this.refreshSidebar();
+        // Always update content when file changes, even if no highlights detected
+        if (this.sidebarView) {
+            this.sidebarView.updateContent(); // Content update instead of full refresh
+        }
     }
 
     debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
@@ -579,6 +628,16 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Now scan existing files for highlights
         for (const file of processableFiles) {
             try {
+                // Check if this is an Excalidraw file (deeper check)
+                if (await this.isExcalidrawFile(file)) {
+                    // Remove any existing highlights for Excalidraw files
+                    if (this.highlights.has(file.path)) {
+                        this.highlights.delete(file.path);
+                        hasChanges = true;
+                    }
+                    continue;
+                }
+                
                 const content = await this.app.vault.read(file);
                 const oldHighlights = this.highlights.get(file.path) || [];
                 this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each file
@@ -604,8 +663,8 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
-        const markdownHighlightRegex = /==(.*?)==/g;
-        const commentHighlightRegex = /%%(.*?)%%/g;
+        const markdownHighlightRegex = /==([^=]+?)==/g;
+        const commentHighlightRegex = /%%([^%]+?)%%/g;
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const existingByTextAndOrder = new Map<string, {highlights: Highlight[], count: number}>();
@@ -631,6 +690,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         while ((match = markdownHighlightRegex.exec(content)) !== null) {
             // Skip if match is inside a code block
             if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                // Skip if this highlight is surrounded by additional equals signs (e.g., =====text===== )
+                const beforeMatch = content.charAt(match.index - 1);
+                const afterMatch = content.charAt(match.index + match[0].length);
+                if (beforeMatch === '=' || afterMatch === '=') {
+                    continue;
+                }
                 allMatches.push({match, type: 'highlight'});
             }
         }
@@ -639,6 +704,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         while ((match = commentHighlightRegex.exec(content)) !== null) {
             // Skip if match is inside a code block
             if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                // Skip if this comment is surrounded by additional percent signs (e.g., %%%%%text%%%%% )
+                const beforeMatch = content.charAt(match.index - 1);
+                const afterMatch = content.charAt(match.index + match[0].length);
+                if (beforeMatch === '%' || afterMatch === '%') {
+                    continue;
+                }
                 allMatches.push({match, type: 'comment'});
             }
         }
@@ -648,6 +719,12 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         allMatches.forEach(({match, type}) => {
             const [, highlightText] = match;
+            
+            // Skip empty or whitespace-only highlights
+            if (!highlightText || highlightText.trim() === '') {
+                return;
+            }
+            
             const entry = existingByTextAndOrder.get(highlightText);
             let existingHighlight: Highlight | undefined = undefined;
 
@@ -682,7 +759,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                 });
                 
                 // Then, get all standard footnotes with their positions (using same validation logic)
-                const standardFootnoteRegex = /(\s*\[\^(\w+)\])/g;
+                // Use negative lookahead to avoid matching footnote definitions [^key]: content
+                const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
                 let match_sf;
                 let lastValidPosition = 0;
                 
@@ -716,6 +794,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 // Extract content in the correct order
                 footnoteContents = allFootnotes.map(f => f.content);
                 footnoteCount = footnoteContents.length;
+                
             } else {
                 // For comments, the text itself IS the comment content
                 footnoteContents = [highlightText];
@@ -736,9 +815,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     createdAt: existingHighlight.createdAt || Date.now()
                 });
             } else {
-                // For new highlights, create a unique timestamp to avoid duplicates
+                // For new highlights, use file modification time to preserve historical context
                 // Add a small offset based on the match index to ensure uniqueness
-                const uniqueTimestamp = Date.now() + (match.index % 1000);
+                const uniqueTimestamp = file.stat.mtime + (match.index % 1000);
                 newHighlights.push({
                     id: this.generateId(),
                     text: highlightText,
@@ -763,20 +842,75 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.highlights.set(file.path, newHighlights);
             if (shouldRefresh) {
                 this.saveSettings(); // Save to disk after detecting changes
-                this.refreshSidebar();
+                this.smartUpdateSidebar(existingHighlightsForFile, newHighlights);
+            }
+        }
+    }
+
+    /**
+     * Smart sidebar update: use targeted updates when possible, full refresh only when necessary
+     */
+    private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
+        if (!this.sidebarView) {
+            return;
+        }
+
+        // Create maps for quick lookup
+        const oldByID = new Map<string, Highlight>();
+        const newByID = new Map<string, Highlight>();
+        
+        oldHighlights.forEach(h => oldByID.set(h.id, h));
+        newHighlights.forEach(h => newByID.set(h.id, h));
+
+        // Check for structural changes (new or deleted highlights)
+        const oldIDs = new Set(oldByID.keys());
+        const newIDs = new Set(newByID.keys());
+        const hasStructuralChanges = oldIDs.size !== newIDs.size || 
+                                   [...oldIDs].some(id => !newIDs.has(id)) ||
+                                   [...newIDs].some(id => !oldIDs.has(id));
+
+        if (hasStructuralChanges) {
+            // New or deleted highlights require full refresh
+            this.refreshSidebar();
+        } else {
+            // Only content changes - use targeted updates
+            for (const [id, newHighlight] of newByID) {
+                const oldHighlight = oldByID.get(id);
+                if (oldHighlight) {
+                    // Compare highlights to see if this one changed
+                    const oldJSON = JSON.stringify({
+                        text: oldHighlight.text, 
+                        footnotes: oldHighlight.footnoteCount, 
+                        contents: oldHighlight.footnoteContents?.filter(c => c.trim() !== ''), 
+                        color: oldHighlight.color,
+                        isNativeComment: oldHighlight.isNativeComment
+                    });
+                    const newJSON = JSON.stringify({
+                        text: newHighlight.text, 
+                        footnotes: newHighlight.footnoteCount, 
+                        contents: newHighlight.footnoteContents?.filter(c => c.trim() !== ''), 
+                        color: newHighlight.color,
+                        isNativeComment: newHighlight.isNativeComment
+                    });
+                    
+                    if (oldJSON !== newJSON) {
+                        // This highlight changed - update just this item
+                        this.sidebarView.updateItem(id);
+                    }
+                }
             }
         }
     }
 
 
-    private extractFootnotes(content: string): Map<string, string> {
+    extractFootnotes(content: string): Map<string, string> {
         const footnoteMap = new Map<string, string>();
         const footnoteRegex = /^\[\^(\w+)\]:\s*(.+)$/gm;
         let match;
         
         while ((match = footnoteRegex.exec(content)) !== null) {
-            const [, key, content] = match;
-            footnoteMap.set(key, content.trim());
+            const [, key, footnoteContent] = match;
+            footnoteMap.set(key, footnoteContent.trim());
         }
         
         return footnoteMap;
@@ -865,12 +999,75 @@ export default class HighlightCommentsPlugin extends Plugin {
             return false;
         }
         
-        // Check for .excalidraw extension in the filename
-        if (this.settings.excludeExcalidraw && file.name.endsWith('.excalidraw.md')) {
+        if (this.settings.excludeExcalidraw) {
+            // Check for .excalidraw extension in the filename
+            if (file.name.endsWith('.excalidraw.md')) {
+                return false;
+            }
+        }
+        
+        // Check if file is excluded
+        if (this.isFileExcluded(file.path)) {
             return false;
         }
         
         return true;
+    }
+
+    private isFileExcluded(filePath: string): boolean {
+        if (!this.settings.excludedFiles || this.settings.excludedFiles.length === 0) {
+            return false;
+        }
+
+        const normalizedFilePath = filePath.replace(/\\/g, '/');
+        
+        for (const excludedPath of this.settings.excludedFiles) {
+            const normalizedExcludedPath = excludedPath.replace(/\\/g, '/');
+            
+            // Exact file match
+            if (normalizedFilePath === normalizedExcludedPath) {
+                return true;
+            }
+            
+            // Folder match - check if file is inside excluded folder
+            if (normalizedFilePath.startsWith(normalizedExcludedPath + '/')) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    private async isExcalidrawFile(file: TFile): Promise<boolean> {
+        if (!this.settings.excludeExcalidraw) {
+            return false;
+        }
+        
+        // Check filename first (fast check)
+        if (file.name.endsWith('.excalidraw.md')) {
+            return true;
+        }
+        
+        // Check frontmatter for Excalidraw indicators
+        try {
+            const content = await this.app.vault.read(file);
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+                const frontmatter = frontmatterMatch[1];
+                // Check for excalidraw-plugin: parsed
+                if (/excalidraw-plugin:\s*parsed/i.test(frontmatter)) {
+                    return true;
+                }
+                // Check for tags containing excalidraw
+                if (/tags:\s*\[.*excalidraw.*\]/i.test(frontmatter)) {
+                    return true;
+                }
+            }
+        } catch (error) {
+            // If we can't read the file, don't exclude it
+        }
+        
+        return false;
     }
 
     /**
@@ -966,7 +1163,7 @@ class HighlightSettingTab extends PluginSettingTab {
         containerEl.empty();
 
         // DISPLAY SECTION
-        containerEl.createEl('h2', { text: 'Display' });
+        new Setting(containerEl).setHeading().setName('Display');
 
         new Setting(containerEl)
             .setName('Show note titles in all notes and collections')
@@ -1012,18 +1209,31 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.refreshSidebar();
                 }));
 
-        // STYLING SECTION
-        containerEl.createEl('h2', { text: 'Styling' });
-
         new Setting(containerEl)
-            .setName('Yellow highlight color')
-            .setDesc('Customize the yellow highlight color.')
+            .setName('Date format')
+            .setDesc('Format string for timestamps using moment.js syntax (e.g., YYYY-MM-DD HH:mm, MMM DD YYYY, DD/MM/YYYY h:mm A)')
+            .addMomentFormat(format => format
+                .setValue(this.plugin.settings.dateFormat)
+                .setPlaceholder('YYYY-MM-DD HH:mm')
+                .onChange(async (value) => {
+                    this.plugin.settings.dateFormat = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        // STYLING SECTION
+        new Setting(containerEl).setHeading().setName('Styling');
+
+        const yellowSetting = new Setting(containerEl)
+            .setName(`Highlight color: ${this.plugin.settings.customColors.yellow.toUpperCase()}`)
+            .setDesc('Customize the first highlight color.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.yellow)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.yellow = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    yellowSetting.setName(`Highlight color: ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1032,18 +1242,20 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColors.yellow = '#ffd700';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    yellowSetting.setName(`Highlight color: ${this.plugin.settings.customColors.yellow.toUpperCase()}`);
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Red highlight color')
-            .setDesc('Customize the red highlight color.')
+        const redSetting = new Setting(containerEl)
+            .setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`)
+            .setDesc('Customize the second highlight color.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.red)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.red = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    redSetting.setName(`Highlight color: ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1052,18 +1264,20 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColors.red = '#ff6b6b';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    redSetting.setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`);
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Teal highlight color')
-            .setDesc('Customize the teal highlight color.')
+        const tealSetting = new Setting(containerEl)
+            .setName(`Highlight color: ${this.plugin.settings.customColors.teal.toUpperCase()}`)
+            .setDesc('Customize the third highlight color.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.teal)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.teal = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    tealSetting.setName(`Highlight color: ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1072,18 +1286,20 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColors.teal = '#4ecdc4';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    tealSetting.setName(`Highlight color: ${this.plugin.settings.customColors.teal.toUpperCase()}`);
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Blue highlight color')
-            .setDesc('Customize the blue highlight color.')
+        const blueSetting = new Setting(containerEl)
+            .setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`)
+            .setDesc('Customize the fourth highlight color.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.blue)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.blue = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    blueSetting.setName(`Highlight color: ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1092,18 +1308,20 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColors.blue = '#45b7d1';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    blueSetting.setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`);
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Green highlight color')
-            .setDesc('Customize the green highlight color.')
+        const greenSetting = new Setting(containerEl)
+            .setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`)
+            .setDesc('Customize the fifth highlight color.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.green)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.green = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    greenSetting.setName(`Highlight color: ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1112,11 +1330,12 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColors.green = '#96ceb4';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
+                    greenSetting.setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`);
                     this.display(); // Refresh settings display
                 }));
 
         // COMMENTS SECTION
-        containerEl.createEl('h2', { text: 'Comments' });
+        new Setting(containerEl).setHeading().setName('Comments');
 
         new Setting(containerEl)
             .setName('Use inline footnotes by default')
@@ -1128,8 +1347,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // PLUGINS SECTION
-        containerEl.createEl('h2', { text: 'Plugins' });
+        new Setting(containerEl)
+            .setName('Select text on click')
+            .setDesc('When clicking a comment, select the comment instead of positioning the cursor in front of it.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.selectTextOnCommentClick)
+                .onChange(async (value) => {
+                    this.plugin.settings.selectTextOnCommentClick = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        // FILTERS SECTION
+        new Setting(containerEl).setHeading().setName('Filters');
 
         new Setting(containerEl)
             .setName('Exclude Excalidraw files')
@@ -1142,6 +1371,26 @@ class HighlightSettingTab extends PluginSettingTab {
                     // Refresh highlights to apply the new exclusion setting
                     this.plugin.scanAllFilesForHighlights();
                 }));
+
+        new Setting(containerEl)
+            .setName('Excluded files')
+            .setDesc('Excluded files or folders will be hidden from Sidebar Highlights')
+            .addButton(button => {
+                button.setButtonText('Manage')
+                    .onClick(() => {
+                        const modal = new ExcludedFilesModal(
+                            this.app,
+                            this.plugin.settings.excludedFiles,
+                            async (excludedFiles) => {
+                                this.plugin.settings.excludedFiles = excludedFiles;
+                                await this.plugin.saveSettings();
+                                // Re-scan all files to apply new exclusions
+                                this.plugin.scanAllFilesForHighlights();
+                            }
+                        );
+                        modal.open();
+                    });
+            });
     }
 
     private updateColorMappings(): void {
