@@ -5,6 +5,22 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2025-07-19
+
+### Added
+- **Stable Highlight IDs**: Implemented stable identifier system that preserves highlight IDs across file rescans and plugin updates, preventing collection references from breaking
+- **Migration System**: Added comprehensive backup and migration system with automatic validation and user feedback for version upgrades
+- **Collection Reference Validation**: Added post-migration validation that checks for broken collection references and provides detailed user feedback
+
+### Enhanced
+- **Data Protection**: Collections and highlights now survive plugin updates, external sync, and file changes without data loss
+- **User Feedback**: Clear migration messages inform users of success or specific issues that need manual attention
+- **Automatic Cleanup**: System automatically removes broken references and maintains clean data state
+
+### Fixed
+- **Collection Persistence**: Fixed collections being lost during plugin updates and external settings changes
+- **Highlight ID Stability**: Fixed highlights getting new IDs during rescans, which broke collection relationships
+
 ## [1.14.0] - 2025-07-19
 
 ### Added

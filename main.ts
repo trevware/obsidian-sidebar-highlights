@@ -29,6 +29,7 @@ export interface Collection {
 }
 
 export interface CommentPluginSettings {
+    settingsVersion: string; // Track settings schema version for migration
     highlightColor: string;
     sidebarPosition: 'left' | 'right';
     highlights: { [filePath: string]: Highlight[] };
@@ -60,6 +61,7 @@ export interface CommentPluginSettings {
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
+    settingsVersion: '1.14.0', // Current settings schema version
     highlightColor: '#ffd700',
     sidebarPosition: 'right',
     highlights: {},
@@ -245,7 +247,23 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        const loadedData = await this.loadData();
+        
+        // For safety, only migrate if we detect a genuine old version
+        // If data exists but has no settingsVersion, assume it's 1.14.0 (current) to prevent data loss
+        if (loadedData && 
+            loadedData.settingsVersion && 
+            loadedData.settingsVersion !== DEFAULT_SETTINGS.settingsVersion) {
+            // Only migrate if we have an explicit older version
+            await this.migrateSettings(loadedData);
+        } else {
+            // Normal load - add settingsVersion if missing but preserve all data
+            this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+            if (!this.settings.settingsVersion) {
+                this.settings.settingsVersion = DEFAULT_SETTINGS.settingsVersion;
+                await this.saveSettings(); // Save the version for future use
+            }
+        }
     }
 
     async saveSettings() {
@@ -476,9 +494,212 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.refreshSidebar();
     }
 
+    async createBackup(reason: string) {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `data-backup-${reason}-${timestamp}.json`;
+            
+            const criticalData = {
+                settingsVersion: this.settings.settingsVersion,
+                collections: this.settings.collections,
+                customColorNames: this.settings.customColorNames,
+                highlights: this.settings.highlights,
+                backupReason: reason,
+                originalTimestamp: timestamp,
+                backupCreatedAt: Date.now()
+            };
+            
+            const backupPath = `.obsidian/plugins/sidebar-highlights/${filename}`;
+            await this.app.vault.adapter.write(
+                backupPath,
+                JSON.stringify(criticalData, null, 2)
+            );
+            
+            // Only show notice for important backups (not routine ones)
+            if (reason === 'migration' || reason === 'manual') {
+                new Notice(`Settings backup created: ${filename}`);
+            }
+        } catch (error) {
+            console.error('Failed to create backup:', error);
+            new Notice('Warning: Could not create settings backup');
+        }
+    }
+
+    async migrateSettings(oldSettings: any) {
+        try {
+            // Always backup before migration
+            await this.createBackup('migration');
+            
+            const oldVersion = oldSettings.settingsVersion || '1.13.0';
+            const newVersion = DEFAULT_SETTINGS.settingsVersion;
+            
+            if (oldVersion !== newVersion) {
+                new Notice(`Migrating settings from ${oldVersion} to ${newVersion}...`);
+            }
+            
+            // Preserve critical user data
+            const userCollections = oldSettings.collections || {};
+            const userColorNames = oldSettings.customColorNames || {};
+            const userHighlights = oldSettings.highlights || {};
+            
+            // Start with fresh defaults for new version
+            this.settings = { ...DEFAULT_SETTINGS };
+            
+            // Merge user data with new defaults
+            this.settings.collections = userCollections;
+            this.settings.customColorNames = {
+                ...DEFAULT_SETTINGS.customColorNames,
+                ...userColorNames // User overrides take precedence
+            };
+            this.settings.highlights = userHighlights;
+            
+            // Preserve other user preferences that exist in both versions
+            if (oldSettings.highlightColor !== undefined) {
+                this.settings.highlightColor = oldSettings.highlightColor;
+            }
+            if (oldSettings.sidebarPosition !== undefined) {
+                this.settings.sidebarPosition = oldSettings.sidebarPosition;
+            }
+            if (oldSettings.groupingMode !== undefined) {
+                this.settings.groupingMode = oldSettings.groupingMode;
+            }
+            if (oldSettings.showFilenames !== undefined) {
+                this.settings.showFilenames = oldSettings.showFilenames;
+            }
+            if (oldSettings.showTimestamps !== undefined) {
+                this.settings.showTimestamps = oldSettings.showTimestamps;
+            }
+            if (oldSettings.showHighlightActions !== undefined) {
+                this.settings.showHighlightActions = oldSettings.showHighlightActions;
+            }
+            if (oldSettings.showToolbar !== undefined) {
+                this.settings.showToolbar = oldSettings.showToolbar;
+            }
+            if (oldSettings.useInlineFootnotes !== undefined) {
+                this.settings.useInlineFootnotes = oldSettings.useInlineFootnotes;
+            }
+            if (oldSettings.selectTextOnCommentClick !== undefined) {
+                this.settings.selectTextOnCommentClick = oldSettings.selectTextOnCommentClick;
+            }
+            if (oldSettings.excludeExcalidraw !== undefined) {
+                this.settings.excludeExcalidraw = oldSettings.excludeExcalidraw;
+            }
+            if (oldSettings.excludedFiles !== undefined) {
+                this.settings.excludedFiles = oldSettings.excludedFiles;
+            }
+            if (oldSettings.dateFormat !== undefined) {
+                this.settings.dateFormat = oldSettings.dateFormat;
+            }
+            if (oldSettings.customColors !== undefined) {
+                this.settings.customColors = {
+                    ...DEFAULT_SETTINGS.customColors,
+                    ...oldSettings.customColors
+                };
+            }
+            
+            // Update version to current
+            this.settings.settingsVersion = newVersion;
+            
+            // Update internal Maps to match migrated settings
+            this.collections = new Map(Object.entries(this.settings.collections || {}));
+            this.highlights = new Map(Object.entries(this.settings.highlights || {}));
+            
+            // Save migrated settings
+            await this.saveSettings();
+            
+            if (oldVersion !== newVersion) {
+                new Notice(`Settings successfully migrated to ${newVersion}`);
+                
+                // Validate collection references after migration
+                await this.validateCollectionReferences();
+            }
+        } catch (error) {
+            console.error('Migration failed:', error);
+            new Notice('Error during settings migration. Please check console for details.');
+        }
+    }
+
+    async validateCollectionReferences() {
+        try {
+            const allHighlightIds = new Set<string>();
+            
+            // Collect all existing highlight IDs
+            for (const highlights of this.highlights.values()) {
+                highlights.forEach(h => allHighlightIds.add(h.id));
+            }
+            
+            let totalBrokenReferences = 0;
+            const collectionsWithIssues: Array<{name: string, brokenCount: number, totalCount: number}> = [];
+            
+            // Check each collection for broken references
+            for (const collection of this.collections.values()) {
+                const brokenReferences = collection.highlightIds.filter(id => !allHighlightIds.has(id));
+                
+                if (brokenReferences.length > 0) {
+                    totalBrokenReferences += brokenReferences.length;
+                    collectionsWithIssues.push({
+                        name: collection.name,
+                        brokenCount: brokenReferences.length,
+                        totalCount: collection.highlightIds.length
+                    });
+                    
+                    // Remove broken references automatically
+                    collection.highlightIds = collection.highlightIds.filter(id => allHighlightIds.has(id));
+                }
+            }
+            
+            // Report results to user
+            if (totalBrokenReferences > 0) {
+                const issuesSummary = collectionsWithIssues
+                    .map(c => `• ${c.name}: ${c.brokenCount}/${c.totalCount} references`)
+                    .join('\n');
+                
+                new Notice(
+                    `Migration complete, but ${totalBrokenReferences} highlight reference(s) couldn't be restored:\n\n${issuesSummary}\n\nBroken references have been cleaned up. You may need to manually re-add some highlights to these collections.`,
+                    8000 // Show notice for 8 seconds
+                );
+                
+                console.log('Collection validation results:', {
+                    totalBrokenReferences,
+                    collectionsWithIssues,
+                    message: 'Some highlight references were lost during migration, likely due to file changes. Automatic cleanup completed.'
+                });
+                
+                // Save the cleaned-up collections
+                await this.saveSettings();
+            } else {
+                new Notice('Migration successful! All collections and highlights preserved.', 3000);
+            }
+        } catch (error) {
+            console.error('Collection validation failed:', error);
+            new Notice('Warning: Could not validate collection references after migration.');
+        }
+    }
+
     // Implement onExternalSettingsChange to reload all settings when they change externally
-    onExternalSettingsChange() {
-        this.reloadAllSettings();
+    async onExternalSettingsChange() {
+        try {
+            // Create backup before any changes
+            await this.createBackup('external-sync');
+            
+            // Load external settings
+            const externalSettings = await this.loadData();
+            
+            // Only migrate if we have an explicit older version
+            if (externalSettings && 
+                externalSettings.settingsVersion && 
+                externalSettings.settingsVersion !== DEFAULT_SETTINGS.settingsVersion) {
+                // Migration needed for explicit older version
+                await this.migrateSettings(externalSettings);
+            } else {
+                // Safe to reload normally (either no version or current version)
+                await this.reloadAllSettings();
+            }
+        } catch (error) {
+            console.error('Error handling external settings change:', error);
+            // Fallback to normal reload
+            await this.reloadAllSettings();
+        }
     }
 
     // Register dynamic commands for collections
@@ -707,14 +928,51 @@ export default class HighlightCommentsPlugin extends Plugin {
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
-        const existingByTextAndOrder = new Map<string, {highlights: Highlight[], count: number}>();
+        const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
         
-        existingHighlightsForFile.forEach(h => {
-            if (!existingByTextAndOrder.has(h.text)) {
-                existingByTextAndOrder.set(h.text, {highlights: [], count: 0});
+        // Create a more robust matching system that considers text, position, and type
+        const findExistingHighlight = (text: string, startOffset: number, endOffset: number, isComment: boolean): Highlight | undefined => {
+            // First, try exact position match
+            let exactMatch = existingHighlightsForFile.find(h => 
+                !usedExistingHighlights.has(h.id) &&
+                h.text === text && 
+                h.startOffset === startOffset && 
+                h.endOffset === endOffset &&
+                h.isNativeComment === isComment
+            );
+            if (exactMatch) {
+                usedExistingHighlights.add(exactMatch.id);
+                return exactMatch;
             }
-            existingByTextAndOrder.get(h.text)!.highlights.push(h);
-        });
+            
+            // If no exact match, try fuzzy position match (within 50 characters)
+            let fuzzyMatch = existingHighlightsForFile.find(h => 
+                !usedExistingHighlights.has(h.id) &&
+                h.text === text && 
+                Math.abs(h.startOffset - startOffset) <= 50 &&
+                h.isNativeComment === isComment
+            );
+            if (fuzzyMatch) {
+                usedExistingHighlights.add(fuzzyMatch.id);
+                return fuzzyMatch;
+            }
+            
+            // If still no match, try text-only match for highlights that might have moved significantly
+            let textMatch = existingHighlightsForFile.find(h => 
+                !usedExistingHighlights.has(h.id) &&
+                h.text === text && 
+                h.isNativeComment === isComment &&
+                !existingHighlightsForFile.some(other => 
+                    other !== h && other.text === text && other.isNativeComment === isComment
+                ) // Only if it's the only highlight with this text
+            );
+            if (textMatch) {
+                usedExistingHighlights.add(textMatch.id);
+                return textMatch;
+            }
+            
+            return undefined;
+        };
 
         // Extract all footnotes from the content
         const footnoteMap = this.extractFootnotes(content);
@@ -765,13 +1023,13 @@ export default class HighlightCommentsPlugin extends Plugin {
                 return;
             }
             
-            const entry = existingByTextAndOrder.get(highlightText);
-            let existingHighlight: Highlight | undefined = undefined;
-
-            if (entry && entry.count < entry.highlights.length) {
-                existingHighlight = entry.highlights[entry.count];
-                entry.count++;
-            }
+            // Find existing highlight using improved matching
+            const existingHighlight = findExistingHighlight(
+                highlightText, 
+                match.index, 
+                match.index + match[0].length, 
+                type === 'comment'
+            );
             
             // Calculate line number from offset
             const lineNumber = content.substring(0, match.index).split('\n').length - 1;
