@@ -538,7 +538,7 @@ export class HighlightRenderer {
         if (highlight.footnoteContents) {
             for (const content of highlight.footnoteContents) {
                 if (content.trim() !== '') {
-                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_-]+/gu);
+                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_/-]+/gu);
                     if (tagMatches) {
                         tagMatches.forEach(tag => {
                             const tagName = tag.substring(1);

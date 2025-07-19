@@ -2387,8 +2387,8 @@ export class HighlightsSidebarView extends ItemView {
             // Process footnotes in order and collect tags
             for (const content of highlight.footnoteContents) {
                 if (content.trim() !== '') {
-                    // Extract hashtags from footnote content (including unicode characters)
-                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_-]+/gu);
+                    // Extract hashtags from footnote content (including unicode characters and nested paths)
+                    const tagMatches = content.match(/#[\p{L}\p{N}\p{M}_/-]+/gu);
                     if (tagMatches) {
                         tagMatches.forEach(tag => {
                             const tagName = tag.substring(1); // Remove the # symbol

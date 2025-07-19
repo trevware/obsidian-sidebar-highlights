@@ -99,7 +99,7 @@ export class SimpleSearchManager {
         const textBeforeCursor = value.substring(0, cursorPos);
         
         // Check for tag or collection pattern at cursor
-        const tagMatch = textBeforeCursor.match(/-?#([a-zA-Z0-9_-]*)$/);
+        const tagMatch = textBeforeCursor.match(/-?#([a-zA-Z0-9_/-]*)$/);
         const collectionMatch = textBeforeCursor.match(/-?@([a-zA-Z0-9_-]*)$/);
         
         if (tagMatch) {
@@ -141,9 +141,11 @@ export class SimpleSearchManager {
                 icon.classList.add('exclude');
             }
 
+            // Format nested tags with visual hierarchy
+            const displayText = this.formatNestedTag(suggestion);
             item.createSpan({
                 cls: 'simple-search-suggestion-text',
-                text: suggestion
+                text: displayText
             });
 
             item.addEventListener('click', () => {
@@ -203,8 +205,8 @@ export class SimpleSearchManager {
         if (tagMatch) {
             const prefix = tagMatch[0].startsWith('-') ? '-#' : '#';
             const replacement = prefix + suggestion + ' ';
-            newValue = textBeforeCursor.replace(/-?#[a-zA-Z0-9_-]*$/, replacement) + textAfterCursor;
-            newCursorPos = textBeforeCursor.replace(/-?#[a-zA-Z0-9_-]*$/, replacement).length;
+            newValue = textBeforeCursor.replace(/-?#[a-zA-Z0-9_/-]*$/, replacement) + textAfterCursor;
+            newCursorPos = textBeforeCursor.replace(/-?#[a-zA-Z0-9_/-]*$/, replacement).length;
         } else if (collectionMatch) {
             const prefix = collectionMatch[0].startsWith('-') ? '-@' : '@';
             const replacement = prefix + suggestion + ' ';
@@ -299,5 +301,10 @@ export class SimpleSearchManager {
     public setValue(value: string): void {
         this.input.value = value;
         this.handleInput();
+    }
+
+    private formatNestedTag(tag: string): string {
+        // Display the full tag path as-is
+        return tag;
     }
 }
