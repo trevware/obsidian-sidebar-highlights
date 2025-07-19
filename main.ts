@@ -663,8 +663,8 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
-        const markdownHighlightRegex = /==([^=]+?)==/g;
-        const commentHighlightRegex = /%%([^%]+?)%%/g;
+        const markdownHighlightRegex = /==([^=](?:[^=]|=[^=])*?)==/g;
+        const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const existingByTextAndOrder = new Map<string, {highlights: Highlight[], count: number}>();
