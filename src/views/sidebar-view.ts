@@ -1214,7 +1214,7 @@ export class HighlightsSidebarView extends ItemView {
         }
         
         const headerText = headerTextContainer.createSpan();
-        headerText.textContent = groupName;
+        headerText.textContent = this.groupingMode === 'color' ? this.getColorName(groupName) : groupName;
         
         // Add collection-style stats underneath the group header
         const statsContainer = groupHeader.createDiv({ cls: 'collection-stats' });
@@ -2026,14 +2026,29 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private getColorName(hex: string): string {
-        const colorMap: { [key: string]: string } = {
-            [this.plugin.settings.customColors.yellow]: 'Yellow',
-            [this.plugin.settings.customColors.red]: 'Red', 
-            [this.plugin.settings.customColors.teal]: 'Turquoise',
-            [this.plugin.settings.customColors.blue]: 'Blue',
-            [this.plugin.settings.customColors.green]: 'Green'
-        };
-        return colorMap[hex] || hex;
+        // Check if user has defined custom names
+        const customNames = this.plugin.settings.customColorNames;
+        const colors = this.plugin.settings.customColors;
+        
+        // Use custom names if they exist and are not empty
+        if (hex === colors.yellow && customNames.yellow.trim()) {
+            return customNames.yellow.trim();
+        }
+        if (hex === colors.red && customNames.red.trim()) {
+            return customNames.red.trim();
+        }
+        if (hex === colors.teal && customNames.teal.trim()) {
+            return customNames.teal.trim();
+        }
+        if (hex === colors.blue && customNames.blue.trim()) {
+            return customNames.blue.trim();
+        }
+        if (hex === colors.green && customNames.green.trim()) {
+            return customNames.green.trim();
+        }
+        
+        // Fall back to hex code
+        return hex;
     }
 
     private renderGroupedHighlights(highlights: Highlight[], searchTerm?: string, showFilename: boolean = false) {
@@ -2177,7 +2192,7 @@ export class HighlightsSidebarView extends ItemView {
             }
             
             const headerText = headerTextContainer.createSpan();
-            headerText.textContent = groupName;
+            headerText.textContent = this.groupingMode === 'color' ? this.getColorName(groupName) : groupName;
             
             // Add collection-style stats underneath the group header
             const statsContainer = groupHeader.createDiv({ cls: 'collection-stats' });

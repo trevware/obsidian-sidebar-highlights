@@ -50,6 +50,13 @@ export interface CommentPluginSettings {
         blue: string;
         green: string;
     };
+    customColorNames: {
+        yellow: string;
+        red: string;
+        teal: string;
+        blue: string;
+        green: string;
+    };
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -73,6 +80,13 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
         teal: '#4ecdc4',
         blue: '#45b7d1',
         green: '#96ceb4'
+    },
+    customColorNames: {
+        yellow: '',
+        red: '',
+        teal: '',
+        blue: '',
+        green: ''
     }
 }
 
@@ -170,6 +184,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 }
             })
         );
+
 
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.addStyles();
@@ -439,6 +454,31 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (this.sidebarView) {
             this.sidebarView.refresh();
         }
+    }
+
+    async reloadAllSettings() {
+        // Reload settings from disk to get latest external changes
+        await this.loadSettings();
+        
+        // Update collections map with the reloaded data
+        this.collections = new Map(Object.entries(this.settings.collections || {}));
+        
+        // Update highlights map with the reloaded data
+        this.highlights = new Map(Object.entries(this.settings.highlights || {}));
+        
+        // Re-register collection commands with updated data
+        this.registerCollectionCommands();
+        
+        // Update styles to reflect any color changes
+        this.updateStyles();
+        
+        // Refresh sidebar to reflect changes
+        this.refreshSidebar();
+    }
+
+    // Implement onExternalSettingsChange to reload all settings when they change externally
+    onExternalSettingsChange() {
+        this.reloadAllSettings();
     }
 
     // Register dynamic commands for collections
@@ -1246,6 +1286,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
+        new Setting(containerEl)
+            .setName('Highlight name')
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.yellow)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.yellow = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
         const redSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`)
             .setDesc('Customize the second highlight color.')
@@ -1266,6 +1318,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.updateColorMappings();
                     redSetting.setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`);
                     this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Highlight name')
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.red)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.red = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
                 }));
 
         const tealSetting = new Setting(containerEl)
@@ -1290,6 +1354,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
+        new Setting(containerEl)
+            .setName('Highlight name')
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.teal)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.teal = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
         const blueSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`)
             .setDesc('Customize the fourth highlight color.')
@@ -1312,6 +1388,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
+        new Setting(containerEl)
+            .setName('Highlight name')
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.blue)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.blue = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
         const greenSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`)
             .setDesc('Customize the fifth highlight color.')
@@ -1332,6 +1420,18 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.updateColorMappings();
                     greenSetting.setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`);
                     this.display(); // Refresh settings display
+                }));
+
+        new Setting(containerEl)
+            .setName('Highlight name')
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.green)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.green = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
                 }));
 
         // COMMENTS SECTION

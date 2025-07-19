@@ -5,6 +5,15 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2025-07-19
+
+### Added
+- **Custom Color Names**: Added optional naming system for highlight colors in settings - when set, custom names appear in "Group By Color" instead of hex codes
+- **External Settings Sync**: Implemented automatic detection and reload of external settings changes, enabling seamless sync between vaults without requiring manual app reloads
+
+### Enhanced
+- **Settings UI**: Improved color settings layout with "Highlight name" fields
+
 ## [1.13.0] - 2025-07-19
 
 ### Fixed
