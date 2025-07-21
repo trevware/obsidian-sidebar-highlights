@@ -9,6 +9,33 @@ export interface InlineFootnoteMatch {
 
 export class InlineFootnoteManager {
     
+    private isHtmlHighlight(highlight: Highlight): boolean {
+        // HTML highlights have a color property and are not native comments
+        return !highlight.isNativeComment && !!highlight.color;
+    }
+
+    private getHtmlHighlightPatterns(highlight: Highlight): Array<{pattern: string}> {
+        const escapedText = this.escapeRegex(highlight.text);
+        const patterns: Array<{pattern: string}> = [];
+        
+        // Pattern for <span style="background:color">text</span>
+        patterns.push({
+            pattern: `<span\\s+style=["'][^"']*background:\\s*[^;"']+[^"']*["'][^>]*>${escapedText}<\\/span>`
+        });
+        
+        // Pattern for <font color="color">text</font>  
+        patterns.push({
+            pattern: `<font\\s+color=["'][^"']+["'][^>]*>${escapedText}<\\/font>`
+        });
+        
+        // Pattern for <mark>text</mark>
+        patterns.push({
+            pattern: `<mark[^>]*>${escapedText}<\\/mark>`
+        });
+        
+        return patterns;
+    }
+    
     /**
      * Extracts inline footnotes immediately following a highlight
      * Pattern: ^[content] with optional spaces between multiple footnotes
@@ -57,20 +84,46 @@ export class InlineFootnoteManager {
         const content = editor.getValue();
         const escapedText = this.escapeRegex(highlight.text);
         
-        // Find the highlight in the content
-        const regexPattern = highlight.isNativeComment 
-            ? `%%${escapedText}%%`
-            : `==${escapedText}==`;
-        const highlightRegex = new RegExp(regexPattern, 'g');
-        let match;
         let bestMatch: { index: number, length: number } | null = null;
         let minDistance = Infinity;
 
-        while ((match = highlightRegex.exec(content)) !== null) {
-            const distance = Math.abs(match.index - highlight.startOffset);
-            if (distance < minDistance) {
-                minDistance = distance;
-                bestMatch = { index: match.index, length: match[0].length };
+        if (highlight.isNativeComment) {
+            // Native comment pattern
+            const regexPattern = `%%${escapedText}%%`;
+            const highlightRegex = new RegExp(regexPattern, 'g');
+            let match;
+            while ((match = highlightRegex.exec(content)) !== null) {
+                const distance = Math.abs(match.index - highlight.startOffset);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { index: match.index, length: match[0].length };
+                }
+            }
+        } else if (this.isHtmlHighlight(highlight)) {
+            // HTML highlight patterns
+            const patterns = this.getHtmlHighlightPatterns(highlight);
+            for (const {pattern} of patterns) {
+                const regex = new RegExp(pattern, 'gi');
+                let match;
+                while ((match = regex.exec(content)) !== null) {
+                    const distance = Math.abs(match.index - highlight.startOffset);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = { index: match.index, length: match[0].length };
+                    }
+                }
+            }
+        } else {
+            // Regular markdown highlight pattern
+            const regexPattern = `==${escapedText}==`;
+            const highlightRegex = new RegExp(regexPattern, 'g');
+            let match;
+            while ((match = highlightRegex.exec(content)) !== null) {
+                const distance = Math.abs(match.index - highlight.startOffset);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { index: match.index, length: match[0].length };
+                }
             }
         }
 
@@ -80,52 +133,38 @@ export class InlineFootnoteManager {
 
         let insertOffset = bestMatch.index + bestMatch.length;
         
-        // Find the position after the last footnote (of any type) in the sequence
+        // Use the same footnote boundary detection logic as the sidebar view
         const afterHighlight = content.substring(insertOffset);
+        const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+        let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
         
-        // Find all footnotes (both standard and inline) in order
-        const allFootnotes: Array<{type: 'standard' | 'inline', index: number, endIndex: number}> = [];
-        
-        // Get all inline footnotes with their positions
-        const inlineFootnotes = this.extractInlineFootnotes(content, insertOffset);
-        inlineFootnotes.forEach(footnote => {
-            allFootnotes.push({
-                type: 'inline',
-                index: footnote.startIndex,
-                endIndex: footnote.endIndex
-            });
-        });
-        
-        // Get all standard footnotes with their positions (using same validation logic)
-        // Use negative lookahead to avoid matching footnote definitions [^key]: content
-        const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
-        let match_sf;
-        let lastValidPosition = 0;
-        
-        while ((match_sf = standardFootnoteRegex.exec(afterHighlight)) !== null) {
-            // Check if this standard footnote is in a valid position
-            const precedingText = afterHighlight.substring(lastValidPosition, match_sf.index);
-            const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
-            
-            if (match_sf.index === lastValidPosition || isValid) {
-                allFootnotes.push({
-                    type: 'standard',
-                    index: insertOffset + match_sf.index,
-                    endIndex: insertOffset + match_sf.index + match_sf[0].length
-                });
-                lastValidPosition = match_sf.index + match_sf[0].length;
+        // If there are footnotes and content continues after them, don't include trailing whitespace
+        if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+            const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+            // If the next character after footnotes is non-whitespace, position right after footnotes
+            if (afterFootnotes.match(/^\S/)) {
+                // footnoteEndLength is already correct (no trailing whitespace included)
             } else {
-                // Stop if we encounter a footnote that's not in the valid sequence
-                break;
+                // Check if there's whitespace followed by content
+                const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                if (whitespaceMatch) {
+                    const whitespaceAfterFootnotes = whitespaceMatch[1];
+                    const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                    // Only include the whitespace if there's no content after it (end of line)
+                    if (afterWhitespace.length === 0) {
+                        footnoteEndLength += whitespaceMatch[0].length;
+                    }
+                    // If there's content after whitespace, don't include the whitespace
+                }
+            }
+        } else if (footnoteEndLength > 0) {
+            // No content after footnotes, include any trailing whitespace  
+            const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+            if (trailingWhitespaceMatch) {
+                footnoteEndLength += trailingWhitespaceMatch[0].length;
             }
         }
-        
-        // Sort footnotes by their position and find the last one
-        allFootnotes.sort((a, b) => a.index - b.index);
-        if (allFootnotes.length > 0) {
-            const lastFootnote = allFootnotes[allFootnotes.length - 1];
-            insertOffset = lastFootnote.endIndex;
-        }
+        insertOffset += footnoteEndLength;
         
         // Add inline footnote without extra spacing
         const footnoteText = `^[${footnoteContent}]`;

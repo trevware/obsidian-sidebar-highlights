@@ -1497,7 +1497,7 @@ export class HighlightsSidebarView extends ItemView {
         const file = activeView.file;
         if (!file) return;
 
-        // Find the highlight in the editor content
+        // Find the highlight in the editor content (original line-by-line approach)
         const content = editor.getValue();
         const lines = content.split('\n');
         
@@ -1513,19 +1513,120 @@ export class HighlightsSidebarView extends ItemView {
                     const highlightEndIndex = line.indexOf(`%%${highlight.text}%%`) + `%%${highlight.text}%%`.length;
                     // Find the end of any existing footnotes after the highlight
                     const afterHighlight = line.substring(highlightEndIndex);
-                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*/);
-                    const footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                    let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    
+                    // If there are footnotes and content continues after them, don't include trailing whitespace
+                    if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                        const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                        // If the next character after footnotes is non-whitespace, position right after footnotes
+                        if (afterFootnotes.match(/^\S/)) {
+                            // footnoteEndLength is already correct (no trailing whitespace included)
+                        } else {
+                            // Check if there's whitespace followed by content
+                            const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                            if (whitespaceMatch) {
+                                const whitespaceAfterFootnotes = whitespaceMatch[1];
+                                const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                                // Only include the whitespace if there's no content after it (end of line)
+                                if (afterWhitespace.length === 0) {
+                                    footnoteEndLength += whitespaceMatch[0].length;
+                                }
+                                // If there's content after whitespace, don't include the whitespace
+                            }
+                        }
+                    } else if (footnoteEndLength > 0) {
+                        // No content after footnotes, include any trailing whitespace  
+                        const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                        if (trailingWhitespaceMatch) {
+                            footnoteEndLength += trailingWhitespaceMatch[0].length;
+                        }
+                    }
                     insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
                     break;
                 }
+            } else if (this.isHtmlHighlight(highlight)) {
+                // Handle HTML highlights using the same line-by-line approach
+                const patterns = this.getHtmlHighlightPatterns(highlight);
+                let found = false;
+                for (const {pattern} of patterns) {
+                    const regex = new RegExp(pattern, 'gi');
+                    const match = regex.exec(line);
+                    if (match) {
+                        targetLine = i;
+                        const highlightEndIndex = match.index + match[0].length;
+                        // Find the end of any existing footnotes after the highlight
+                        const afterHighlight = line.substring(highlightEndIndex);
+                        const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                        let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                        
+                        // If there are footnotes and content continues after them, don't include trailing whitespace
+                        if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                            const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                            // If the next character after footnotes is non-whitespace, position right after footnotes
+                            if (afterFootnotes.match(/^\S/)) {
+                                // footnoteEndLength is already correct (no trailing whitespace included)
+                            } else {
+                                // Check if there's whitespace followed by content
+                                const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                                if (whitespaceMatch) {
+                                    const whitespaceAfterFootnotes = whitespaceMatch[1];
+                                    const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                                    // Only include the whitespace if there's no content after it (end of line)
+                                    if (afterWhitespace.length === 0) {
+                                        footnoteEndLength += whitespaceMatch[0].length;
+                                    }
+                                    // If there's content after whitespace, don't include the whitespace
+                                }
+                            }
+                        } else if (footnoteEndLength > 0) {
+                            // No content after footnotes, include any trailing whitespace  
+                            const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                            if (trailingWhitespaceMatch) {
+                                footnoteEndLength += trailingWhitespaceMatch[0].length;
+                            }
+                        }
+                        insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
             } else {
                 if (line.includes(`==${highlight.text}==`)) {
                     targetLine = i;
                     const highlightEndIndex = line.indexOf(`==${highlight.text}==`) + `==${highlight.text}==`.length;
                     // Find the end of any existing footnotes after the highlight
                     const afterHighlight = line.substring(highlightEndIndex);
-                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*/);
-                    const footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                    let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+                    
+                    // If there are footnotes and content continues after them, don't include trailing whitespace
+                    if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                        const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                        // If the next character after footnotes is non-whitespace, position right after footnotes
+                        if (afterFootnotes.match(/^\S/)) {
+                            // footnoteEndLength is already correct (no trailing whitespace included)
+                        } else {
+                            // Check if there's whitespace followed by content
+                            const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                            if (whitespaceMatch) {
+                                const whitespaceAfterFootnotes = whitespaceMatch[1];
+                                const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                                // Only include the whitespace if there's no content after it (end of line)
+                                if (afterWhitespace.length === 0) {
+                                    footnoteEndLength += whitespaceMatch[0].length;
+                                }
+                                // If there's content after whitespace, don't include the whitespace
+                            }
+                        }
+                    } else if (footnoteEndLength > 0) {
+                        // No content after footnotes, include any trailing whitespace  
+                        const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                        if (trailingWhitespaceMatch) {
+                            footnoteEndLength += trailingWhitespaceMatch[0].length;
+                        }
+                    }
                     insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
                     break;
                 }
@@ -1765,6 +1866,36 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
+    private isHtmlHighlight(highlight: Highlight): boolean {
+        // HTML highlights have a color property and are not native comments
+        return !highlight.isNativeComment && !!highlight.color;
+    }
+
+    private getHtmlHighlightPatterns(highlight: Highlight): Array<{pattern: string, tagLength: number}> {
+        const escapedText = this.escapeRegex(highlight.text);
+        const patterns: Array<{pattern: string, tagLength: number}> = [];
+        
+        // Pattern for <span style="background:color">text</span>
+        patterns.push({
+            pattern: `<span\\s+style=["'][^"']*background:\\s*[^;"']+[^"']*["'][^>]*>${escapedText}<\\/span>`,
+            tagLength: 0 // Will be calculated dynamically
+        });
+        
+        // Pattern for <font color="color">text</font>  
+        patterns.push({
+            pattern: `<font\\s+color=["'][^"']+["'][^>]*>${escapedText}<\\/font>`,
+            tagLength: 0 // Will be calculated dynamically
+        });
+        
+        // Pattern for <mark>text</mark>
+        patterns.push({
+            pattern: `<mark[^>]*>${escapedText}<\\/mark>`,
+            tagLength: 0 // Will be calculated dynamically
+        });
+        
+        return patterns;
+    }
+
     private performHighlightFocus(targetView: MarkdownView, highlight: Highlight) {
         if (!targetView || !targetView.editor) {
             return;
@@ -1790,15 +1921,54 @@ export class HighlightsSidebarView extends ItemView {
 
         const content = targetView.editor.getValue();
         
-        // Use different regex pattern based on whether it's a native comment or regular highlight
-        const regexPattern = highlight.isNativeComment 
-            ? `%%${this.escapeRegex(highlight.text)}%%`
-            : `==${this.escapeRegex(highlight.text)}==`;
-        const regex = new RegExp(regexPattern, 'g');
-        const matches: { index: number, length: number }[] = [];
-        let matchResult;
-        while ((matchResult = regex.exec(content)) !== null) {
-            matches.push({ index: matchResult.index, length: matchResult[0].length });
+        let matches: { index: number, length: number, tagStartLength: number, tagEndLength: number }[] = [];
+        
+        if (highlight.isNativeComment) {
+            // Native comment pattern
+            const regexPattern = `%%${this.escapeRegex(highlight.text)}%%`;
+            const regex = new RegExp(regexPattern, 'g');
+            let matchResult;
+            while ((matchResult = regex.exec(content)) !== null) {
+                matches.push({ 
+                    index: matchResult.index, 
+                    length: matchResult[0].length,
+                    tagStartLength: 2, // %%
+                    tagEndLength: 2    // %%
+                });
+            }
+        } else if (this.isHtmlHighlight(highlight)) {
+            // HTML highlight patterns
+            const patterns = this.getHtmlHighlightPatterns(highlight);
+            for (const {pattern} of patterns) {
+                const regex = new RegExp(pattern, 'gi');
+                let matchResult;
+                while ((matchResult = regex.exec(content)) !== null) {
+                    const fullMatch = matchResult[0];
+                    const textStartIndex = fullMatch.lastIndexOf(highlight.text);
+                    const tagStartLength = textStartIndex;
+                    const tagEndLength = fullMatch.length - textStartIndex - highlight.text.length;
+                    
+                    matches.push({ 
+                        index: matchResult.index, 
+                        length: matchResult[0].length,
+                        tagStartLength,
+                        tagEndLength
+                    });
+                }
+            }
+        } else {
+            // Regular markdown highlight pattern
+            const regexPattern = `==${this.escapeRegex(highlight.text)}==`;
+            const regex = new RegExp(regexPattern, 'g');
+            let matchResult;
+            while ((matchResult = regex.exec(content)) !== null) {
+                matches.push({ 
+                    index: matchResult.index, 
+                    length: matchResult[0].length,
+                    tagStartLength: 2, // ==
+                    tagEndLength: 2    // ==
+                });
+            }
         }
 
         if (matches.length === 0) return;
@@ -1815,13 +1985,13 @@ export class HighlightsSidebarView extends ItemView {
                 foundMatch = true;
             }
         }
-        // A small tolerance, though for both ==text== and %%text%% it should ideally be exact or very close.
-        if (!foundMatch || minDistance > 5) {
+        // A small tolerance for finding the closest match
+        if (!foundMatch || minDistance > 50) {
             // Using best guess for highlight position
         }
 
-        const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + 2);
-        const endPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.length - 2);
+        const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.tagStartLength);
+        const endPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.length - targetMatchInfo.tagEndLength);
         
         targetView.editor.scrollIntoView({ from: startPos, to: endPos }, true);
         targetView.editor.focus();
@@ -1878,20 +2048,46 @@ export class HighlightsSidebarView extends ItemView {
             
             // Find the highlight in the content
             const escapedText = this.escapeRegex(highlight.text);
-            // Use different regex pattern based on whether it's a native comment or regular highlight
-            const regexPattern = highlight.isNativeComment 
-                ? `%%${escapedText}%%`
-                : `==${escapedText}==`;
-            const highlightRegex = new RegExp(regexPattern, 'g');
-            let match;
             let bestMatch: { index: number, length: number } | null = null;
             let minDistance = Infinity;
 
-            while ((match = highlightRegex.exec(content)) !== null) {
-                const distance = Math.abs(match.index - highlight.startOffset);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    bestMatch = { index: match.index, length: match[0].length };
+            if (highlight.isNativeComment) {
+                // Native comment pattern
+                const regexPattern = `%%${escapedText}%%`;
+                const highlightRegex = new RegExp(regexPattern, 'g');
+                let match;
+                while ((match = highlightRegex.exec(content)) !== null) {
+                    const distance = Math.abs(match.index - highlight.startOffset);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = { index: match.index, length: match[0].length };
+                    }
+                }
+            } else if (this.isHtmlHighlight(highlight)) {
+                // HTML highlight patterns
+                const patterns = this.getHtmlHighlightPatterns(highlight);
+                for (const {pattern} of patterns) {
+                    const regex = new RegExp(pattern, 'gi');
+                    let match;
+                    while ((match = regex.exec(content)) !== null) {
+                        const distance = Math.abs(match.index - highlight.startOffset);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            bestMatch = { index: match.index, length: match[0].length };
+                        }
+                    }
+                }
+            } else {
+                // Regular markdown highlight pattern
+                const regexPattern = `==${escapedText}==`;
+                const highlightRegex = new RegExp(regexPattern, 'g');
+                let match;
+                while ((match = highlightRegex.exec(content)) !== null) {
+                    const distance = Math.abs(match.index - highlight.startOffset);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestMatch = { index: match.index, length: match[0].length };
+                    }
                 }
             }
 

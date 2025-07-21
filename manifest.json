@@ -1,7 +1,7 @@
 {
 	"id": "sidebar-highlights",
 	"name": "Sidebar Highlights",
-	"version": "1.16.0",
+	"version": "1.17.0",
 	"minAppVersion": "1.8.10",
 	"description": "View and manage text highlights, comments on highlights, native comments, and collections for your highlights.",
 	"author": "trevware",

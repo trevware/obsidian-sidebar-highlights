@@ -554,9 +554,19 @@ export class HighlightRenderer {
         return tags;
     }
 
+    private isColorChangeable(highlight: Highlight): boolean {
+        // Don't allow color changes for native comments or HTML highlights
+        return !highlight.isNativeComment && !this.isHtmlHighlight(highlight);
+    }
+
+    private isHtmlHighlight(highlight: Highlight): boolean {
+        // HTML highlights have a color property and are not native comments
+        return !highlight.isNativeComment && !!highlight.color;
+    }
+
     private createHoverColorPicker(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        // Don't create hover color picker for native comments
-        if (highlight.isNativeComment) return;
+        // Don't create hover color picker for native comments or HTML highlights
+        if (!this.isColorChangeable(highlight)) return;
         
         // Create a hover zone for the left border area
         const hoverZone = item.createDiv({ cls: 'highlight-border-hover-zone' });

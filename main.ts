@@ -923,9 +923,55 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
+    private parseHtmlColor(colorValue: string): string | null {
+        // Normalize the color value
+        const color = colorValue.trim().toLowerCase();
+        
+        // Named colors to hex mapping
+        const namedColors: { [key: string]: string } = {
+            'yellow': '#ffff00',
+            'red': '#ff0000',
+            'green': '#008000',
+            'blue': '#0000ff',
+            'orange': '#ffa500',
+            'purple': '#800080',
+            'pink': '#ffc0cb',
+            'cyan': '#00ffff',
+            'magenta': '#ff00ff',
+            'lime': '#00ff00',
+            'brown': '#a52a2a',
+            'gray': '#808080',
+            'grey': '#808080',
+            'black': '#000000',
+            'white': '#ffffff'
+        };
+        
+        // Check if it's a named color
+        if (namedColors[color]) {
+            return namedColors[color];
+        }
+        
+        // Check if it's already a hex color
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) {
+            // Convert 3-digit hex to 6-digit
+            if (color.length === 4) {
+                return '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+            }
+            return color;
+        }
+        
+        // Return null for unsupported color formats
+        return null;
+    }
+
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
         const markdownHighlightRegex = /==([^=](?:[^=]|=[^=])*?)==/g;
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
+        
+        // HTML highlight patterns
+        const spanBackgroundRegex = /<span\s+style=["'][^"']*background:\s*([^;"']+)[^"']*["'][^>]*>(.*?)<\/span>/gi;
+        const fontColorRegex = /<font\s+color=["']([^"']+)["'][^>]*>(.*?)<\/font>/gi;
+        const markTagRegex = /<mark[^>]*>(.*?)<\/mark>/gi;
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
@@ -980,8 +1026,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Get code block ranges to exclude highlights within them
         const codeBlockRanges = this.getCodeBlockRanges(content);
 
-        // Process both highlight types
-        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment'}> = [];
+        // Process all highlight types
+        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string}> = [];
         
         // Find all highlight matches
         let match;
@@ -1012,10 +1058,46 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         }
         
+        // Find HTML span background matches
+        while ((match = spanBackgroundRegex.exec(content)) !== null) {
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                const color = this.parseHtmlColor(match[1]);
+                if (color) {
+                    // Create a modified match array with the text content
+                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
+                    modifiedMatch[1] = match[2]; // Use the text content, not the color
+                    allMatches.push({match: modifiedMatch, type: 'html', color});
+                }
+            }
+        }
+        
+        // Find HTML font color matches
+        while ((match = fontColorRegex.exec(content)) !== null) {
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                const color = this.parseHtmlColor(match[1]);
+                if (color) {
+                    // Create a modified match array with the text content
+                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
+                    modifiedMatch[1] = match[2]; // Use the text content, not the color
+                    allMatches.push({match: modifiedMatch, type: 'html', color});
+                }
+            }
+        }
+        
+        // Find HTML mark tag matches
+        while ((match = markTagRegex.exec(content)) !== null) {
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                // Create a modified match array with the text content
+                const modifiedMatch: RegExpExecArray = Object.assign([], match);
+                modifiedMatch[1] = match[1]; // Use the text content
+                allMatches.push({match: modifiedMatch, type: 'html', color: '#ffff00'}); // Default yellow for <mark>
+            }
+        }
+        
         // Sort matches by position in content
         allMatches.sort((a, b) => a.match.index - b.match.index);
 
-        allMatches.forEach(({match, type}) => {
+        allMatches.forEach(({match, type, color}) => {
             const [, highlightText] = match;
             
             // Skip empty or whitespace-only highlights
@@ -1037,8 +1119,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             let footnoteContents: string[] = [];
             let footnoteCount = 0;
             
-            if (type === 'highlight') {
-                // For highlights, extract footnotes in the order they appear in the text
+            if (type === 'highlight' || type === 'html') {
+                // For regular and HTML highlights, extract footnotes in the order they appear in the text
                 const afterHighlight = content.substring(match.index + match[0].length);
                 
                 // Find all footnotes (both standard and inline) in order
@@ -1093,7 +1175,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 footnoteContents = allFootnotes.map(f => f.content);
                 footnoteCount = footnoteContents.length;
                 
-            } else {
+            } else if (type === 'comment') {
                 // For comments, the text itself IS the comment content
                 footnoteContents = [highlightText];
                 footnoteCount = 1;
@@ -1109,6 +1191,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteCount: footnoteCount,
                     footnoteContents: footnoteContents,
                     isNativeComment: type === 'comment',
+                    // Update color for HTML highlights, preserve existing for others
+                    color: type === 'html' ? color : existingHighlight.color,
                     // Preserve existing createdAt timestamp if it exists
                     createdAt: existingHighlight.createdAt || Date.now()
                 });
@@ -1127,7 +1211,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteCount: footnoteCount,
                     footnoteContents: footnoteContents,
                     createdAt: uniqueTimestamp,
-                    isNativeComment: type === 'comment'
+                    isNativeComment: type === 'comment',
+                    // Set color for HTML highlights
+                    color: type === 'html' ? color : undefined
                 });
             }
         });

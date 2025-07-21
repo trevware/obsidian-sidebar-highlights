@@ -5,6 +5,20 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2025-07-21
+
+### Added
+- **HTML Highlight Support**: Added support for HTML highlight syntax alongside existing markdown highlighting
+  - `<font color="color">text</font>` - Font color highlighting
+  - `<span style="background:color">text</span>` - Background color highlighting
+  - `<mark>text</mark>` - Standard mark tag (defaults to yellow)
+- **Color Format Support**: Supports hex colors (#835cf5, #f00), named colors (yellow, red, green, etc.), and case-insensitive matching
+
+### Enhanced
+- **Color Display**: HTML highlights display using background color, or font color if only font color is specified in the HTML
+- **Read-Only Colors**: HTML highlights cannot have colors changed from sidebar (like native comments) since color is determined by HTML markup
+- **Search Integration**: HTML highlights included in search and filtering functionality
+
 ## [1.16.0] - 2025-07-19
 
 ### Fixed
