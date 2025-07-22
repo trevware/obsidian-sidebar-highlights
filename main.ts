@@ -965,7 +965,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
-        const markdownHighlightRegex = /==([^=](?:[^=]|=[^=])*?)==/g;
+        const markdownHighlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
         
         // HTML highlight patterns
@@ -1504,10 +1504,21 @@ export default class HighlightCommentsPlugin extends Plugin {
     private getCodeBlockRanges(content: string): Array<{start: number, end: number}> {
         const ranges: Array<{start: number, end: number}> = [];
         
-        // Find fenced code blocks (``` or ~~~ with optional language)
-        const fencedCodeRegex = /^(```|~~~).*?\n([\s\S]*?)\n\1\s*$/gm;
+        // Find fenced code blocks (``` and ~~~ with optional language)
+        const tripleBacktickRegex = /^```[\s\S]*?\n```\s*$/gm;
+        const tripleWaveRegex = /^~~~[\s\S]*?\n~~~\s*$/gm;
+        
         let match;
-        while ((match = fencedCodeRegex.exec(content)) !== null) {
+        // Find ``` code blocks
+        while ((match = tripleBacktickRegex.exec(content)) !== null) {
+            ranges.push({
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+        
+        // Find ~~~ code blocks
+        while ((match = tripleWaveRegex.exec(content)) !== null) {
             ranges.push({
                 start: match.index,
                 end: match.index + match[0].length
