@@ -44,6 +44,9 @@ export interface CommentPluginSettings {
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
     excludedFiles: string[]; // Array of file/folder paths to exclude from highlight detection
     dateFormat: string; // Moment.js format string for timestamp display
+    highlightFontSize: number; // Font size for highlight text
+    detailsFontSize: number; // Font size for details (buttons, filename, etc.)
+    commentFontSize: number; // Font size for comment text
     customColors: {
         yellow: string;
         red: string;
@@ -76,6 +79,9 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     excludeExcalidraw: true, // Exclude .excalidraw files by default
     excludedFiles: [], // Empty array by default
     dateFormat: 'YYYY-MM-DD HH:mm', // Default date format
+    highlightFontSize: 11, // Default highlight text font size
+    detailsFontSize: 11, // Default details font size
+    commentFontSize: 11, // Default comment text font size
     customColors: {
         yellow: '#ffd700',
         red: '#ff6b6b',
@@ -392,6 +398,11 @@ export default class HighlightCommentsPlugin extends Plugin {
             .highlight-item-card.highlight-color-teal.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.teal}, var(--shadow-s) !important; }
             .highlight-item-card.highlight-color-blue.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.blue}, var(--shadow-s) !important; }
             .highlight-item-card.highlight-color-green.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.green}, var(--shadow-s) !important; }
+            
+            /* Dynamic font sizes */
+            .highlight-quote { font-size: ${this.settings.highlightFontSize}px !important; }
+            .highlight-actions, .highlight-filename, .highlight-stats-section, .highlight-timestamp-info, .comment-buttons, .highlight-info-line { font-size: ${this.settings.detailsFontSize}px !important; }
+            .highlight-comment { font-size: ${this.settings.commentFontSize}px !important; }
         `;
         
         customStyle.textContent = css;
@@ -1614,6 +1625,57 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.dateFormat = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                }));
+
+        // TYPOGRAPHY SECTION
+        new Setting(containerEl).setHeading().setName('Typography');
+
+        new Setting(containerEl)
+            .setName('Main highlight text')
+            .setDesc('Adjust main highlight text size (default 11).')
+            .addText(text => text
+                .setPlaceholder('11')
+                .setValue(this.plugin.settings.highlightFontSize.toString())
+                .onChange(async (value) => {
+                    const fontSize = parseInt(value);
+                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 32) {
+                        this.plugin.settings.highlightFontSize = fontSize;
+                        await this.plugin.saveSettings();
+                        this.plugin.updateStyles();
+                        this.plugin.refreshSidebar();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('Details text size')
+            .setDesc('Adjust details text size (filename, line number, etc) (default 11).')
+            .addText(text => text
+                .setPlaceholder('11')
+                .setValue(this.plugin.settings.detailsFontSize.toString())
+                .onChange(async (value) => {
+                    const fontSize = parseInt(value);
+                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 24) {
+                        this.plugin.settings.detailsFontSize = fontSize;
+                        await this.plugin.saveSettings();
+                        this.plugin.updateStyles();
+                        this.plugin.refreshSidebar();
+                    }
+                }));
+
+        new Setting(containerEl)
+            .setName('Comment text size')
+            .setDesc('Adjust comment text size (default 11).')
+            .addText(text => text
+                .setPlaceholder('11')
+                .setValue(this.plugin.settings.commentFontSize.toString())
+                .onChange(async (value) => {
+                    const fontSize = parseInt(value);
+                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 24) {
+                        this.plugin.settings.commentFontSize = fontSize;
+                        await this.plugin.saveSettings();
+                        this.plugin.updateStyles();
+                        this.plugin.refreshSidebar();
+                    }
                 }));
 
         // STYLING SECTION

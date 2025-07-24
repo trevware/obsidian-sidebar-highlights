@@ -5,6 +5,20 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2025-07-23
+
+### Added
+- **Typography Settings**: Added customizable font size controls in Settings > Display > Typography
+  - **Main highlight text**: Adjust font size for the main highlight content (default 11px)
+  - **Details text size**: Adjust font size for filename, line number, stats, buttons, etc. (default 11px)
+  - **Comment text size**: Adjust font size for comment content (default 11px)
+- **Real-time Updates**: Font size changes apply immediately when adjusted in settings
+- **Input Validation**: Font size inputs accept values between 8-32px with validation
+
+### Enhanced
+- **Settings Organization**: Added dedicated Typography section under Display settings
+- **User Control**: Independent control over different text elements for optimal readability customization
+
 ## [1.18.0] - 2025-07-22
 
 ### Fixed
