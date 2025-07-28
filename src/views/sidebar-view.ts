@@ -1384,7 +1384,7 @@ export class HighlightsSidebarView extends ItemView {
             showFilename: this.plugin.settings.showFilenames && showFilename,
             showTimestamp: this.plugin.settings.showTimestamps,
             showHighlightActions: this.plugin.settings.showHighlightActions,
-            isCommentsVisible: this.highlightCommentsVisible.get(highlight.id) || false,
+            isCommentsVisible: this.getHighlightCommentsVisibility(highlight),
             dateFormat: this.plugin.settings.dateFormat,
             onCommentToggle: (highlightId) => {
                 const currentVisibility = this.highlightCommentsVisible.get(highlightId) || false;
@@ -1867,8 +1867,8 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private isHtmlHighlight(highlight: Highlight): boolean {
-        // HTML highlights have a color property and are not native comments
-        return !highlight.isNativeComment && !!highlight.color;
+        // HTML highlights are identified by their type property
+        return highlight.type === 'html';
     }
 
     private getHtmlHighlightPatterns(highlight: Highlight): Array<{pattern: string, tagLength: number}> {
@@ -1890,6 +1890,12 @@ export class HighlightsSidebarView extends ItemView {
         // Pattern for <mark>text</mark>
         patterns.push({
             pattern: `<mark[^>]*>${escapedText}<\\/mark>`,
+            tagLength: 0 // Will be calculated dynamically
+        });
+        
+        // Pattern for <span class="classname">text</span>
+        patterns.push({
+            pattern: `<span\\s+class=["'][^"']*["'][^>]*>${escapedText}<\\/span>`,
             tagLength: 0 // Will be calculated dynamically
         });
         
@@ -1992,6 +1998,18 @@ export class HighlightsSidebarView extends ItemView {
 
         const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.tagStartLength);
         const endPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.length - targetMatchInfo.tagEndLength);
+        
+        // Set cursor position first
+        targetView.editor.setSelection(startPos, endPos);
+        
+        // Auto-unfold if setting is enabled
+        if (this.plugin.settings.autoToggleFold) {
+            try {
+                (this.plugin.app as any).commands.executeCommandById('editor:toggle-fold');
+            } catch (error) {
+                console.warn('Failed to execute toggle fold command:', error);
+            }
+        }
         
         targetView.editor.scrollIntoView({ from: startPos, to: endPos }, true);
         targetView.editor.focus();
@@ -2463,65 +2481,27 @@ export class HighlightsSidebarView extends ItemView {
     private updateCommentsToggleIcon(button: HTMLElement) {
         button.empty();
         
-        // Get highlights based on current view mode
-        let highlightsToConsider: Highlight[];
-        if (this.viewMode === 'current') {
-            highlightsToConsider = this.plugin.getCurrentFileHighlights();
-        } else if (this.viewMode === 'all') {
-            // Get all highlights from all files
-            highlightsToConsider = [];
-            for (const [, fileHighlights] of this.plugin.highlights) {
-                highlightsToConsider.push(...fileHighlights);
-            }
-        } else if (this.viewMode === 'collections' && this.currentCollectionId) {
-            // Get highlights from current collection
-            highlightsToConsider = this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
-        } else {
-            highlightsToConsider = [];
-        }
-        
-        // Check if any comments are currently expanded
-        const anyExpanded = highlightsToConsider.some(highlight => {
-            // Only check for footnote comments on regular highlights, not native comments
-            if (highlight.isNativeComment) return false;
-            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
-            return validFootnoteCount > 0 && this.highlightCommentsVisible.get(highlight.id);
-        });
+        // Use global state to determine icon, not current view
+        const anyExpanded = this.areCommentsGloballyExpanded();
         
         const iconName = anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down';
         setIcon(button, iconName);
     }
 
     private toggleAllComments() {
-        // Get highlights based on current view mode
-        let highlightsToToggle: Highlight[];
-        if (this.viewMode === 'current') {
-            highlightsToToggle = this.plugin.getCurrentFileHighlights();
-        } else if (this.viewMode === 'all') {
-            // Get all highlights from all files
-            highlightsToToggle = [];
-            for (const [, fileHighlights] of this.plugin.highlights) {
-                highlightsToToggle.push(...fileHighlights);
-            }
-        } else if (this.viewMode === 'collections' && this.currentCollectionId) {
-            // Get highlights from current collection
-            highlightsToToggle = this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
-        } else {
-            highlightsToToggle = [];
+        // Toggle ALL highlights across all files globally, not just current view
+        const allHighlights: Highlight[] = [];
+        for (const [, fileHighlights] of this.plugin.highlights) {
+            allHighlights.push(...fileHighlights);
         }
         
-        // Check if any comments are currently expanded
-        const anyExpanded = highlightsToToggle.some(highlight => {
-            // Only check for footnote comments on regular highlights, not native comments
-            if (highlight.isNativeComment) return false;
-            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
-            return validFootnoteCount > 0 && this.highlightCommentsVisible.get(highlight.id);
-        });
+        // Check if any comments are currently expanded globally
+        const anyExpanded = this.areCommentsGloballyExpanded();
         
         // If any are expanded, collapse all. If none are expanded, expand all.
         const newState = !anyExpanded;
         
-        highlightsToToggle.forEach(highlight => {
+        allHighlights.forEach(highlight => {
             // Only toggle footnote comments for regular highlights, not native comments
             if (highlight.isNativeComment) return;
             const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
@@ -2529,6 +2509,44 @@ export class HighlightsSidebarView extends ItemView {
                 this.highlightCommentsVisible.set(highlight.id, newState);
             }
         });
+    }
+
+    private areCommentsGloballyExpanded(): boolean {
+        // Check ALL highlights across all files globally, not just current view
+        const allHighlights: Highlight[] = [];
+        for (const [, fileHighlights] of this.plugin.highlights) {
+            allHighlights.push(...fileHighlights);
+        }
+        
+        // Check if any comments are currently expanded globally
+        return allHighlights.some(highlight => {
+            // Only check for footnote comments on regular highlights, not native comments
+            if (highlight.isNativeComment) return false;
+            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+            return validFootnoteCount > 0 && this.highlightCommentsVisible.get(highlight.id);
+        });
+    }
+
+    private getHighlightCommentsVisibility(highlight: Highlight): boolean {
+        // If we already have a stored state for this highlight, use it
+        const storedVisibility = this.highlightCommentsVisible.get(highlight.id);
+        if (storedVisibility !== undefined) {
+            return storedVisibility;
+        }
+        
+        // For new highlights with footnotes, inherit the current global state
+        if (!highlight.isNativeComment) {
+            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+            if (validFootnoteCount > 0) {
+                const globalState = this.areCommentsGloballyExpanded();
+                // Store this state so it persists
+                this.highlightCommentsVisible.set(highlight.id, globalState);
+                return globalState;
+            }
+        }
+        
+        // Default to false for highlights without footnotes or native comments
+        return false;
     }
 
     private resetAllColors() {
@@ -3159,6 +3177,15 @@ export class HighlightsSidebarView extends ItemView {
             // 4. Apply native comments filtering
             if (!this.showNativeComments && highlight.isNativeComment) {
                 return false;
+            }
+
+            // 5. Apply minimum character count filtering (for highlights and native comments only)
+            const minCharCount = this.plugin.settings.minimumCharacterCount;
+            if (minCharCount > 0 && (highlight.type === 'highlight' || highlight.type === 'html' || highlight.isNativeComment)) {
+                const textLength = highlight.text.length;
+                if (textLength < minCharCount) {
+                    return false;
+                }
             }
 
             return true;

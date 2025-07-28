@@ -18,6 +18,7 @@ export interface Highlight {
     collectionIds?: string[]; // Add collection support
     createdAt?: number; // Timestamp when highlight was created
     isNativeComment?: boolean; // True if this is a native comment (%% %) rather than highlight (== ==)
+    type?: 'highlight' | 'comment' | 'html'; // Type of highlight for proper identification
 }
 
 export interface Collection {
@@ -39,11 +40,13 @@ export interface CommentPluginSettings {
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
     showToolbar: boolean; // Show/hide the toolbar container
+    autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
     selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
     excludedFiles: string[]; // Array of file/folder paths to exclude from highlight detection
     dateFormat: string; // Moment.js format string for timestamp display
+    minimumCharacterCount: number; // Minimum character count to display highlights and native comments in sidebar
     highlightFontSize: number; // Font size for highlight text
     detailsFontSize: number; // Font size for details (buttons, filename, etc.)
     commentFontSize: number; // Font size for comment text
@@ -74,11 +77,13 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showTimestamps: true, // Show timestamps by default
     showHighlightActions: true, // Show highlight actions by default
     showToolbar: true, // Show toolbar by default
+    autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
     selectTextOnCommentClick: false, // Position to highlight by default
     excludeExcalidraw: true, // Exclude .excalidraw files by default
     excludedFiles: [], // Empty array by default
     dateFormat: 'YYYY-MM-DD HH:mm', // Default date format
+    minimumCharacterCount: 0, // Default minimum character count (0 = show all)
     highlightFontSize: 11, // Default highlight text font size
     detailsFontSize: 11, // Default details font size
     commentFontSize: 11, // Default comment text font size
@@ -975,6 +980,58 @@ export default class HighlightCommentsPlugin extends Plugin {
         return null;
     }
 
+    private getCssClassColor(className: string): string | null {
+        try {
+            // Create temporary element to test the class
+            const tempEl = document.createElement('span');
+            tempEl.className = className;
+            tempEl.style.visibility = 'hidden';
+            tempEl.style.position = 'absolute';
+            document.body.appendChild(tempEl);
+            
+            // Get computed background color
+            const computed = window.getComputedStyle(tempEl);
+            const bgColor = computed.backgroundColor;
+            
+            // Cleanup
+            document.body.removeChild(tempEl);
+            
+            // Convert to hex if it's a valid color (not transparent)
+            return this.rgbaToHex(bgColor);
+        } catch {
+            return null;
+        }
+    }
+
+    private rgbaToHex(rgba: string): string | null {
+        if (!rgba || rgba === 'transparent' || rgba === 'rgba(0, 0, 0, 0)') {
+            return null;
+        }
+
+        // Match rgba(r, g, b, a) or rgb(r, g, b)
+        const match = rgba.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
+        if (!match) {
+            return null;
+        }
+
+        const r = parseInt(match[1], 10);
+        const g = parseInt(match[2], 10);
+        const b = parseInt(match[3], 10);
+        const a = match[4] ? parseFloat(match[4]) : 1;
+
+        // Convert to hex with alpha if present
+        const toHex = (n: number) => n.toString(16).padStart(2, '0');
+        const hex = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        
+        // Add alpha if not fully opaque
+        if (a < 1) {
+            const alphaHex = Math.round(a * 255).toString(16).padStart(2, '0');
+            return hex + alphaHex;
+        }
+        
+        return hex;
+    }
+
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
         const markdownHighlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
@@ -983,6 +1040,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const spanBackgroundRegex = /<span\s+style=["'][^"']*background:\s*([^;"']+)[^"']*["'][^>]*>(.*?)<\/span>/gi;
         const fontColorRegex = /<font\s+color=["']([^"']+)["'][^>]*>(.*?)<\/font>/gi;
         const markTagRegex = /<mark[^>]*>(.*?)<\/mark>/gi;
+        const spanClassRegex = /<span\s+class=["']([^"']+)["'][^>]*>(.*?)<\/span>/gi;
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
@@ -1105,6 +1163,20 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         }
         
+        // Find HTML span class matches
+        while ((match = spanClassRegex.exec(content)) !== null) {
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                const className = match[1].trim();
+                const color = this.getCssClassColor(className);
+                if (color) {
+                    // Create a modified match array with the text content
+                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
+                    modifiedMatch[1] = match[2]; // Use the text content, not the class name
+                    allMatches.push({match: modifiedMatch, type: 'html', color});
+                }
+            }
+        }
+        
         // Sort matches by position in content
         allMatches.sort((a, b) => a.match.index - b.match.index);
 
@@ -1205,7 +1277,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Update color for HTML highlights, preserve existing for others
                     color: type === 'html' ? color : existingHighlight.color,
                     // Preserve existing createdAt timestamp if it exists
-                    createdAt: existingHighlight.createdAt || Date.now()
+                    createdAt: existingHighlight.createdAt || Date.now(),
+                    // Store the type for proper identification
+                    type: type
                 });
             } else {
                 // For new highlights, use file modification time to preserve historical context
@@ -1224,7 +1298,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     createdAt: uniqueTimestamp,
                     isNativeComment: type === 'comment',
                     // Set color for HTML highlights
-                    color: type === 'html' ? color : undefined
+                    color: type === 'html' ? color : undefined,
+                    // Store the type for proper identification
+                    type: type
                 });
             }
         });
@@ -1616,13 +1692,36 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName('Auto-unfold on focus')
+            .setDesc('Automatically unfold content when focusing highlights from the sidebar.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoToggleFold)
+                .onChange(async (value) => {
+                    this.plugin.settings.autoToggleFold = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName('Date format')
-            .setDesc('Format string for timestamps using moment.js syntax (e.g., YYYY-MM-DD HH:mm, MMM DD YYYY, DD/MM/YYYY h:mm A)')
+            .setDesc('Format string for timestamps using moment.js syntax (e.g., YYYY-MM-DD HH:mm, MMM DD YYYY, DD/MM/YYYY h:mm A).')
             .addMomentFormat(format => format
                 .setValue(this.plugin.settings.dateFormat)
                 .setPlaceholder('YYYY-MM-DD HH:mm')
                 .onChange(async (value) => {
                     this.plugin.settings.dateFormat = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName('Minimum character count')
+            .setDesc('Hide highlights and native comments shorter than this character count from the sidebar (default 0).')
+            .addText(text => text
+                .setPlaceholder('0')
+                .setValue(this.plugin.settings.minimumCharacterCount.toString())
+                .onChange(async (value) => {
+                    const numValue = parseInt(value) || 0;
+                    this.plugin.settings.minimumCharacterCount = Math.max(0, numValue);
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
@@ -1891,7 +1990,7 @@ class HighlightSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Excluded files')
-            .setDesc('Excluded files or folders will be hidden from Sidebar Highlights')
+            .setDesc('Excluded files or folders will be hidden from Sidebar Highlights.')
             .addButton(button => {
                 button.setButtonText('Manage')
                     .onClick(() => {

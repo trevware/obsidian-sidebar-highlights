@@ -5,6 +5,21 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2025-07-27
+
+### Added
+- **Minimum Character Count Filter**: Added setting to hide highlights and native comments shorter than specified character count from sidebar (Settings > Display)
+- **Auto-unfold on Focus**: Added optional setting to automatically unfold content when focusing highlights from sidebar (Settings > Display)
+- **Class-based Custom CSS**: Added support for class-based styling when using custom CSS (e.g., `.g { background: #00c80066; color: var(--text-normal); }`)
+
+### Fixed
+- **HTML Highlight Colors**: Fixed issue where non-HTML highlight colors could not be altered once changed at least once
+- **Comment Expansion Persistence**: Fixed comment expansion state to persist across all three tabs and work for newly created highlights
+
+### Enhanced
+- **Settings UI**: Added periods to setting descriptions for consistency (Date format, Minimum character count, Excluded files)
+- **Filter Logic**: Minimum character count filtering applies only to highlights and native comments, preserving regular footnote-based comments
+
 ## [1.19.0] - 2025-07-23
 
 ### Added

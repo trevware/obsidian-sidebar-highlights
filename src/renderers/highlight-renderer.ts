@@ -555,13 +555,14 @@ export class HighlightRenderer {
     }
 
     private isColorChangeable(highlight: Highlight): boolean {
-        // Don't allow color changes for native comments or HTML highlights
+        // Only allow color changes for regular markdown highlights (==text==)
+        // Don't allow for native comments (%%text%%) or HTML highlights (<font>, <span>, <mark>)
         return !highlight.isNativeComment && !this.isHtmlHighlight(highlight);
     }
 
     private isHtmlHighlight(highlight: Highlight): boolean {
-        // HTML highlights have a color property and are not native comments
-        return !highlight.isNativeComment && !!highlight.color;
+        // HTML highlights are identified by their type property
+        return highlight.type === 'html';
     }
 
     private createHoverColorPicker(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
