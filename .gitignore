@@ -25,3 +25,7 @@ data.json
 CLAUDE.md
 CHECKLIST.md
 .claude
+
+# Testing and backups
+TESTING.md
+backups/
