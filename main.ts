@@ -3,6 +3,8 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
+import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
+import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 
 export interface Highlight {
     id: string;
@@ -29,6 +31,12 @@ export interface Collection {
     createdAt: number;
 }
 
+export interface CustomPattern {
+    name: string;
+    pattern: string;
+    type: 'highlight' | 'comment';
+}
+
 export interface CommentPluginSettings {
     settingsVersion: string; // Track settings schema version for migration
     highlightColor: string;
@@ -36,9 +44,11 @@ export interface CommentPluginSettings {
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc'; // Add grouping mode persistence
+    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc'; // Add sort mode for A-Z and Z-A sorting
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
+    showCollections: boolean; // Show Collections tab and collection icons
     showToolbar: boolean; // Show/hide the toolbar container
     autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
@@ -50,6 +60,8 @@ export interface CommentPluginSettings {
     highlightFontSize: number; // Font size for highlight text
     detailsFontSize: number; // Font size for details (buttons, filename, etc.)
     commentFontSize: number; // Font size for comment text
+    detectHtmlComments: boolean; // Detect HTML comments (<!-- -->)
+    customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
         red: string;
@@ -73,9 +85,11 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     highlights: {},
     collections: {}, // Initialize empty collections
     groupingMode: 'none', // Default grouping mode
+    sortMode: 'none', // Default sort mode
     showFilenames: true, // Show filenames by default
     showTimestamps: true, // Show timestamps by default
     showHighlightActions: true, // Show highlight actions by default
+    showCollections: true, // Show collections by default
     showToolbar: true, // Show toolbar by default
     autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
@@ -87,6 +101,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     highlightFontSize: 11, // Default highlight text font size
     detailsFontSize: 11, // Default details font size
     commentFontSize: 11, // Default comment text font size
+    detectHtmlComments: false, // Do not detect HTML comments by default
+    customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
         red: '#ff6b6b',
@@ -118,7 +134,10 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
-        
+
+        // Migrate any existing backup files to the backups folder
+        await this.migrateBackupFilesToFolder();
+
         this.highlights = new Map(Object.entries(this.settings.highlights || {}));
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
@@ -288,20 +307,15 @@ export default class HighlightCommentsPlugin extends Plugin {
     addStyles() {
         const style = document.createElement('style');
         style.id = 'highlight-comments-plugin-styles';
-        
-        // Apply theme color class to body
-        this.applyHighlightTheme();
-        
-        // Add dynamic custom color styles
+
+        // Add dynamic custom color styles for sidebar
         this.updateCustomColorStyles();
-        
+
         document.head.appendChild(style);
     }
 
     updateStyles() {
-        // Update theme color class when settings change
-        this.applyHighlightTheme();
-        // Update custom color styles
+        // Update custom color styles for sidebar
         this.updateCustomColorStyles();
     }
 
@@ -310,108 +324,33 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (style) {
             style.remove();
         }
-        
-        // Clean up custom color styles
-        const customStyle = document.getElementById('highlight-comments-custom-colors');
-        if (customStyle) {
-            customStyle.remove();
-        }
-        
-        // Clean up theme classes
-        this.removeHighlightTheme();
-    }
 
-    private applyHighlightTheme() {
-        // Remove any existing theme classes
-        this.removeHighlightTheme();
-        
-        // Apply new theme class
-        const themeClass = this.getHighlightThemeClass(this.settings.highlightColor);
-        document.body.classList.add(themeClass);
-    }
-
-    private removeHighlightTheme() {
-        const themeClasses = [
-            'theme-highlight-default',
-            'theme-highlight-yellow', 
-            'theme-highlight-red',
-            'theme-highlight-teal',
-            'theme-highlight-blue',
-            'theme-highlight-green'
-        ];
-        
-        themeClasses.forEach(className => {
-            document.body.classList.remove(className);
-        });
-    }
-
-    private getHighlightThemeClass(color: string): string {
-        const colorMap: Record<string, string> = {
-            [this.settings.customColors.yellow]: 'theme-highlight-yellow',
-            [this.settings.customColors.red]: 'theme-highlight-red', 
-            [this.settings.customColors.teal]: 'theme-highlight-teal',
-            [this.settings.customColors.blue]: 'theme-highlight-blue',
-            [this.settings.customColors.green]: 'theme-highlight-green'
-        };
-        
-        return colorMap[color] || 'theme-highlight-default';
+        // Clean up CSS custom properties
+        document.body.style.removeProperty('--sh-highlight-yellow');
+        document.body.style.removeProperty('--sh-highlight-red');
+        document.body.style.removeProperty('--sh-highlight-teal');
+        document.body.style.removeProperty('--sh-highlight-blue');
+        document.body.style.removeProperty('--sh-highlight-green');
+        document.body.style.removeProperty('--sh-quote-font-size');
+        document.body.style.removeProperty('--sh-details-font-size');
+        document.body.style.removeProperty('--sh-comment-font-size');
     }
 
     private updateCustomColorStyles() {
-        // Remove existing custom color styles
-        const existingCustomStyle = document.getElementById('highlight-comments-custom-colors');
-        if (existingCustomStyle) {
-            existingCustomStyle.remove();
-        }
+        // Set CSS custom properties on document body instead of injecting dynamic styles
+        // This allows CSS snippets to override these values and avoids !important cascades
 
-        // Create new custom color styles
-        const customStyle = document.createElement('style');
-        customStyle.id = 'highlight-comments-custom-colors';
-        
-        const css = `
-            /* Dynamic hover color options */
-            .hover-color-option[data-color="${this.settings.customColors.yellow}"] { background-color: ${this.settings.customColors.yellow} !important; }
-            .hover-color-option[data-color="${this.settings.customColors.red}"] { background-color: ${this.settings.customColors.red} !important; }
-            .hover-color-option[data-color="${this.settings.customColors.teal}"] { background-color: ${this.settings.customColors.teal} !important; }
-            .hover-color-option[data-color="${this.settings.customColors.blue}"] { background-color: ${this.settings.customColors.blue} !important; }
-            .hover-color-option[data-color="${this.settings.customColors.green}"] { background-color: ${this.settings.customColors.green} !important; }
-            
-            /* Dynamic group color squares */
-            .group-color-square[data-color="${this.settings.customColors.yellow}"] { background-color: ${this.settings.customColors.yellow} !important; }
-            .group-color-square[data-color="${this.settings.customColors.red}"] { background-color: ${this.settings.customColors.red} !important; }
-            .group-color-square[data-color="${this.settings.customColors.teal}"] { background-color: ${this.settings.customColors.teal} !important; }
-            .group-color-square[data-color="${this.settings.customColors.blue}"] { background-color: ${this.settings.customColors.blue} !important; }
-            .group-color-square[data-color="${this.settings.customColors.green}"] { background-color: ${this.settings.customColors.green} !important; }
-            
-            /* Dynamic highlight theme colors */
-            body.theme-highlight-yellow .cm-highlight { background-color: ${this.settings.customColors.yellow}66 !important; }
-            body.theme-highlight-red .cm-highlight { background-color: ${this.settings.customColors.red}66 !important; }
-            body.theme-highlight-teal .cm-highlight { background-color: ${this.settings.customColors.teal}66 !important; }
-            body.theme-highlight-blue .cm-highlight { background-color: ${this.settings.customColors.blue}66 !important; }
-            body.theme-highlight-green .cm-highlight { background-color: ${this.settings.customColors.green}66 !important; }
-            
-            /* Dynamic highlight card border colors */
-            .highlight-item-card.highlight-color-yellow { border-left-color: ${this.settings.customColors.yellow} !important; }
-            .highlight-item-card.highlight-color-red { border-left-color: ${this.settings.customColors.red} !important; }
-            .highlight-item-card.highlight-color-teal { border-left-color: ${this.settings.customColors.teal} !important; }
-            .highlight-item-card.highlight-color-blue { border-left-color: ${this.settings.customColors.blue} !important; }
-            .highlight-item-card.highlight-color-green { border-left-color: ${this.settings.customColors.green} !important; }
-            
-            /* Dynamic highlight card selection colors */
-            .highlight-item-card.highlight-color-yellow.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.yellow}, var(--shadow-s) !important; }
-            .highlight-item-card.highlight-color-red.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.red}, var(--shadow-s) !important; }
-            .highlight-item-card.highlight-color-teal.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.teal}, var(--shadow-s) !important; }
-            .highlight-item-card.highlight-color-blue.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.blue}, var(--shadow-s) !important; }
-            .highlight-item-card.highlight-color-green.highlight-selected { box-shadow: 0 0 0 1.5px ${this.settings.customColors.green}, var(--shadow-s) !important; }
-            
-            /* Dynamic font sizes */
-            .highlight-quote { font-size: ${this.settings.highlightFontSize}px !important; }
-            .highlight-actions, .highlight-filename, .highlight-stats-section, .highlight-timestamp-info, .comment-buttons, .highlight-info-line { font-size: ${this.settings.detailsFontSize}px !important; }
-            .highlight-comment { font-size: ${this.settings.commentFontSize}px !important; }
-        `;
-        
-        customStyle.textContent = css;
-        document.head.appendChild(customStyle);
+        // Set color custom properties
+        document.body.style.setProperty('--sh-highlight-yellow', this.settings.customColors.yellow);
+        document.body.style.setProperty('--sh-highlight-red', this.settings.customColors.red);
+        document.body.style.setProperty('--sh-highlight-teal', this.settings.customColors.teal);
+        document.body.style.setProperty('--sh-highlight-blue', this.settings.customColors.blue);
+        document.body.style.setProperty('--sh-highlight-green', this.settings.customColors.green);
+
+        // Set font size custom properties
+        document.body.style.setProperty('--sh-quote-font-size', `${this.settings.highlightFontSize}px`);
+        document.body.style.setProperty('--sh-details-font-size', `${this.settings.detailsFontSize}px`);
+        document.body.style.setProperty('--sh-comment-font-size', `${this.settings.commentFontSize}px`);
     }
 
     async activateView() {
@@ -514,7 +453,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         try {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `data-backup-${reason}-${timestamp}.json`;
-            
+
             const criticalData = {
                 settingsVersion: this.settings.settingsVersion,
                 collections: this.settings.collections,
@@ -524,13 +463,21 @@ export default class HighlightCommentsPlugin extends Plugin {
                 originalTimestamp: timestamp,
                 backupCreatedAt: Date.now()
             };
-            
-            const backupPath = `.obsidian/plugins/sidebar-highlights/${filename}`;
+
+            // Ensure backups folder exists
+            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            try {
+                await this.app.vault.adapter.mkdir(backupsDir);
+            } catch (e) {
+                // Folder might already exist, that's ok
+            }
+
+            const backupPath = `${backupsDir}/${filename}`;
             await this.app.vault.adapter.write(
                 backupPath,
                 JSON.stringify(criticalData, null, 2)
             );
-            
+
             // Only show notice for important backups (not routine ones)
             if (reason === 'migration' || reason === 'manual') {
                 new Notice(`Settings backup created: ${filename}`);
@@ -538,6 +485,61 @@ export default class HighlightCommentsPlugin extends Plugin {
         } catch (error) {
             console.error('Failed to create backup:', error);
             new Notice('Warning: Could not create settings backup');
+        }
+    }
+
+    async migrateBackupFilesToFolder() {
+        try {
+            const pluginDir = '.obsidian/plugins/sidebar-highlights';
+            const backupsDir = `${pluginDir}/backups`;
+
+            // Ensure backups folder exists
+            try {
+                await this.app.vault.adapter.mkdir(backupsDir);
+            } catch (e) {
+                // Folder might already exist, that's ok
+            }
+
+            // List all files in the plugin directory
+            const files = await this.app.vault.adapter.list(pluginDir);
+
+            // Find all backup files in the root
+            const backupFiles = files.files.filter(file =>
+                file.includes('data-backup-') && file.endsWith('.json') &&
+                !file.includes('/backups/')
+            );
+
+            if (backupFiles.length === 0) {
+                return; // No backups to migrate
+            }
+
+            // Move each backup file to the backups folder
+            let migratedCount = 0;
+            for (const oldPath of backupFiles) {
+                try {
+                    const filename = oldPath.split('/').pop();
+                    const newPath = `${backupsDir}/${filename}`;
+
+                    // Read the old file
+                    const content = await this.app.vault.adapter.read(oldPath);
+
+                    // Write to new location
+                    await this.app.vault.adapter.write(newPath, content);
+
+                    // Delete old file
+                    await this.app.vault.adapter.remove(oldPath);
+
+                    migratedCount++;
+                } catch (error) {
+                    console.error(`Failed to migrate backup file ${oldPath}:`, error);
+                }
+            }
+
+            if (migratedCount > 0) {
+                console.log(`Migrated ${migratedCount} backup file(s) to backups folder`);
+            }
+        } catch (error) {
+            console.error('Failed to migrate backup files:', error);
         }
     }
 
@@ -939,108 +941,11 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    private parseHtmlColor(colorValue: string): string | null {
-        // Normalize the color value
-        const color = colorValue.trim().toLowerCase();
-        
-        // Named colors to hex mapping
-        const namedColors: { [key: string]: string } = {
-            'yellow': '#ffff00',
-            'red': '#ff0000',
-            'green': '#008000',
-            'blue': '#0000ff',
-            'orange': '#ffa500',
-            'purple': '#800080',
-            'pink': '#ffc0cb',
-            'cyan': '#00ffff',
-            'magenta': '#ff00ff',
-            'lime': '#00ff00',
-            'brown': '#a52a2a',
-            'gray': '#808080',
-            'grey': '#808080',
-            'black': '#000000',
-            'white': '#ffffff'
-        };
-        
-        // Check if it's a named color
-        if (namedColors[color]) {
-            return namedColors[color];
-        }
-        
-        // Check if it's already a hex color
-        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) {
-            // Convert 3-digit hex to 6-digit
-            if (color.length === 4) {
-                return '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
-            }
-            return color;
-        }
-        
-        // Return null for unsupported color formats
-        return null;
-    }
-
-    private getCssClassColor(className: string): string | null {
-        try {
-            // Create temporary element to test the class
-            const tempEl = document.createElement('span');
-            tempEl.className = className;
-            tempEl.style.visibility = 'hidden';
-            tempEl.style.position = 'absolute';
-            document.body.appendChild(tempEl);
-            
-            // Get computed background color
-            const computed = window.getComputedStyle(tempEl);
-            const bgColor = computed.backgroundColor;
-            
-            // Cleanup
-            document.body.removeChild(tempEl);
-            
-            // Convert to hex if it's a valid color (not transparent)
-            return this.rgbaToHex(bgColor);
-        } catch {
-            return null;
-        }
-    }
-
-    private rgbaToHex(rgba: string): string | null {
-        if (!rgba || rgba === 'transparent' || rgba === 'rgba(0, 0, 0, 0)') {
-            return null;
-        }
-
-        // Match rgba(r, g, b, a) or rgb(r, g, b)
-        const match = rgba.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
-        if (!match) {
-            return null;
-        }
-
-        const r = parseInt(match[1], 10);
-        const g = parseInt(match[2], 10);
-        const b = parseInt(match[3], 10);
-        const a = match[4] ? parseFloat(match[4]) : 1;
-
-        // Convert to hex with alpha if present
-        const toHex = (n: number) => n.toString(16).padStart(2, '0');
-        const hex = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-        
-        // Add alpha if not fully opaque
-        if (a < 1) {
-            const alphaHex = Math.round(a * 255).toString(16).padStart(2, '0');
-            return hex + alphaHex;
-        }
-        
-        return hex;
-    }
-
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
-        const markdownHighlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
+        // Support multi-paragraph highlights by allowing newlines
+        const markdownHighlightRegex = /==((?:[^=]|=[^=])+?)==/g;
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
-        
-        // HTML highlight patterns
-        const spanBackgroundRegex = /<span\s+style=["'][^"']*background:\s*([^;"']+)[^"']*["'][^>]*>(.*?)<\/span>/gi;
-        const fontColorRegex = /<font\s+color=["']([^"']+)["'][^>]*>(.*?)<\/font>/gi;
-        const markTagRegex = /<mark[^>]*>(.*?)<\/mark>/gi;
-        const spanClassRegex = /<span\s+class=["']([^"']+)["'][^>]*>(.*?)<\/span>/gi;
+
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
@@ -1095,14 +1000,18 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Get code block ranges to exclude highlights within them
         const codeBlockRanges = this.getCodeBlockRanges(content);
 
+        // Get markdown link ranges to exclude highlights within URLs
+        const markdownLinkRanges = this.getMarkdownLinkRanges(content);
+
         // Process all highlight types
         const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string}> = [];
-        
+
         // Find all highlight matches
         let match;
         while ((match = markdownHighlightRegex.exec(content)) !== null) {
-            // Skip if match is inside a code block
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+            // Skip if match is inside a code block or markdown link
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
+                !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
                 // Skip if this highlight is surrounded by additional equals signs (e.g., =====text===== )
                 const beforeMatch = content.charAt(match.index - 1);
                 const afterMatch = content.charAt(match.index + match[0].length);
@@ -1115,8 +1024,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Find all comment matches
         while ((match = commentHighlightRegex.exec(content)) !== null) {
-            // Skip if match is inside a code block
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+            // Skip if match is inside a code block or markdown link
+            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
+                !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
                 // Skip if this comment is surrounded by additional percent signs (e.g., %%%%%text%%%%% )
                 const beforeMatch = content.charAt(match.index - 1);
                 const afterMatch = content.charAt(match.index + match[0].length);
@@ -1126,61 +1036,114 @@ export default class HighlightCommentsPlugin extends Plugin {
                 allMatches.push({match, type: 'comment'});
             }
         }
-        
-        // Find HTML span background matches
-        while ((match = spanBackgroundRegex.exec(content)) !== null) {
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
-                const color = this.parseHtmlColor(match[1]);
-                if (color) {
-                    // Create a modified match array with the text content
-                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
-                    modifiedMatch[1] = match[2]; // Use the text content, not the color
-                    allMatches.push({match: modifiedMatch, type: 'html', color});
+
+        // Find HTML comments if enabled
+        if (this.settings.detectHtmlComments) {
+            const htmlCommentRegex = /<!--([^]*?)-->/g;
+            while ((match = htmlCommentRegex.exec(content)) !== null) {
+                // Skip if match is inside a code block or markdown link
+                if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
+                    !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
+                    allMatches.push({match, type: 'comment'});
                 }
             }
         }
-        
-        // Find HTML font color matches
-        while ((match = fontColorRegex.exec(content)) !== null) {
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
-                const color = this.parseHtmlColor(match[1]);
-                if (color) {
-                    // Create a modified match array with the text content
-                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
-                    modifiedMatch[1] = match[2]; // Use the text content, not the color
-                    allMatches.push({match: modifiedMatch, type: 'html', color});
+
+        // Find custom pattern matches
+        this.settings.customPatterns.forEach(customPattern => {
+            try {
+                const customRegex = new RegExp(customPattern.pattern, 'g');
+                let matchCount = 0;
+                const maxMatches = 1000; // Safety limit to prevent infinite loops
+
+                while ((match = customRegex.exec(content)) !== null) {
+                    matchCount++;
+
+                    // Safety check: if we've found too many matches, bail out
+                    if (matchCount > maxMatches) {
+                        console.error(`Custom pattern "${customPattern.name}" exceeded match limit. Pattern may be too broad.`);
+                        new Notice(`Custom pattern "${customPattern.name}" is causing performance issues and has been skipped.`, 8000);
+                        break;
+                    }
+
+                    // Prevent infinite loops on zero-length matches
+                    if (match.index === customRegex.lastIndex) {
+                        customRegex.lastIndex++;
+                    }
+
+                    // Skip if match is inside a code block or markdown link
+                    if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
+                        !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
+                        allMatches.push({
+                            match,
+                            type: customPattern.type === 'comment' ? 'comment' : 'highlight'
+                        });
+                    }
                 }
+            } catch (e) {
+                console.error(`Invalid custom pattern "${customPattern.name}":`, e);
+                new Notice(`Custom pattern "${customPattern.name}" caused an error and has been skipped.`, 5000);
             }
-        }
-        
-        // Find HTML mark tag matches
-        while ((match = markTagRegex.exec(content)) !== null) {
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
-                // Create a modified match array with the text content
-                const modifiedMatch: RegExpExecArray = Object.assign([], match);
-                modifiedMatch[1] = match[1]; // Use the text content
-                allMatches.push({match: modifiedMatch, type: 'html', color: '#ffff00'}); // Default yellow for <mark>
-            }
-        }
-        
-        // Find HTML span class matches
-        while ((match = spanClassRegex.exec(content)) !== null) {
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
-                const className = match[1].trim();
-                const color = this.getCssClassColor(className);
-                if (color) {
-                    // Create a modified match array with the text content
-                    const modifiedMatch: RegExpExecArray = Object.assign([], match);
-                    modifiedMatch[1] = match[2]; // Use the text content, not the class name
-                    allMatches.push({match: modifiedMatch, type: 'html', color});
-                }
-            }
-        }
+        });
+
+        // Find HTML highlights using HTML parser
+        // Combine code block and markdown link ranges to exclude both
+        const excludedRanges = [...codeBlockRanges, ...markdownLinkRanges];
+        const htmlHighlights = HtmlHighlightParser.parseHighlights(content, excludedRanges);
+        htmlHighlights.forEach(htmlMatch => {
+            // Create a RegExpExecArray-like object for compatibility with existing code
+            const modifiedMatch: any = [htmlMatch.fullMatch, htmlMatch.text];
+            modifiedMatch.index = htmlMatch.startOffset;
+            modifiedMatch.input = content;
+            allMatches.push({match: modifiedMatch, type: 'html', color: htmlMatch.color});
+        });
         
         // Sort matches by position in content
         allMatches.sort((a, b) => a.match.index - b.match.index);
 
-        allMatches.forEach(({match, type, color}) => {
+        // Pre-process to handle adjacent highlight + comment patterns
+        // When a comment follows a highlight with only footnotes/whitespace between
+        // (e.g., ==text==^[note]<!-- comment --> or ==text==%% comment %%),
+        // store the comment to be added as a footnote to the highlight
+        const adjacentComments = new Map<number, { text: string, position: number }>(); // Maps highlight index to comment info
+
+        for (let i = 0; i < allMatches.length - 1; i++) {
+            const current = allMatches[i];
+            const next = allMatches[i + 1];
+
+            // Check if current is a highlight (not a comment) and next is any type of comment
+            if ((current.type === 'highlight' || current.type === 'html') && next.type === 'comment') {
+                const highlightEnd = current.match.index + current.match[0].length;
+                const commentStart = next.match.index;
+
+                // Check if comment follows highlight with only footnotes/whitespace between
+                const betweenText = content.substring(highlightEnd, commentStart);
+
+                // Calculate footnote length - if the between text is ONLY footnotes and whitespace,
+                // calculateFootnoteLength should return the full length
+                const footnoteLength = InlineFootnoteManager.calculateFootnoteLength(betweenText);
+                const afterFootnotes = betweenText.substring(footnoteLength);
+
+                // If after removing footnotes, we only have whitespace AND no blank lines, this is adjacent
+                // A blank line (two or more newlines with optional whitespace between) breaks adjacency
+                const hasBlankLine = /\n\s*\n/.test(afterFootnotes);
+                if (/^\s*$/.test(afterFootnotes) && !hasBlankLine) {
+                    // This is a comment adjacent to a highlight (HTML, native, or custom)
+                    // It may be after inline footnotes like ==text==^[note]<!-- comment -->
+                    // Store both the text and the actual position of the comment
+                    adjacentComments.set(i, {
+                        text: next.match[1].trim(),
+                        position: commentStart // Use the comment's actual position for sorting
+                    });
+                    // Mark the comment for skipping in main loop
+                    allMatches[i + 1] = { ...next, type: 'comment' as any, skip: true } as any;
+                }
+            }
+        }
+
+        allMatches.forEach(({match, type, color, skip}: any, index) => {
+            // Skip matches that were merged as adjacent comments
+            if (skip) return;
             const [, highlightText] = match;
             
             // Skip empty or whitespace-only highlights
@@ -1223,14 +1186,14 @@ export default class HighlightCommentsPlugin extends Plugin {
                 
                 // Then, get all standard footnotes with their positions (using same validation logic)
                 // Use negative lookahead to avoid matching footnote definitions [^key]: content
-                const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
+                const standardFootnoteRegex = new RegExp(STANDARD_FOOTNOTE_REGEX);
                 let match_sf;
                 let lastValidPosition = 0;
-                
+
                 while ((match_sf = standardFootnoteRegex.exec(afterHighlight)) !== null) {
                     // Check if this standard footnote is in a valid position
                     const precedingText = afterHighlight.substring(lastValidPosition, match_sf.index);
-                    const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                    const isValid = FOOTNOTE_VALIDATION_REGEX.test(precedingText);
                     
                     if (match_sf.index === lastValidPosition || isValid) {
                         const key = match_sf[2]; // The key inside [^key]
@@ -1250,10 +1213,20 @@ export default class HighlightCommentsPlugin extends Plugin {
                         break;
                     }
                 }
-                
+
+                // Add adjacent comment if present
+                if (adjacentComments.has(index)) {
+                    const adjacentComment = adjacentComments.get(index)!;
+                    allFootnotes.push({
+                        type: 'inline' as 'inline',
+                        index: adjacentComment.position, // Use the actual position for correct sorting
+                        content: adjacentComment.text
+                    });
+                }
+
                 // Sort footnotes by their position in the text
                 allFootnotes.sort((a, b) => a.index - b.index);
-                
+
                 // Extract content in the correct order
                 footnoteContents = allFootnotes.map(f => f.content);
                 footnoteCount = footnoteContents.length;
@@ -1588,47 +1561,270 @@ export default class HighlightCommentsPlugin extends Plugin {
     /**
      * Get ranges of code blocks (both inline and fenced) in the content
      */
-    private getCodeBlockRanges(content: string): Array<{start: number, end: number}> {
+    public getCodeBlockRanges(content: string): Array<{start: number, end: number}> {
         const ranges: Array<{start: number, end: number}> = [];
-        
+
         // Find fenced code blocks (``` and ~~~ with optional language)
-        const tripleBacktickRegex = /^```[\s\S]*?\n```\s*$/gm;
-        const tripleWaveRegex = /^~~~[\s\S]*?\n~~~\s*$/gm;
-        
-        let match;
-        // Find ``` code blocks
-        while ((match = tripleBacktickRegex.exec(content)) !== null) {
+        // Track all opening markers and their types
+        const lines = content.split('\n');
+        let currentBlockStart: number | null = null;
+        let currentBlockType: 'backtick' | 'wave' | null = null;
+        let currentPos = 0;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const lineStart = currentPos;
+            const lineEnd = currentPos + line.length;
+
+            // Check for code block markers at start of line
+            if (line.match(/^```/)) {
+                if (currentBlockType === 'backtick') {
+                    // Closing marker - end the block
+                    ranges.push({
+                        start: currentBlockStart!,
+                        end: lineEnd
+                    });
+                    currentBlockStart = null;
+                    currentBlockType = null;
+                } else if (currentBlockStart === null) {
+                    // Opening marker
+                    currentBlockStart = lineStart;
+                    currentBlockType = 'backtick';
+                }
+            } else if (line.match(/^~~~/)) {
+                if (currentBlockType === 'wave') {
+                    // Closing marker - end the block
+                    ranges.push({
+                        start: currentBlockStart!,
+                        end: lineEnd
+                    });
+                    currentBlockStart = null;
+                    currentBlockType = null;
+                } else if (currentBlockStart === null) {
+                    // Opening marker
+                    currentBlockStart = lineStart;
+                    currentBlockType = 'wave';
+                }
+            }
+
+            currentPos = lineEnd + 1; // +1 for the newline character
+        }
+
+        // Handle unclosed code blocks - extend to end of file
+        if (currentBlockStart !== null) {
             ranges.push({
-                start: match.index,
-                end: match.index + match[0].length
+                start: currentBlockStart,
+                end: content.length
             });
         }
-        
-        // Find ~~~ code blocks
-        while ((match = tripleWaveRegex.exec(content)) !== null) {
-            ranges.push({
-                start: match.index,
-                end: match.index + match[0].length
-            });
-        }
-        
+
         // Find inline code blocks (`code`)
         const inlineCodeRegex = /`([^`\n]+?)`/g;
-        while ((match = inlineCodeRegex.exec(content)) !== null) {
+        let inlineMatch;
+        while ((inlineMatch = inlineCodeRegex.exec(content)) !== null) {
             ranges.push({
-                start: match.index,
-                end: match.index + match[0].length
+                start: inlineMatch.index,
+                end: inlineMatch.index + inlineMatch[0].length
             });
         }
-        
+
         return ranges;
     }
 
     /**
-     * Check if a range is inside any of the provided code block ranges
+     * Get ranges of markdown links [text](url) to exclude highlights within URLs
+     */
+    private getMarkdownLinkRanges(content: string): Array<{start: number, end: number}> {
+        const ranges: Array<{start: number, end: number}> = [];
+
+        // Match markdown links: [text](url)
+        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+        let match;
+
+        while ((match = linkRegex.exec(content)) !== null) {
+            ranges.push({
+                start: match.index,
+                end: match.index + match[0].length
+            });
+        }
+
+        return ranges;
+    }
+
+    /**
+     * Check if a range overlaps with any of the provided code block ranges
+     * Returns true if the range is fully inside, partially overlaps, or spans across a code block
      */
     private isInsideCodeBlock(start: number, end: number, codeBlockRanges: Array<{start: number, end: number}>): boolean {
-        return codeBlockRanges.some(range => start >= range.start && end <= range.end);
+        return codeBlockRanges.some(range => {
+            // Check for any overlap: ranges overlap if start < range.end AND end > range.start
+            return start < range.end && end > range.start;
+        });
+    }
+}
+
+class CustomPatternModal extends Modal {
+    pattern: CustomPattern | null;
+    onSubmit: (pattern: CustomPattern) => void;
+    nameInput: HTMLInputElement;
+    patternInput: HTMLInputElement;
+    typeSelect: HTMLSelectElement;
+
+    constructor(app: App, pattern: CustomPattern | null, onSubmit: (pattern: CustomPattern) => void) {
+        super(app);
+        this.pattern = pattern;
+        this.onSubmit = onSubmit;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        // Set the modal title (appears in upper left corner)
+        contentEl.createEl('div', { cls: 'modal-title', text: this.pattern ? 'Edit custom pattern' : 'Add custom pattern' });
+
+        // Name input (Setting component adds divider automatically)
+        new Setting(contentEl)
+            .setName('Name')
+            .setDesc('A descriptive name for this pattern (e.g., "Regex Mark", "IA Writer comments")')
+            .addText(text => {
+                this.nameInput = text.inputEl;
+                text.setValue(this.pattern?.name || '')
+                    .setPlaceholder('Pattern name');
+            });
+
+        // Pattern input
+        const patternDesc = document.createDocumentFragment();
+        patternDesc.append(
+            'Regex pattern with a capturing group for the content. Examples:',
+            document.createElement('br'),
+            document.createElement('code'),
+        );
+        patternDesc.lastChild!.textContent = '//(.+)//';
+        patternDesc.append(' or ');
+        const code2 = document.createElement('code');
+        code2.textContent = '\\[\\[(.+?)\\]\\]';
+        patternDesc.append(code2);
+
+        new Setting(contentEl)
+            .setName('Pattern')
+            .setDesc(patternDesc)
+            .addText(text => {
+                this.patternInput = text.inputEl;
+                text.setValue(this.pattern?.pattern || '')
+                    .setPlaceholder('//(.+)//')
+                    .then(textComponent => {
+                        textComponent.inputEl.style.width = '100%';
+                        textComponent.inputEl.style.fontFamily = 'monospace';
+                    });
+            });
+
+        // Type select
+        new Setting(contentEl)
+            .setName('Type')
+            .setDesc('Whether to treat matches as highlights or comments')
+            .addDropdown(dropdown => {
+                this.typeSelect = dropdown.selectEl;
+                dropdown.addOption('highlight', 'Highlight')
+                    .addOption('comment', 'Comment')
+                    .setValue(this.pattern?.type || 'highlight');
+            });
+
+        // Buttons
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.gap = '10px';
+        buttonContainer.style.marginTop = '20px';
+
+        const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+        cancelButton.addEventListener('click', () => this.close());
+
+        const submitButton = buttonContainer.createEl('button', { text: 'Save', cls: 'mod-cta' });
+        submitButton.addEventListener('click', () => {
+            const name = this.nameInput.value.trim();
+            const pattern = this.patternInput.value.trim();
+            const type = this.typeSelect.value as 'highlight' | 'comment';
+
+            if (!name) {
+                new Notice('Please enter a name for the pattern');
+                return;
+            }
+
+            if (!pattern) {
+                new Notice('Please enter a regex pattern');
+                return;
+            }
+
+            // Test if pattern is valid regex
+            let regex: RegExp;
+            try {
+                regex = new RegExp(pattern, 'g');
+            } catch (e) {
+                new Notice('Invalid regex pattern: ' + e.message);
+                return;
+            }
+
+            // Check if pattern has a capturing group
+            if (!pattern.includes('(') || !pattern.includes(')')) {
+                new Notice('Pattern must include a capturing group, e.g., //(.+)//');
+                return;
+            }
+
+            // Warn about potentially conflicting patterns
+            const builtInPatterns = [
+                { pattern: /==/, name: 'markdown highlights (==)' },
+                { pattern: /%%/, name: 'native comments (%%)' },
+                { pattern: /<!--/, name: 'HTML comments' }
+            ];
+
+            for (const builtIn of builtInPatterns) {
+                if (builtIn.pattern.test(pattern)) {
+                    new Notice(`Warning: Pattern may conflict with built-in ${builtIn.name}. This could cause unexpected behavior.`, 5000);
+                }
+            }
+
+            // Test pattern for catastrophic backtracking
+            // Run pattern against a test string with timeout
+            const testString = 'Test text with ==highlights== and %% comments %% and more text to test the pattern.';
+            const startTime = Date.now();
+            const maxTime = 100; // 100ms timeout
+
+            try {
+                let matchCount = 0;
+                let match;
+                const testRegex = new RegExp(pattern, 'g');
+
+                while ((match = testRegex.exec(testString)) !== null && matchCount < 100) {
+                    matchCount++;
+                    // Check if we've exceeded time limit
+                    if (Date.now() - startTime > maxTime) {
+                        new Notice('Pattern is too slow and may cause performance issues. Please simplify your pattern.', 8000);
+                        return;
+                    }
+                    // Prevent infinite loops on zero-length matches
+                    if (match.index === testRegex.lastIndex) {
+                        testRegex.lastIndex++;
+                    }
+                }
+
+                if (matchCount >= 100) {
+                    new Notice('Pattern matches too frequently and may cause performance issues.', 8000);
+                    return;
+                }
+            } catch (e) {
+                new Notice('Pattern test failed: ' + e.message);
+                return;
+            }
+
+            this.onSubmit({ name, pattern, type });
+            this.close();
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
     }
 }
 
@@ -1676,6 +1872,17 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.showHighlightActions)
                 .onChange(async (value) => {
                     this.plugin.settings.showHighlightActions = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName('Show collections')
+            .setDesc('Display the Collections tab and collection icons in highlights.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCollections)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCollections = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
@@ -1780,9 +1987,14 @@ class HighlightSettingTab extends PluginSettingTab {
         // STYLING SECTION
         new Setting(containerEl).setHeading().setName('Styling');
 
+        // Colors subsection
+        new Setting(containerEl).setName('Colors').setHeading();
+
+        let yellowNameSetting: Setting;
+
         const yellowSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.yellow.toUpperCase()}`)
-            .setDesc('Customize the first highlight color.')
+            .setDesc('Customize the first highlight color for the sidebar hover color picker.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.yellow)
                 .onChange(async (value) => {
@@ -1790,6 +2002,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     yellowSetting.setName(`Highlight color: ${value.toUpperCase()}`);
+                    yellowNameSetting?.setName(`Name for ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1802,21 +2015,11 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Highlight name')
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
-            .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
-                .setValue(this.plugin.settings.customColorNames.yellow)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.yellow = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        let redNameSetting: Setting;
 
         const redSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`)
-            .setDesc('Customize the second highlight color.')
+            .setDesc('Customize the second highlight color for the sidebar hover color picker.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.red)
                 .onChange(async (value) => {
@@ -1824,6 +2027,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     redSetting.setName(`Highlight color: ${value.toUpperCase()}`);
+                    redNameSetting?.setName(`Name for ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1836,21 +2040,11 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Highlight name')
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
-            .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
-                .setValue(this.plugin.settings.customColorNames.red)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.red = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        let tealNameSetting: Setting;
 
         const tealSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.teal.toUpperCase()}`)
-            .setDesc('Customize the third highlight color.')
+            .setDesc('Customize the third highlight color for the sidebar hover color picker.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.teal)
                 .onChange(async (value) => {
@@ -1858,6 +2052,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     tealSetting.setName(`Highlight color: ${value.toUpperCase()}`);
+                    tealNameSetting?.setName(`Name for ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1870,21 +2065,11 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Highlight name')
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
-            .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
-                .setValue(this.plugin.settings.customColorNames.teal)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.teal = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        let blueNameSetting: Setting;
 
         const blueSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`)
-            .setDesc('Customize the fourth highlight color.')
+            .setDesc('Customize the fourth highlight color for the sidebar hover color picker.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.blue)
                 .onChange(async (value) => {
@@ -1892,6 +2077,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     blueSetting.setName(`Highlight color: ${value.toUpperCase()}`);
+                    blueNameSetting?.setName(`Name for ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1904,21 +2090,11 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Highlight name')
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
-            .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
-                .setValue(this.plugin.settings.customColorNames.blue)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.blue = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        let greenNameSetting: Setting;
 
         const greenSetting = new Setting(containerEl)
             .setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`)
-            .setDesc('Customize the fifth highlight color.')
+            .setDesc('Customize the fifth highlight color for the sidebar hover color picker.')
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.green)
                 .onChange(async (value) => {
@@ -1926,6 +2102,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     greenSetting.setName(`Highlight color: ${value.toUpperCase()}`);
+                    greenNameSetting?.setName(`Name for ${value.toUpperCase()}`);
                 }))
             .addButton(button => button
                 .setButtonText('Reset')
@@ -1938,8 +2115,59 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.display(); // Refresh settings display
                 }));
 
-        new Setting(containerEl)
-            .setName('Highlight name')
+        // Color names subsection
+        new Setting(containerEl).setName('Color names').setHeading();
+
+        yellowNameSetting = new Setting(containerEl)
+            .setName(`Name for ${this.plugin.settings.customColors.yellow.toUpperCase()}`)
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.yellow)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.yellow = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        redNameSetting = new Setting(containerEl)
+            .setName(`Name for ${this.plugin.settings.customColors.red.toUpperCase()}`)
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.red)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.red = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        tealNameSetting = new Setting(containerEl)
+            .setName(`Name for ${this.plugin.settings.customColors.teal.toUpperCase()}`)
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.teal)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.teal = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        blueNameSetting = new Setting(containerEl)
+            .setName(`Name for ${this.plugin.settings.customColors.blue.toUpperCase()}`)
+            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .addText(text => text
+                .setPlaceholder('e.g., "Important", "Research"')
+                .setValue(this.plugin.settings.customColorNames.blue)
+                .onChange(async (value) => {
+                    this.plugin.settings.customColorNames.blue = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        greenNameSetting = new Setting(containerEl)
+            .setName(`Name for ${this.plugin.settings.customColors.green.toUpperCase()}`)
             .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
             .addText(text => text
                 .setPlaceholder('e.g., "Important", "Research"')
@@ -1965,13 +2193,109 @@ class HighlightSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Select text on click')
-            .setDesc('When clicking a comment, select the comment instead of positioning the cursor in front of it.')
+            .setDesc('When clicking a comment, select the comment instead of positioning the cursor in front of it. Note: Only works for inline footnotes (^[...]) and standard footnotes ([^1]), not HTML comments or custom patterns.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.selectTextOnCommentClick)
                 .onChange(async (value) => {
                     this.plugin.settings.selectTextOnCommentClick = value;
                     await this.plugin.saveSettings();
                 }));
+
+        // DETECTION SECTION
+        new Setting(containerEl).setHeading().setName('Detection');
+
+        new Setting(containerEl)
+            .setName('Detect HTML comments')
+            .setDesc('Detect HTML comments (<!-- -->) as highlights. Note: HTML comments are hidden in Live Preview mode and only visible in Source mode.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.detectHtmlComments)
+                .onChange(async (value) => {
+                    this.plugin.settings.detectHtmlComments = value;
+                    await this.plugin.saveSettings();
+                    // Re-scan all files to apply new detection setting
+                    this.plugin.scanAllFilesForHighlights();
+                }));
+
+        // Custom patterns section
+        const customPatternsDesc = document.createDocumentFragment();
+        customPatternsDesc.append(
+            'Define custom highlight or comment patterns using regex. This allows detection of syntax from other plugins or custom formats.',
+            document.createElement('br'),
+            'Examples: ',
+            document.createElement('code'),
+        );
+        customPatternsDesc.lastChild!.textContent = '//(.+)//';
+        customPatternsDesc.append(' for Regex Mark plugin, or ');
+        const code2 = document.createElement('code');
+        code2.textContent = '\\[\\[(.+?)\\]\\]';
+        customPatternsDesc.append(code2);
+        customPatternsDesc.append(' for wikilinks.');
+
+        // Create name with experimental badge
+        const customPatternsName = document.createDocumentFragment();
+        customPatternsName.append('Custom patterns ');
+        const badge = document.createElement('span');
+        badge.textContent = 'Experimental';
+        badge.style.fontSize = '0.8em';
+        badge.style.padding = '2px 6px';
+        badge.style.borderRadius = '3px';
+        badge.style.backgroundColor = 'var(--interactive-accent)';
+        badge.style.color = 'var(--text-on-accent)';
+        badge.style.fontWeight = '500';
+        badge.style.marginLeft = '6px';
+        customPatternsName.appendChild(badge);
+
+        const customPatternsSetting = new Setting(containerEl)
+            .setName(customPatternsName as any)
+            .setDesc(customPatternsDesc);
+
+        // Container for custom pattern list
+        const patternsContainer = containerEl.createDiv('custom-patterns-container');
+
+        const renderPatterns = () => {
+            patternsContainer.empty();
+
+            this.plugin.settings.customPatterns.forEach((pattern, index) => {
+                const patternSetting = new Setting(patternsContainer)
+                    .setName(pattern.name || `Pattern ${index + 1}`)
+                    .setDesc(`Type: ${pattern.type} | Pattern: ${pattern.pattern}`)
+                    .addButton(button => button
+                        .setButtonText('Edit')
+                        .onClick(() => {
+                            new CustomPatternModal(this.app, pattern, async (edited) => {
+                                this.plugin.settings.customPatterns[index] = edited;
+                                await this.plugin.saveSettings();
+                                renderPatterns();
+                                this.plugin.scanAllFilesForHighlights();
+                            }).open();
+                        }))
+                    .addButton(button => button
+                        .setButtonText('Delete')
+                        .setWarning()
+                        .onClick(async () => {
+                            this.plugin.settings.customPatterns.splice(index, 1);
+                            await this.plugin.saveSettings();
+                            renderPatterns();
+                            this.plugin.scanAllFilesForHighlights();
+                        }));
+            });
+
+            // Add new pattern button
+            new Setting(patternsContainer)
+                .addButton(button => button
+                    .setButtonText('Add custom pattern')
+                    .setCta()
+                    .onClick(() => {
+                        new CustomPatternModal(this.app, null, async (newPattern) => {
+                            this.plugin.settings.customPatterns.push(newPattern);
+                            await this.plugin.saveSettings();
+                            renderPatterns();
+                            this.plugin.scanAllFilesForHighlights();
+                        }).open();
+                    }));
+        };
+
+        renderPatterns();
 
         // FILTERS SECTION
         new Setting(containerEl).setHeading().setName('Filters');

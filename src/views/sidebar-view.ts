@@ -7,6 +7,8 @@ import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highligh
 import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
+import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
+import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
@@ -17,6 +19,7 @@ export class HighlightsSidebarView extends ItemView {
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' = 'none';
+    private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' = 'none';
     private commentsExpanded: boolean = false;
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
@@ -45,6 +48,7 @@ export class HighlightsSidebarView extends ItemView {
     private highlightRenderer: HighlightRenderer;
     private savedScrollPosition: number = 0; // Store scroll position during rebuilds
     private showNativeComments: boolean = true; // Track native comments visibility
+    private sortButton!: HTMLElement; // Store sort button reference for state updates
 
     constructor(leaf: WorkspaceLeaf, plugin: HighlightCommentsPlugin) {
         super(leaf);
@@ -52,6 +56,8 @@ export class HighlightsSidebarView extends ItemView {
         this.highlightRenderer = new HighlightRenderer(plugin);
         // Load grouping mode from settings
         this.groupingMode = plugin.settings.groupingMode || 'none';
+        // Load sort mode from settings
+        this.sortMode = plugin.settings.sortMode || 'none';
         // Load native comments visibility from vault-specific localStorage
         this.showNativeComments = this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments') !== 'false';
     }
@@ -96,6 +102,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'none';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             // Use renderContent instead of renderFilteredList to handle all view modes
                             this.renderContent();
@@ -112,6 +119,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'color';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -127,6 +135,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'comments-asc';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -140,6 +149,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'comments-desc';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -155,6 +165,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'date-created-asc';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -168,6 +179,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'date-created-desc';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -183,6 +195,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'parent';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -196,6 +209,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'collection';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -209,6 +223,7 @@ export class HighlightsSidebarView extends ItemView {
                         .onClick(() => {
                             this.groupingMode = 'filename';
                             this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
                             this.saveGroupingModeToSettings();
                             this.renderContent();
                         });
@@ -217,7 +232,61 @@ export class HighlightsSidebarView extends ItemView {
                 menu.showAtMouseEvent(event);
             });
 
-            // Add toggle native comments button (positioned after group button)
+            // Add sort button (positioned after group button)
+            this.sortButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button'
+            });
+            setIcon(this.sortButton, 'arrow-up-down');
+            setTooltip(this.sortButton, 'Sort highlights');
+            this.updateSortButtonState(this.sortButton);
+            this.sortButton.addEventListener('click', (event) => {
+                const menu = new Menu();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('None')
+                        .setIcon('list')
+                        .setChecked(this.sortMode === 'none')
+                        .onClick(() => {
+                            this.sortMode = 'none';
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveSortModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addSeparator();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('A → Z')
+                        .setIcon('sort-asc')
+                        .setChecked(this.sortMode === 'alphabetical-asc')
+                        .onClick(() => {
+                            this.sortMode = 'alphabetical-asc';
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveSortModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle('Z → A')
+                        .setIcon('sort-desc')
+                        .setChecked(this.sortMode === 'alphabetical-desc')
+                        .onClick(() => {
+                            this.sortMode = 'alphabetical-desc';
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveSortModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.showAtMouseEvent(event);
+            });
+
+            // Add toggle native comments button (positioned after sort button)
             const nativeCommentsToggleButton = searchContainer.createEl('button', {
                 cls: 'highlights-group-button'
             });
@@ -279,8 +348,8 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             // Create search input container (initially hidden)
-            const searchInputContainer = this.contentEl.createDiv({ 
-                cls: 'highlights-search-input-container hidden'
+            const searchInputContainer = this.contentEl.createDiv({
+                cls: 'highlights-search-input-container sh-hidden'
             });
             
             // Create the search input
@@ -317,18 +386,21 @@ export class HighlightsSidebarView extends ItemView {
         setIcon(allNotesTab, 'files');
         setTooltip(allNotesTab, 'All notes');
 
-        const collectionsTab = tabsContainer.createEl('button', {
-            cls: 'highlights-tab'
-        });
-        setIcon(collectionsTab, 'folder-open');
-        setTooltip(collectionsTab, 'Collections');
+        let collectionsTab: HTMLElement | null = null;
+        if (this.plugin.settings.showCollections) {
+            collectionsTab = tabsContainer.createEl('button', {
+                cls: 'highlights-tab'
+            });
+            setIcon(collectionsTab, 'folder-open');
+            setTooltip(collectionsTab, 'Collections');
+        }
 
         // Add click handlers
         currentNoteTab.addEventListener('click', () => {
             if (this.viewMode !== 'current') {
                 currentNoteTab.classList.add('active');
                 allNotesTab.classList.remove('active');
-                collectionsTab.classList.remove('active');
+                if (collectionsTab) collectionsTab.classList.remove('active');
                 this.viewMode = 'current';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
@@ -340,7 +412,7 @@ export class HighlightsSidebarView extends ItemView {
             if (this.viewMode !== 'all') {
                 allNotesTab.classList.add('active');
                 currentNoteTab.classList.remove('active');
-                collectionsTab.classList.remove('active');
+                if (collectionsTab) collectionsTab.classList.remove('active');
                 this.viewMode = 'all';
                 this.selectedTags.clear();
                 this.selectedCollections.clear();
@@ -348,18 +420,20 @@ export class HighlightsSidebarView extends ItemView {
             }
         });
 
-        collectionsTab.addEventListener('click', () => {
-            if (this.viewMode !== 'collections') {
-                collectionsTab.classList.add('active');
-                currentNoteTab.classList.remove('active');
-                allNotesTab.classList.remove('active');
-                this.viewMode = 'collections';
-                this.currentCollectionId = null;
-                this.selectedTags.clear();
-                this.selectedCollections.clear();
-                this.updateContent(); // Content update instead of full rebuild
-            }
-        });
+        if (collectionsTab) {
+            collectionsTab.addEventListener('click', () => {
+                if (this.viewMode !== 'collections') {
+                    collectionsTab!.classList.add('active');
+                    currentNoteTab.classList.remove('active');
+                    allNotesTab.classList.remove('active');
+                    this.viewMode = 'collections';
+                    this.currentCollectionId = null;
+                    this.selectedTags.clear();
+                    this.selectedCollections.clear();
+                    this.updateContent(); // Content update instead of full rebuild
+                }
+            });
+        }
 
         this.contentAreaEl = this.contentEl.createDiv({ cls: 'highlights-list-area' });
         this.listContainerEl = this.contentAreaEl.createDiv({ cls: 'highlights-list' });
@@ -778,12 +852,21 @@ export class HighlightsSidebarView extends ItemView {
         // Apply grouping if enabled
         if (this.groupingMode === 'none') {
             const sortedHighlights = filteredHighlights.sort((a, b) => {
+                // Apply alphabetical sorting if enabled
+                if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                    const textA = a.text.toLowerCase();
+                    const textB = b.text.toLowerCase();
+                    const comparison = textA.localeCompare(textB);
+                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
+                }
+
+                // Default: sort by file path, then by position in file
                 if (a.filePath !== b.filePath) {
                     return a.filePath.localeCompare(b.filePath);
                 }
                 return a.startOffset - b.startOffset;
             });
-            
+
             sortedHighlights.forEach(highlight => {
                 this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true); // true for showFilename
             });
@@ -848,8 +931,17 @@ export class HighlightsSidebarView extends ItemView {
             this.listContainerEl.createEl('p', { text: message });
         } else {
             if (this.groupingMode === 'none') {
-                // Sort by file path first, then by offset within file
+                // Sort highlights
                 const sortedHighlights = filteredHighlights.sort((a, b) => {
+                    // Apply alphabetical sorting if enabled
+                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                        const textA = a.text.toLowerCase();
+                        const textB = b.text.toLowerCase();
+                        const comparison = textA.localeCompare(textB);
+                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
+                    }
+
+                    // Default: sort by file path, then by position in file
                     if (a.filePath !== b.filePath) {
                         return a.filePath.localeCompare(b.filePath);
                     }
@@ -1063,12 +1155,20 @@ export class HighlightsSidebarView extends ItemView {
                 sortedHighlights = groupHighlights.sort((a, b) => {
                     const timeA = a.createdAt || 0;
                     const timeB = b.createdAt || 0;
-                    
+
                     if (this.groupingMode === 'date-created-asc') {
                         return timeA - timeB; // Earlier times first
                     } else {
                         return timeB - timeA; // Later times first
                     }
+                });
+            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                // Sort alphabetically by highlight text
+                sortedHighlights = groupHighlights.sort((a, b) => {
+                    const textA = a.text.toLowerCase();
+                    const textB = b.text.toLowerCase();
+                    const comparison = textA.localeCompare(textB);
+                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
                 });
             } else {
                 sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
@@ -1372,6 +1472,33 @@ export class HighlightsSidebarView extends ItemView {
         this.plugin.saveSettings();
     }
 
+    private updateSortButtonState(button: HTMLElement) {
+        // Check if date-based grouping is active (sorting doesn't apply)
+        const isDateGrouping = this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc';
+
+        if (isDateGrouping) {
+            // Disable button when sorting doesn't apply
+            (button as HTMLButtonElement).disabled = true;
+            button.classList.remove('active');
+            setTooltip(button, 'Sort highlights (disabled during date grouping)');
+        } else {
+            // Normal sorting state
+            (button as HTMLButtonElement).disabled = false;
+            if (this.sortMode === 'none') {
+                button.classList.remove('active');
+                setTooltip(button, 'Sort highlights');
+            } else {
+                button.classList.add('active');
+                setTooltip(button, 'Sort highlights');
+            }
+        }
+    }
+
+    private saveSortModeToSettings() {
+        this.plugin.settings.sortMode = this.sortMode;
+        this.plugin.saveSettings();
+    }
+
     private createHighlightItem(container: HTMLElement, highlight: Highlight, searchTerm?: string, showFilename: boolean = false) {
         // Extract text search terms from current tokens for highlighting
         const textSearchTerms = this.currentSearchTokens
@@ -1497,139 +1624,155 @@ export class HighlightsSidebarView extends ItemView {
         const file = activeView.file;
         if (!file) return;
 
-        // Find the highlight in the editor content (original line-by-line approach)
+        // Find the highlight in the editor content
         const content = editor.getValue();
-        const lines = content.split('\n');
-        
-        // Find the line containing this highlight
-        let targetLine = -1;
         let insertPos: { line: number; ch: number } | null = null;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (highlight.isNativeComment) {
-                if (line.includes(`%%${highlight.text}%%`)) {
-                    targetLine = i;
-                    const highlightEndIndex = line.indexOf(`%%${highlight.text}%%`) + `%%${highlight.text}%%`.length;
-                    // Find the end of any existing footnotes after the highlight
-                    const afterHighlight = line.substring(highlightEndIndex);
-                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
-                    let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
-                    
-                    // If there are footnotes and content continues after them, don't include trailing whitespace
-                    if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
-                        const afterFootnotes = afterHighlight.substring(footnoteEndLength);
-                        // If the next character after footnotes is non-whitespace, position right after footnotes
-                        if (afterFootnotes.match(/^\S/)) {
-                            // footnoteEndLength is already correct (no trailing whitespace included)
-                        } else {
-                            // Check if there's whitespace followed by content
-                            const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
-                            if (whitespaceMatch) {
-                                const whitespaceAfterFootnotes = whitespaceMatch[1];
-                                const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
-                                // Only include the whitespace if there's no content after it (end of line)
-                                if (afterWhitespace.length === 0) {
-                                    footnoteEndLength += whitespaceMatch[0].length;
-                                }
-                                // If there's content after whitespace, don't include the whitespace
+
+        // For multi-paragraph highlights, we need to search the full content, not line-by-line
+        if (highlight.isNativeComment) {
+            // Use regex to find the highlight in the full content
+            const escapedText = this.escapeRegex(highlight.text);
+            const nativeCommentPattern = `%%${escapedText}%%`;
+            const nativeCommentRegex = new RegExp(nativeCommentPattern, 'g');
+
+            let bestMatch: { index: number, length: number } | null = null;
+            let minDistance = Infinity;
+            let match;
+
+            while ((match = nativeCommentRegex.exec(content)) !== null) {
+                const distance = Math.abs(match.index - highlight.startOffset);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { index: match.index, length: match[0].length };
+                }
+            }
+
+            if (bestMatch) {
+                const highlightEndOffset = bestMatch.index + bestMatch.length;
+                const highlightEndPos = editor.offsetToPos(highlightEndOffset);
+
+                // Get the line at the end position
+                const line = editor.getLine(highlightEndPos.line);
+                const afterHighlight = line.substring(highlightEndPos.ch);
+                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+
+                // If there are footnotes and content continues after them, don't include trailing whitespace
+                if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                    const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                    if (afterFootnotes.match(/^\S/)) {
+                        // footnoteEndLength is already correct
+                    } else {
+                        const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                        if (whitespaceMatch) {
+                            const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                            if (afterWhitespace.length === 0) {
+                                footnoteEndLength += whitespaceMatch[0].length;
                             }
-                        }
-                    } else if (footnoteEndLength > 0) {
-                        // No content after footnotes, include any trailing whitespace  
-                        const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
-                        if (trailingWhitespaceMatch) {
-                            footnoteEndLength += trailingWhitespaceMatch[0].length;
                         }
                     }
-                    insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
-                    break;
-                }
-            } else if (this.isHtmlHighlight(highlight)) {
-                // Handle HTML highlights using the same line-by-line approach
-                const patterns = this.getHtmlHighlightPatterns(highlight);
-                let found = false;
-                for (const {pattern} of patterns) {
-                    const regex = new RegExp(pattern, 'gi');
-                    const match = regex.exec(line);
-                    if (match) {
-                        targetLine = i;
-                        const highlightEndIndex = match.index + match[0].length;
-                        // Find the end of any existing footnotes after the highlight
-                        const afterHighlight = line.substring(highlightEndIndex);
-                        const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
-                        let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
-                        
-                        // If there are footnotes and content continues after them, don't include trailing whitespace
-                        if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
-                            const afterFootnotes = afterHighlight.substring(footnoteEndLength);
-                            // If the next character after footnotes is non-whitespace, position right after footnotes
-                            if (afterFootnotes.match(/^\S/)) {
-                                // footnoteEndLength is already correct (no trailing whitespace included)
-                            } else {
-                                // Check if there's whitespace followed by content
-                                const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
-                                if (whitespaceMatch) {
-                                    const whitespaceAfterFootnotes = whitespaceMatch[1];
-                                    const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
-                                    // Only include the whitespace if there's no content after it (end of line)
-                                    if (afterWhitespace.length === 0) {
-                                        footnoteEndLength += whitespaceMatch[0].length;
-                                    }
-                                    // If there's content after whitespace, don't include the whitespace
-                                }
-                            }
-                        } else if (footnoteEndLength > 0) {
-                            // No content after footnotes, include any trailing whitespace  
-                            const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
-                            if (trailingWhitespaceMatch) {
-                                footnoteEndLength += trailingWhitespaceMatch[0].length;
-                            }
-                        }
-                        insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
-                        found = true;
-                        break;
+                } else if (footnoteEndLength > 0) {
+                    const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                    if (trailingWhitespaceMatch) {
+                        footnoteEndLength += trailingWhitespaceMatch[0].length;
                     }
                 }
-                if (found) break;
-            } else {
-                if (line.includes(`==${highlight.text}==`)) {
-                    targetLine = i;
-                    const highlightEndIndex = line.indexOf(`==${highlight.text}==`) + `==${highlight.text}==`.length;
-                    // Find the end of any existing footnotes after the highlight
-                    const afterHighlight = line.substring(highlightEndIndex);
-                    const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
-                    let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
-                    
-                    // If there are footnotes and content continues after them, don't include trailing whitespace
-                    if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
-                        const afterFootnotes = afterHighlight.substring(footnoteEndLength);
-                        // If the next character after footnotes is non-whitespace, position right after footnotes
-                        if (afterFootnotes.match(/^\S/)) {
-                            // footnoteEndLength is already correct (no trailing whitespace included)
-                        } else {
-                            // Check if there's whitespace followed by content
-                            const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
-                            if (whitespaceMatch) {
-                                const whitespaceAfterFootnotes = whitespaceMatch[1];
-                                const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
-                                // Only include the whitespace if there's no content after it (end of line)
-                                if (afterWhitespace.length === 0) {
-                                    footnoteEndLength += whitespaceMatch[0].length;
-                                }
-                                // If there's content after whitespace, don't include the whitespace
+
+                insertPos = { line: highlightEndPos.line, ch: highlightEndPos.ch + footnoteEndLength };
+            }
+        } else if (this.isHtmlHighlight(highlight)) {
+            // HTML highlight handling
+            const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+            const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
+                content,
+                highlight.text,
+                highlight.startOffset,
+                codeBlockRanges
+            );
+
+            if (htmlHighlight) {
+                const highlightEndOffset = htmlHighlight.endOffset;
+                const highlightEndPos = editor.offsetToPos(highlightEndOffset);
+
+                // Get the line at the end position
+                const line = editor.getLine(highlightEndPos.line);
+                const afterHighlight = line.substring(highlightEndPos.ch);
+                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+
+                // If there are footnotes and content continues after them, don't include trailing whitespace
+                if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                    const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                    if (afterFootnotes.match(/^\S/)) {
+                        // footnoteEndLength is already correct
+                    } else {
+                        const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                        if (whitespaceMatch) {
+                            const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                            if (afterWhitespace.length === 0) {
+                                footnoteEndLength += whitespaceMatch[0].length;
                             }
                         }
-                    } else if (footnoteEndLength > 0) {
-                        // No content after footnotes, include any trailing whitespace  
-                        const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
-                        if (trailingWhitespaceMatch) {
-                            footnoteEndLength += trailingWhitespaceMatch[0].length;
+                    }
+                } else if (footnoteEndLength > 0) {
+                    const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                    if (trailingWhitespaceMatch) {
+                        footnoteEndLength += trailingWhitespaceMatch[0].length;
+                    }
+                }
+
+                insertPos = { line: highlightEndPos.line, ch: highlightEndPos.ch + footnoteEndLength };
+            }
+        } else {
+            // Regular markdown highlight - use regex to find in full content
+            const escapedText = this.escapeRegex(highlight.text);
+            const markdownHighlightPattern = `==${escapedText}==`;
+            const markdownHighlightRegex = new RegExp(markdownHighlightPattern, 'g');
+
+            let bestMatch: { index: number, length: number } | null = null;
+            let minDistance = Infinity;
+            let match;
+
+            while ((match = markdownHighlightRegex.exec(content)) !== null) {
+                const distance = Math.abs(match.index - highlight.startOffset);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { index: match.index, length: match[0].length };
+                }
+            }
+
+            if (bestMatch) {
+                const highlightEndOffset = bestMatch.index + bestMatch.length;
+                const highlightEndPos = editor.offsetToPos(highlightEndOffset);
+
+                // Get the line at the end position
+                const line = editor.getLine(highlightEndPos.line);
+                const afterHighlight = line.substring(highlightEndPos.ch);
+                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
+
+                // If there are footnotes and content continues after them, don't include trailing whitespace
+                if (footnoteEndLength > 0 && afterHighlight.length > footnoteEndLength) {
+                    const afterFootnotes = afterHighlight.substring(footnoteEndLength);
+                    if (afterFootnotes.match(/^\S/)) {
+                        // footnoteEndLength is already correct
+                    } else {
+                        const whitespaceMatch = afterFootnotes.match(/^(\s+)/);
+                        if (whitespaceMatch) {
+                            const afterWhitespace = afterFootnotes.substring(whitespaceMatch[0].length);
+                            if (afterWhitespace.length === 0) {
+                                footnoteEndLength += whitespaceMatch[0].length;
+                            }
                         }
                     }
-                    insertPos = { line: i, ch: highlightEndIndex + footnoteEndLength };
-                    break;
+                } else if (footnoteEndLength > 0) {
+                    const trailingWhitespaceMatch = afterHighlight.substring(footnoteEndLength).match(/^\s+/);
+                    if (trailingWhitespaceMatch) {
+                        footnoteEndLength += trailingWhitespaceMatch[0].length;
+                    }
                 }
+
+                insertPos = { line: highlightEndPos.line, ch: highlightEndPos.ch + footnoteEndLength };
             }
         }
 
@@ -1638,24 +1781,45 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        // Position cursor at the end of the highlight
-        editor.setCursor(insertPos);
-        editor.focus();
-
         // Add the footnote
         if (this.plugin.settings.useInlineFootnotes) {
             // Use inline footnote
-            const success = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, '');
-            if (success) {
-                // Wait a brief moment for the editor content to update
+            const result = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, '');
+            if (result.success && result.insertPos) {
+                // Position cursor inside the brackets after a delay for editor to process
+                setTimeout(() => {
+                    if (result.contentLength > 0) {
+                        // Select the footnote content for easy editing
+                        const contentStartCh = result.insertPos!.ch + 2; // After "^["
+                        const contentEndCh = contentStartCh + result.contentLength;
+                        editor.setSelection(
+                            { line: result.insertPos!.line, ch: contentStartCh },
+                            { line: result.insertPos!.line, ch: contentEndCh }
+                        );
+                    } else {
+                        // Position cursor between the brackets: ^[|]
+                        const cursorPos = {
+                            line: result.insertPos!.line,
+                            ch: result.insertPos!.ch + 2 // After "^["
+                        };
+                        editor.setCursor(cursorPos);
+                    }
+                    editor.focus();
+                }, 50);
+
+                // Update highlight data after positioning cursor
                 setTimeout(async () => {
                     await this.updateSingleHighlightFromEditor(highlight, file);
-                }, 50);
+                }, 100);
             } else {
                 new Notice('Could not insert inline footnote.');
             }
         } else {
             // Use standard footnote
+            // Position cursor at the end of the highlight for the footnote command
+            editor.setCursor(insertPos);
+            editor.focus();
+
             (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
             // Wait for the footnote command to complete
             setTimeout(async () => {
@@ -1721,14 +1885,14 @@ export class HighlightsSidebarView extends ItemView {
                 });
                 
                 // Then, get all standard footnotes with their positions (using same validation logic)
-                const standardFootnoteRegex = /(\s*\[\^(\w+)\])(?!:)/g;
+                const standardFootnoteRegex = new RegExp(STANDARD_FOOTNOTE_REGEX);
                 let stdMatch;
                 let lastValidPosition = 0;
-                
+
                 while ((stdMatch = standardFootnoteRegex.exec(afterHighlight)) !== null) {
                     // Check if this standard footnote is in a valid position
                     const precedingText = afterHighlight.substring(lastValidPosition, stdMatch.index);
-                    const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                    const isValid = FOOTNOTE_VALIDATION_REGEX.test(precedingText);
                     
                     if (stdMatch.index === lastValidPosition || isValid) {
                         const key = stdMatch[2]; // The key inside [^key]
@@ -1749,13 +1913,79 @@ export class HighlightsSidebarView extends ItemView {
                     }
                 }
                 
+                // Check for adjacent comment after the highlight and its footnotes
+                // Calculate where footnotes end
+                const highlightEnd = match.index + match[0].length;
+                const afterHighlightFull = content.substring(highlightEnd);
+                const footnoteLength = InlineFootnoteManager.calculateFootnoteLength(afterHighlightFull);
+                const afterFootnotes = afterHighlightFull.substring(footnoteLength);
+
+                // Only check for adjacent comments if there are no blank lines
+                // A blank line (two or more newlines with optional whitespace between) breaks adjacency
+                const hasBlankLine = /\n\s*\n/.test(afterFootnotes);
+
+                // Check for adjacent native comment (%% %%) only if no blank lines
+                if (!hasBlankLine) {
+                    const nativeCommentMatch = afterFootnotes.match(/^\s*(%%([^%](?:[^%]|%[^%])*?)%%)/);
+                    if (nativeCommentMatch) {
+                        const commentText = nativeCommentMatch[2];
+                        const commentPosition = highlightEnd + footnoteLength + nativeCommentMatch.index!;
+                        if (commentText.trim()) {
+                            allFootnotes.push({
+                                type: 'inline',
+                                index: commentPosition,
+                                content: commentText.trim()
+                            });
+                        }
+                    }
+
+                    // Check for adjacent HTML comment (<!-- -->)
+                    if (this.plugin.settings.detectHtmlComments) {
+                        const htmlCommentMatch = afterFootnotes.match(/^\s*(<!--([^]*?)-->)/);
+                        if (htmlCommentMatch) {
+                            const commentText = htmlCommentMatch[2];
+                            const commentPosition = highlightEnd + footnoteLength + htmlCommentMatch.index!;
+                            if (commentText.trim()) {
+                                allFootnotes.push({
+                                    type: 'inline',
+                                    index: commentPosition,
+                                    content: commentText.trim()
+                                });
+                            }
+                        }
+                    }
+
+                    // Check for adjacent custom pattern comments
+                    for (const customPattern of this.plugin.settings.customPatterns) {
+                        if (customPattern.type === 'comment') {
+                            try {
+                                const customRegex = new RegExp('^\\s*(' + customPattern.pattern + ')');
+                                const customMatch = afterFootnotes.match(customRegex);
+                                if (customMatch && customMatch[2]) { // customMatch[2] should be the captured group
+                                    const commentText = customMatch[2];
+                                    const commentPosition = highlightEnd + footnoteLength + customMatch.index!;
+                                    if (commentText.trim()) {
+                                        allFootnotes.push({
+                                            type: 'inline',
+                                            index: commentPosition,
+                                            content: commentText.trim()
+                                        });
+                                    }
+                                }
+                            } catch (e) {
+                                // Skip invalid custom patterns
+                            }
+                        }
+                    }
+                }
+
                 // Sort footnotes by their position in the text
                 allFootnotes.sort((a, b) => a.index - b.index);
-                
+
                 // Extract content in the correct order
                 const footnoteContents = allFootnotes.map(f => f.content);
                 const footnoteCount = footnoteContents.length;
-                
+
                 // Return updated highlight
                 return {
                     ...originalHighlight,
@@ -1871,37 +2101,6 @@ export class HighlightsSidebarView extends ItemView {
         return highlight.type === 'html';
     }
 
-    private getHtmlHighlightPatterns(highlight: Highlight): Array<{pattern: string, tagLength: number}> {
-        const escapedText = this.escapeRegex(highlight.text);
-        const patterns: Array<{pattern: string, tagLength: number}> = [];
-        
-        // Pattern for <span style="background:color">text</span>
-        patterns.push({
-            pattern: `<span\\s+style=["'][^"']*background:\\s*[^;"']+[^"']*["'][^>]*>${escapedText}<\\/span>`,
-            tagLength: 0 // Will be calculated dynamically
-        });
-        
-        // Pattern for <font color="color">text</font>  
-        patterns.push({
-            pattern: `<font\\s+color=["'][^"']+["'][^>]*>${escapedText}<\\/font>`,
-            tagLength: 0 // Will be calculated dynamically
-        });
-        
-        // Pattern for <mark>text</mark>
-        patterns.push({
-            pattern: `<mark[^>]*>${escapedText}<\\/mark>`,
-            tagLength: 0 // Will be calculated dynamically
-        });
-        
-        // Pattern for <span class="classname">text</span>
-        patterns.push({
-            pattern: `<span\\s+class=["'][^"']*["'][^>]*>${escapedText}<\\/span>`,
-            tagLength: 0 // Will be calculated dynamically
-        });
-        
-        return patterns;
-    }
-
     private performHighlightFocus(targetView: MarkdownView, highlight: Highlight) {
         if (!targetView || !targetView.editor) {
             return;
@@ -1928,39 +2127,88 @@ export class HighlightsSidebarView extends ItemView {
         const content = targetView.editor.getValue();
         
         let matches: { index: number, length: number, tagStartLength: number, tagEndLength: number }[] = [];
-        
+
         if (highlight.isNativeComment) {
-            // Native comment pattern
-            const regexPattern = `%%${this.escapeRegex(highlight.text)}%%`;
-            const regex = new RegExp(regexPattern, 'g');
+            // Try HTML comment pattern first
+            let htmlCommentPattern = `<!--\\s*${this.escapeRegex(highlight.text)}\\s*-->`;
+            let htmlCommentRegex = new RegExp(htmlCommentPattern, 'g');
             let matchResult;
-            while ((matchResult = regex.exec(content)) !== null) {
-                matches.push({ 
-                    index: matchResult.index, 
-                    length: matchResult[0].length,
-                    tagStartLength: 2, // %%
-                    tagEndLength: 2    // %%
+
+            while ((matchResult = htmlCommentRegex.exec(content)) !== null) {
+                const fullMatch = matchResult[0];
+                const textStart = fullMatch.indexOf(highlight.text);
+                matches.push({
+                    index: matchResult.index,
+                    length: fullMatch.length,
+                    tagStartLength: textStart, // <!-- and whitespace
+                    tagEndLength: fullMatch.length - textStart - highlight.text.length // whitespace and -->
                 });
             }
-        } else if (this.isHtmlHighlight(highlight)) {
-            // HTML highlight patterns
-            const patterns = this.getHtmlHighlightPatterns(highlight);
-            for (const {pattern} of patterns) {
-                const regex = new RegExp(pattern, 'gi');
-                let matchResult;
+
+            // If no HTML comment matches, try native comment pattern
+            if (matches.length === 0) {
+                const regexPattern = `%%${this.escapeRegex(highlight.text)}%%`;
+                const regex = new RegExp(regexPattern, 'g');
                 while ((matchResult = regex.exec(content)) !== null) {
-                    const fullMatch = matchResult[0];
-                    const textStartIndex = fullMatch.lastIndexOf(highlight.text);
-                    const tagStartLength = textStartIndex;
-                    const tagEndLength = fullMatch.length - textStartIndex - highlight.text.length;
-                    
-                    matches.push({ 
-                        index: matchResult.index, 
+                    matches.push({
+                        index: matchResult.index,
                         length: matchResult[0].length,
-                        tagStartLength,
-                        tagEndLength
+                        tagStartLength: 2, // %%
+                        tagEndLength: 2    // %%
                     });
                 }
+            }
+
+            // If still no matches, try custom comment patterns
+            if (matches.length === 0) {
+                for (const customPattern of this.plugin.settings.customPatterns) {
+                    if (customPattern.type !== 'comment') continue;
+
+                    try {
+                        const customRegex = new RegExp(customPattern.pattern, 'g');
+                        while ((matchResult = customRegex.exec(content)) !== null) {
+                            const fullMatch = matchResult[0];
+                            const capturedText = matchResult[1] || '';
+                            if (capturedText === highlight.text) {
+                                const textStart = fullMatch.indexOf(capturedText);
+                                matches.push({
+                                    index: matchResult.index,
+                                    length: fullMatch.length,
+                                    tagStartLength: textStart,
+                                    tagEndLength: fullMatch.length - textStart - capturedText.length
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Error matching custom pattern "${customPattern.name}":`, e);
+                    }
+
+                    // If we found matches with this pattern, stop looking
+                    if (matches.length > 0) break;
+                }
+            }
+        } else if (this.isHtmlHighlight(highlight)) {
+            // Use HTML parser to find highlights
+            const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+            const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
+                content,
+                highlight.text,
+                highlight.startOffset,
+                codeBlockRanges
+            );
+
+            if (htmlHighlight) {
+                const fullMatch = htmlHighlight.fullMatch;
+                const textStartIndex = fullMatch.lastIndexOf(highlight.text);
+                const tagStartLength = textStartIndex;
+                const tagEndLength = fullMatch.length - textStartIndex - highlight.text.length;
+
+                matches.push({
+                    index: htmlHighlight.startOffset,
+                    length: htmlHighlight.endOffset - htmlHighlight.startOffset,
+                    tagStartLength,
+                    tagEndLength
+                });
             }
         } else {
             // Regular markdown highlight pattern
@@ -1968,12 +2216,41 @@ export class HighlightsSidebarView extends ItemView {
             const regex = new RegExp(regexPattern, 'g');
             let matchResult;
             while ((matchResult = regex.exec(content)) !== null) {
-                matches.push({ 
-                    index: matchResult.index, 
+                matches.push({
+                    index: matchResult.index,
                     length: matchResult[0].length,
                     tagStartLength: 2, // ==
                     tagEndLength: 2    // ==
                 });
+            }
+
+            // If no markdown matches found, try custom patterns
+            if (matches.length === 0) {
+                for (const customPattern of this.plugin.settings.customPatterns) {
+                    if (customPattern.type !== 'highlight') continue;
+
+                    try {
+                        const customRegex = new RegExp(customPattern.pattern, 'g');
+                        while ((matchResult = customRegex.exec(content)) !== null) {
+                            const fullMatch = matchResult[0];
+                            const capturedText = matchResult[1] || '';
+                            if (capturedText === highlight.text) {
+                                const textStart = fullMatch.indexOf(capturedText);
+                                matches.push({
+                                    index: matchResult.index,
+                                    length: fullMatch.length,
+                                    tagStartLength: textStart,
+                                    tagEndLength: fullMatch.length - textStart - capturedText.length
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`Error matching custom pattern "${customPattern.name}":`, e);
+                    }
+
+                    // If we found matches with this pattern, stop looking
+                    if (matches.length > 0) break;
+                }
             }
         }
 
@@ -2082,18 +2359,21 @@ export class HighlightsSidebarView extends ItemView {
                     }
                 }
             } else if (this.isHtmlHighlight(highlight)) {
-                // HTML highlight patterns
-                const patterns = this.getHtmlHighlightPatterns(highlight);
-                for (const {pattern} of patterns) {
-                    const regex = new RegExp(pattern, 'gi');
-                    let match;
-                    while ((match = regex.exec(content)) !== null) {
-                        const distance = Math.abs(match.index - highlight.startOffset);
-                        if (distance < minDistance) {
-                            minDistance = distance;
-                            bestMatch = { index: match.index, length: match[0].length };
-                        }
-                    }
+                // Use HTML parser for distance-based matching
+                const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+                const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
+                    content,
+                    highlight.text,
+                    highlight.startOffset,
+                    codeBlockRanges
+                );
+
+                if (htmlHighlight) {
+                    bestMatch = {
+                        index: htmlHighlight.startOffset,
+                        length: htmlHighlight.endOffset - htmlHighlight.startOffset
+                    };
+                    minDistance = 0; // Found exact match
                 }
             } else {
                 // Regular markdown highlight pattern
@@ -2133,14 +2413,14 @@ export class HighlightsSidebarView extends ItemView {
             });
             
             // Get standard footnotes
-            const standardFootnoteRegex = /(\s*\[\^(\w+)\])/g;
+            const standardFootnoteRegex = new RegExp(STANDARD_FOOTNOTE_REGEX);
             let match_sf;
             let lastValidPosition = 0;
-            
+
             while ((match_sf = standardFootnoteRegex.exec(afterHighlight)) !== null) {
                 // Check if this standard footnote is in a valid position
                 const precedingText = afterHighlight.substring(lastValidPosition, match_sf.index);
-                const isValid = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/.test(precedingText);
+                const isValid = FOOTNOTE_VALIDATION_REGEX.test(precedingText);
                 
                 if (match_sf.index === lastValidPosition || isValid) {
                     allFootnotes.push({
@@ -2459,12 +2739,20 @@ export class HighlightsSidebarView extends ItemView {
                 sortedHighlights = groupHighlights.sort((a, b) => {
                     const timeA = a.createdAt || 0;
                     const timeB = b.createdAt || 0;
-                    
+
                     if (this.groupingMode === 'date-created-asc') {
                         return timeA - timeB; // Earlier times first
                     } else {
                         return timeB - timeA; // Later times first
                     }
+                });
+            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                // Sort alphabetically by highlight text
+                sortedHighlights = groupHighlights.sort((a, b) => {
+                    const textA = a.text.toLowerCase();
+                    const textB = b.text.toLowerCase();
+                    const comparison = textA.localeCompare(textB);
+                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
                 });
             } else {
                 // For other grouping modes, sort by start offset (position in file)
@@ -2876,14 +3164,14 @@ export class HighlightsSidebarView extends ItemView {
         if (!searchInputContainer) return;
         
         if (this.searchExpanded) {
-            searchInputContainer.classList.remove('hidden');
+            searchInputContainer.classList.remove('sh-hidden');
             this.searchButton.classList.add('active');
             setIcon(this.searchButton, 'x');
             setTooltip(this.searchButton, 'Close search');
             // Focus the search input
             window.setTimeout(() => this.searchInputEl.focus(), 100);
         } else {
-            searchInputContainer.classList.add('hidden');
+            searchInputContainer.classList.add('sh-hidden');
             this.searchButton.classList.remove('active');
             setIcon(this.searchButton, 'search');
             setTooltip(this.searchButton, 'Search highlights');

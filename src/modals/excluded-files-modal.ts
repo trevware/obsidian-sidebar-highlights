@@ -1,4 +1,4 @@
-import { Modal, App, setIcon } from 'obsidian';
+import { Modal, App, setIcon, Notice } from 'obsidian';
 import { FileFolderSuggest } from '../utils/file-folder-suggest';
 
 export class ExcludedFilesModal extends Modal {
@@ -17,9 +17,29 @@ export class ExcludedFilesModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
+        // Clean up paths that no longer exist
+        const initialCount = this.excludedFiles.length;
+        this.excludedFiles = this.excludedFiles.filter(path => {
+            const file = this.app.vault.getAbstractFileByPath(path);
+            return file !== null;
+        });
+
+        // If any paths were removed, update the settings
+        if (this.excludedFiles.length < initialCount) {
+            const removedCount = initialCount - this.excludedFiles.length;
+            this.onUpdate(this.excludedFiles);
+            new Notice(`Removed ${removedCount} excluded ${removedCount === 1 ? 'path' : 'paths'} that no longer exist`);
+        }
+
         // Set the modal title (appears in upper left corner)
-        contentEl.createEl('div', { cls: 'modal-title', text: 'Excluded files' });
-        
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: 'Excluded files' });
+        titleEl.style.marginBottom = '12px';
+
+        // Add divider after title
+        const divider = contentEl.createDiv();
+        divider.style.borderTop = '1px solid var(--background-modifier-border)';
+        divider.style.marginBottom = '20px';
+
         // Status message
         this.renderStatusMessage(contentEl);
 
@@ -72,7 +92,8 @@ export class ExcludedFilesModal extends Modal {
 
         const messageEl = containerEl.createDiv({ cls: 'excluded-files-status' });
         messageEl.style.marginTop = '20px';
-        
+        messageEl.style.color = 'var(--text-muted)';
+
         if (this.excludedFiles.length === 0) {
             messageEl.setText('No excluded filter is applied right now. Add one below.');
             messageEl.style.paddingBottom = '20px';

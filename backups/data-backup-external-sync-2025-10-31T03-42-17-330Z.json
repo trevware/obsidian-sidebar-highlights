@@ -1,0 +1,149 @@
+{
+  "settingsVersion": "1.14.0",
+  "collections": {
+    "w52av4usl": {
+      "id": "w52av4usl",
+      "name": "AI",
+      "description": "",
+      "highlightIds": [],
+      "createdAt": 1752977298388
+    }
+  },
+  "customColorNames": {
+    "yellow": "",
+    "red": "",
+    "teal": "",
+    "blue": "",
+    "green": ""
+  },
+  "highlights": {
+    "Product Onsite.md": [],
+    "Testing Grounds.md": [
+      {
+        "id": "ylgpcdp5l",
+        "text": "This is a real highlight outside code",
+        "tags": [],
+        "line": 43,
+        "startOffset": 995,
+        "endOffset": 1036,
+        "filePath": "Testing Grounds.md",
+        "footnoteCount": 0,
+        "footnoteContents": [],
+        "createdAt": 1761876735030,
+        "isNativeComment": false,
+        "type": "highlight"
+      },
+      {
+        "id": "c463oztng",
+        "text": "This is a real comment outside code",
+        "tags": [],
+        "line": 45,
+        "startOffset": 1038,
+        "endOffset": 1077,
+        "filePath": "Testing Grounds.md",
+        "footnoteCount": 1,
+        "footnoteContents": [
+          "This is a real comment outside code"
+        ],
+        "createdAt": 1761876735073,
+        "isNativeComment": true,
+        "type": "comment"
+      },
+      {
+        "id": "yri7tvn0o",
+        "text": "Another real highlight",
+        "tags": [],
+        "line": 47,
+        "startOffset": 1079,
+        "endOffset": 1105,
+        "filePath": "Testing Grounds.md",
+        "footnoteCount": 1,
+        "footnoteContents": [
+          "With an inline footnote"
+        ],
+        "createdAt": 1761876735114,
+        "isNativeComment": false,
+        "type": "highlight"
+      },
+      {
+        "id": "4ztv5wn0v",
+        "text": "Real highlight after code block",
+        "tags": [],
+        "line": 57,
+        "startOffset": 1301,
+        "endOffset": 1336,
+        "filePath": "Testing Grounds.md",
+        "footnoteCount": 0,
+        "footnoteContents": [],
+        "createdAt": 1761876735334,
+        "isNativeComment": false,
+        "type": "highlight"
+      },
+      {
+        "id": "2hi2s58x4",
+        "text": "Real comment after code block",
+        "tags": [],
+        "line": 58,
+        "startOffset": 1339,
+        "endOffset": 1372,
+        "filePath": "Testing Grounds.md",
+        "footnoteCount": 1,
+        "footnoteContents": [
+          "Real comment after code block"
+        ],
+        "createdAt": 1761876735370,
+        "isNativeComment": true,
+        "type": "comment"
+      }
+    ],
+    "Other Bugs.md": [
+      {
+        "id": "of6yqtd2f",
+        "text": "A gentle breeze rustled the leaves of the old oak tree, creating a soothing, whispering sound.",
+        "tags": [],
+        "line": 0,
+        "startOffset": 0,
+        "endOffset": 98,
+        "filePath": "Other Bugs.md",
+        "footnoteCount": 0,
+        "footnoteContents": [],
+        "createdAt": 1761879492540,
+        "isNativeComment": false,
+        "type": "highlight",
+        "color": "#ff00d0"
+      },
+      {
+        "id": "1bjwqlhwr",
+        "text": "Somewhere in the distance, a bird sang a complex melody, a small declaration of existence in the vastness of the forest.",
+        "tags": [],
+        "line": 2,
+        "startOffset": 102,
+        "endOffset": 226,
+        "filePath": "Other Bugs.md",
+        "footnoteCount": 0,
+        "footnoteContents": [],
+        "createdAt": 1761879492642,
+        "isNativeComment": false,
+        "type": "highlight",
+        "color": "#ff6b6b"
+      },
+      {
+        "id": "hordjgcch",
+        "text": "The air smelled fresh and clean, carrying the earthy scent of rain from the night before.",
+        "tags": [],
+        "line": 4,
+        "startOffset": 230,
+        "endOffset": 323,
+        "filePath": "Other Bugs.md",
+        "footnoteCount": 0,
+        "footnoteContents": [],
+        "createdAt": 1761879492770,
+        "isNativeComment": false,
+        "type": "highlight"
+      }
+    ]
+  },
+  "backupReason": "external-sync",
+  "originalTimestamp": "2025-10-31T03-42-17-330Z",
+  "backupCreatedAt": 1761882137334
+}

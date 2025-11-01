@@ -30,14 +30,14 @@ export class SimpleSearchManager {
         this.dropdown = this.container.createDiv({
             cls: 'simple-search-dropdown'
         });
-        this.dropdown.classList.add('hidden');
+        this.dropdown.classList.add('sh-hidden');
     }
 
     private createPreview(): void {
         this.previewElement = this.container.createDiv({
             cls: 'simple-search-preview'
         });
-        this.previewElement.classList.add('hidden');
+        this.previewElement.classList.add('sh-hidden');
     }
 
     private setupEventListeners(): void {
@@ -69,7 +69,7 @@ export class SimpleSearchManager {
     }
 
     private handleKeydown(e: KeyboardEvent): void {
-        if (this.dropdown.classList.contains('hidden')) return;
+        if (this.dropdown.classList.contains('sh-hidden')) return;
 
         switch (e.key) {
             case 'ArrowDown':
@@ -158,7 +158,7 @@ export class SimpleSearchManager {
             });
         });
 
-        this.dropdown.classList.remove('hidden');
+        this.dropdown.classList.remove('sh-hidden');
     }
 
     private selectNext(): void {
@@ -223,20 +223,20 @@ export class SimpleSearchManager {
     }
 
     private hideDropdown(): void {
-        this.dropdown.classList.add('hidden');
+        this.dropdown.classList.add('sh-hidden');
         this.selectedIndex = -1;
     }
 
     private updatePreview(parsed: ParsedSearch): void {
         this.previewElement.empty();
-        
+
         // Only show preview if there's text in the input
         if (!this.input.value.trim()) {
-            this.previewElement.classList.add('hidden');
+            this.previewElement.classList.add('sh-hidden');
             return;
         }
 
-        this.previewElement.classList.remove('hidden');
+        this.previewElement.classList.remove('sh-hidden');
 
         if (!parsed.ast) {
             this.previewElement.createSpan({

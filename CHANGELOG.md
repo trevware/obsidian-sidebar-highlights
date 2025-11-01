@@ -5,6 +5,38 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2025-10-31
+
+### Added
+- **Custom Pattern Support**: Added experimental custom pattern detection for highlights and comments via regex (Settings > Advanced)
+  - Support for custom highlight patterns (e.g., Regex Mark plugin's `//text//` syntax)
+  - Support for custom comment patterns (e.g., IA Writer comments)
+  - Pattern validation with runtime safety limits
+  - Conflict warnings for patterns that overlap with built-in syntax
+- **HTML Comment Support**: Added support for HTML comment syntax `<!-- comment -->` as highlights/comments (Settings > Advanced)
+  - HTML comments can appear adjacent to highlights and merge as footnotes
+  - Supports same adjacency rules as native comments (blank lines break adjacency)
+- **Alphabetical Sorting**: Added alphabetical sorting options (A-Z and Z-A) for highlights in sidebar (Settings > Display > Sort by)
+- **Copy to Clipboard**: Added copy highlight text to clipboard button on hover over highlight cards
+- **Multi-Paragraph Highlights**: Full support for highlights spanning multiple paragraphs
+  - Works with both `==text==` and `%%comments%%` syntax
+  - Comment addition and navigation work correctly across paragraphs
+- **Adjacent Comment Merging**: Comments immediately following highlights (with optional footnotes between) are now merged as footnotes
+  - Supports native comments (`%%comment%%`), HTML comments (`<!-- -->`), and custom pattern comments
+  - Example: `==highlight==^[note]%%comment%%` treats the comment as a footnote
+  - Blank lines break adjacency - preserves separate comments
+- **Disable Collections Setting**: Added option to completely disable collections feature in settings (Settings > Collections)
+- **Backup Organization**: Data backup files now stored in dedicated `backups/` folder with automatic migration of existing backups
+
+### Enhanced
+- **Settings UI Redesign**: Reorganized Styling section with separated "Colors" and "Color names" subsections for better clarity
+- **Theme Compatibility**: Removed background colors from search container and tabs that conflicted with theme customization
+- **Excluded Files Management**: Automatically removes non-existent paths when opening Excluded Files modal
+
+### Fixed
+- **Inline Comment Cursor**: Fixed cursor placement when adding inline footnotes to highlights
+- **CSS Conflicts**: Fixed CSS custom properties clashing with theme color customization
+
 ## [1.20.0] - 2025-07-27
 
 ### Added

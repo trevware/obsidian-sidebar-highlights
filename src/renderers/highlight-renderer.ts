@@ -113,6 +113,9 @@ export class HighlightRenderer {
 
         this.addTagsToQuote(quoteEl, highlight, options);
 
+        // Add copy button to quote section
+        this.createCopyButtonInQuote(quoteEl, highlight);
+
         quoteEl.addEventListener('click', (event) => {
             options.onHighlightClick?.(highlight, event);
         });
@@ -236,19 +239,21 @@ export class HighlightRenderer {
             });
         }
 
-        // Collection count section
-        const collectionCount = this.plugin.collectionsManager.getHighlightCollectionCount(highlight.id);
-        const collectionContainer = this.createInfoItem(
-            statsSection,
-            'folder-open',
-            `${collectionCount}`,
-            'highlight-line-info highlight-collection-stat clickable'
-        );
+        // Collection count section (only if collections are enabled)
+        if (this.plugin.settings.showCollections) {
+            const collectionCount = this.plugin.collectionsManager.getHighlightCollectionCount(highlight.id);
+            const collectionContainer = this.createInfoItem(
+                statsSection,
+                'folder-open',
+                `${collectionCount}`,
+                'highlight-line-info highlight-collection-stat clickable'
+            );
 
-        collectionContainer.addEventListener('click', (event) => {
-            event.stopPropagation();
-            options.onCollectionsMenu?.(event, highlight);
-        });
+            collectionContainer.addEventListener('click', (event) => {
+                event.stopPropagation();
+                options.onCollectionsMenu?.(event, highlight);
+            });
+        }
 
         // Create completely separate timestamp section
         this.addTimestampToInfoLine(infoLineContainer, highlight, options);
@@ -256,13 +261,62 @@ export class HighlightRenderer {
 
     private createInfoItem(container: HTMLElement, iconName: string, text: string, className: string): HTMLElement {
         const itemContainer = container.createDiv({ cls: className });
-        
+
         const icon = itemContainer.createDiv({ cls: iconName === 'message-square' ? 'comment-icon' : 'line-icon' });
         setIcon(icon, iconName);
-        
+
         itemContainer.createSpan({ text });
-        
+
         return itemContainer;
+    }
+
+    private createCopyButtonInQuote(quoteEl: HTMLElement, highlight: Highlight): HTMLElement {
+        const copyButton = quoteEl.createDiv({ cls: 'highlight-quote-copy-button' });
+        copyButton.setAttribute('title', 'Copy highlight');
+
+        const icon = copyButton.createDiv({ cls: 'copy-icon' });
+        setIcon(icon, 'copy');
+
+        copyButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+
+            // Build the markdown text based on highlight type
+            let textToCopy = '';
+
+            if (highlight.isNativeComment) {
+                // Native comment: %%text%%
+                textToCopy = `%%${highlight.text}%%`;
+            } else if (highlight.type === 'html') {
+                // HTML highlights - just copy the text content (can't reconstruct exact HTML)
+                textToCopy = `==${highlight.text}==`;
+            } else {
+                // Regular markdown highlight: ==text==
+                textToCopy = `==${highlight.text}==`;
+            }
+
+            // Copy to clipboard
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+                new Notice('Copied to clipboard');
+            } catch (err) {
+                // Fallback for browsers that don't support clipboard API
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    new Notice('Copied to clipboard');
+                } catch (e) {
+                    new Notice('Failed to copy to clipboard');
+                }
+                document.body.removeChild(textArea);
+            }
+        });
+
+        return copyButton;
     }
 
     private addTimestampToInfoLine(infoLineContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
@@ -378,10 +432,10 @@ export class HighlightRenderer {
     // Safe DOM-based rendering method to replace innerHTML usage
     private renderMarkdownToElement(element: HTMLElement, text: string): void {
         element.empty(); // Clear existing content
-        
+
         // Process markdown patterns safely (no HTML escaping needed since textContent handles it)
         const segments = this.parseMarkdownSegments(text);
-        
+
         for (const segment of segments) {
             if (segment.type === 'text') {
                 element.appendText(segment.content || '');
@@ -390,6 +444,11 @@ export class HighlightRenderer {
                 strongEl.textContent = segment.content || '';
             } else if (segment.type === 'em') {
                 const emEl = element.createEl('em');
+                emEl.textContent = segment.content || '';
+            } else if (segment.type === 'strong-em') {
+                // Bold and italic combined
+                const strongEl = element.createEl('strong');
+                const emEl = strongEl.createEl('em');
                 emEl.textContent = segment.content || '';
             } else if (segment.type === 'code') {
                 const codeEl = element.createEl('code');
@@ -402,19 +461,53 @@ export class HighlightRenderer {
                 linkEl.textContent = segment.text || '';
                 linkEl.href = segment.url || '';
                 linkEl.target = '_blank';
+            } else if (segment.type === 'wikilink') {
+                const linkEl = element.createEl('a');
+                linkEl.textContent = segment.text || '';
+                linkEl.addClass('internal-link');
+
+                // Check if it's an external URL (starts with http:// or https://)
+                const url = segment.url || '';
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                    linkEl.href = url;
+                    linkEl.target = '_blank';
+                    linkEl.addClass('external-link');
+                } else {
+                    // Internal Obsidian link
+                    linkEl.setAttribute('data-href', url);
+                    linkEl.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.plugin.app.workspace.openLinkText(url, '', event.ctrlKey || event.metaKey);
+                    });
+                }
             }
         }
     }
 
     private parseMarkdownSegments(text: string): Array<{type: string, content?: string, text?: string, url?: string}> {
         const segments: Array<{type: string, content?: string, text?: string, url?: string}> = [];
-        
+
+        // First, handle backslash escaping by replacing escaped sequences with placeholders
+        const escapeMap = new Map<string, string>();
+        let escapeCounter = 0;
+        text = text.replace(/\\([*_~`\[\]\\])/g, (match, char) => {
+            const placeholder = `\u0000ESC${escapeCounter}\u0000`;
+            escapeMap.set(placeholder, char);
+            escapeCounter++;
+            return placeholder;
+        });
+
         // Process patterns in order of precedence using iOS-compatible approach
+        // Note: __ pattern intentionally broad; manual filtering removes middle-of-word matches in post-processing
         const patterns = [
+            { regex: /\*\*\*(.*?)\*\*\*/g, type: 'strong-em' }, // Bold + Italic combined
+            { regex: /___(.*?)___/g, type: 'strong-em' }, // Bold + Italic combined
             { regex: /\*\*(.*?)\*\*/g, type: 'strong' },
             { regex: /__(.*?)__/g, type: 'strong' },
             { regex: /~~(.*?)~~/g, type: 'del' },
             { regex: /`([^`]+?)`/g, type: 'code' },
+            { regex: /\[\[([^\]]+?)\]\]/g, type: 'wikilink' }, // Obsidian wikilinks
             { regex: /\[([^\]]+)\]\(([^)]+)\)/g, type: 'link' }
         ];
         
@@ -433,7 +526,34 @@ export class HighlightRenderer {
                         text: match[1],
                         url: match[2]
                     });
+                } else if (pattern.type === 'wikilink') {
+                    // Parse wikilink format: [[link|display]] or [[link]]
+                    const linkContent = match[1];
+                    const parts = linkContent.split('|');
+                    const linkPath = parts[0];
+                    const displayText = parts[1] || parts[0];
+                    matches.push({
+                        start: match.index,
+                        end: match.index + match[0].length,
+                        type: pattern.type,
+                        text: displayText,
+                        url: linkPath
+                    });
                 } else {
+                    // For underscore-based patterns, skip if in middle of word
+                    if ((pattern.type === 'strong' && match[0].startsWith('__')) ||
+                        (pattern.type === 'strong-em' && match[0].startsWith('___'))) {
+                        const charBefore = match.index > 0 ? text[match.index - 1] : ' ';
+                        const charAfter = match.index + match[0].length < text.length ? text[match.index + match[0].length] : ' ';
+                        const isAlphanumBefore = /[a-zA-Z0-9]/.test(charBefore);
+                        const isAlphanumAfter = /[a-zA-Z0-9]/.test(charAfter);
+
+                        // Skip if surrounded by alphanumeric (middle of word)
+                        if (isAlphanumBefore && isAlphanumAfter) {
+                            continue;
+                        }
+                    }
+
                     matches.push({
                         start: match.index,
                         end: match.index + match[0].length,
@@ -482,7 +602,21 @@ export class HighlightRenderer {
                 content: text.substring(pos)
             });
         }
-        
+
+        // Restore escaped characters
+        for (const segment of segments) {
+            if (segment.content) {
+                for (const [placeholder, char] of escapeMap) {
+                    segment.content = segment.content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), char);
+                }
+            }
+            if (segment.text) {
+                for (const [placeholder, char] of escapeMap) {
+                    segment.text = segment.text.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), char);
+                }
+            }
+        }
+
         return segments;
     }
     
@@ -510,11 +644,34 @@ export class HighlightRenderer {
         }
         
         // Find single underscore italic patterns manually
+        // Skip underscores in the middle of words (alphanumeric on BOTH sides)
         for (let i = 0; i < text.length; i++) {
             if (text[i] === '_' && (i === 0 || text[i-1] !== '_') && (i === text.length - 1 || text[i+1] !== '_')) {
+                // Check if this underscore is in the middle of a word
+                const charBefore = i > 0 ? text[i-1] : ' ';
+                const charAfter = i < text.length - 1 ? text[i+1] : ' ';
+                const isAlphanumBefore = /[a-zA-Z0-9]/.test(charBefore);
+                const isAlphanumAfter = /[a-zA-Z0-9]/.test(charAfter);
+
+                // Skip if in middle of word (like some_variable_name)
+                if (isAlphanumBefore && isAlphanumAfter) {
+                    continue;
+                }
+
                 // Find closing underscore
                 for (let j = i + 1; j < text.length; j++) {
                     if (text[j] === '_' && (j === text.length - 1 || text[j+1] !== '_') && (j === 0 || text[j-1] !== '_')) {
+                        // Check if closing underscore is also in middle of word
+                        const closingCharBefore = j > 0 ? text[j-1] : ' ';
+                        const closingCharAfter = j < text.length - 1 ? text[j+1] : ' ';
+                        const closingIsAlphanumBefore = /[a-zA-Z0-9]/.test(closingCharBefore);
+                        const closingIsAlphanumAfter = /[a-zA-Z0-9]/.test(closingCharAfter);
+
+                        // Skip if in middle of word
+                        if (closingIsAlphanumBefore && closingIsAlphanumAfter) {
+                            continue;
+                        }
+
                         const content = text.substring(i + 1, j);
                         if (content.length > 0 && content.indexOf('_') === -1) {
                             matches.push({
@@ -575,24 +732,25 @@ export class HighlightRenderer {
         const hoverColorPicker = item.createDiv({ cls: 'hover-color-picker' });
         const colorOptionsContainer = hoverColorPicker.createDiv({ cls: 'hover-color-options' });
         const colors = [
-            this.plugin.settings.customColors.yellow,
-            this.plugin.settings.customColors.red,
-            this.plugin.settings.customColors.teal,
-            this.plugin.settings.customColors.blue,
-            this.plugin.settings.customColors.green
+            { name: 'yellow', value: this.plugin.settings.customColors.yellow },
+            { name: 'red', value: this.plugin.settings.customColors.red },
+            { name: 'teal', value: this.plugin.settings.customColors.teal },
+            { name: 'blue', value: this.plugin.settings.customColors.blue },
+            { name: 'green', value: this.plugin.settings.customColors.green }
         ];
-        
+
         colors.forEach((color, index) => {
             const colorOption = colorOptionsContainer.createDiv({
                 cls: 'hover-color-option',
-                attr: { 
-                    'data-color': color,
-                    'style': `--option-index: ${index}`
+                attr: {
+                    'data-color': color.value,
+                    'data-color-name': color.name,
+                    'style': `background-color: ${color.value}; --option-index: ${index}`
                 }
             });
             colorOption.addEventListener('click', (event) => {
                 event.stopPropagation();
-                options.onColorChange?.(highlight, color);
+                options.onColorChange?.(highlight, color.value);
             });
         });
 
@@ -601,23 +759,23 @@ export class HighlightRenderer {
         
         const showColorPicker = () => {
             hoverTimeout = window.setTimeout(() => {
-                hoverColorPicker.classList.add('visible');
+                hoverColorPicker.classList.add('sh-visible');
             }, 500); // Longer delay as requested
         };
 
         const hideColorPicker = () => {
             window.clearTimeout(hoverTimeout);
-            hoverColorPicker.classList.remove('visible');
+            hoverColorPicker.classList.remove('sh-visible');
         };
 
         // Hover zone events
         hoverZone.addEventListener('mouseenter', showColorPicker);
         hoverZone.addEventListener('mouseleave', hideColorPicker);
-        
+
         // Color picker events (keep visible when hovering over the picker itself)
         hoverColorPicker.addEventListener('mouseenter', () => {
             window.clearTimeout(hoverTimeout);
-            hoverColorPicker.classList.add('visible');
+            hoverColorPicker.classList.add('sh-visible');
         });
         hoverColorPicker.addEventListener('mouseleave', hideColorPicker);
     }

@@ -1,80 +1,46 @@
 /* Utility classes for show/hide functionality */
-.hidden {
+/* Namespaced with sh- prefix to prevent conflicts with other plugins/themes */
+.sh-hidden {
     display: none !important;
 }
 
-.visible {
+.sh-visible {
     display: block !important;
 }
 
-.visible-flex {
+.sh-visible-flex {
     display: flex !important;
 }
 
-.visible-inline {
+.sh-visible-inline {
     display: inline !important;
 }
 
-.visible-inline-block {
+.sh-visible-inline-block {
     display: inline-block !important;
 }
 
-/* Style for markdown highlights - theme color classes */
-.cm-highlight {
-    padding: 1px 2px;
-    border-radius: 2px;
-}
+/* Plugin does not style editor highlights - themes handle .cm-highlight completely */
 
-/* Default highlight color */
-body .cm-highlight,
-body.theme-highlight-default .cm-highlight {
-    background-color: rgb(var(--text-highlight-bg-rgb));
-}
-
-/* Yellow highlight theme */
-body.theme-highlight-yellow .cm-highlight {
-    background-color: #ffd70066;
-}
-
-/* Red highlight theme */
-body.theme-highlight-red .cm-highlight {
-    background-color: #ff6b6b66;
-}
-
-/* Teal highlight theme */
-body.theme-highlight-teal .cm-highlight {
-    background-color: #4ecdc466;
-}
-
-/* Blue highlight theme */
-body.theme-highlight-blue .cm-highlight {
-    background-color: #45b7d166;
-}
-
-/* Green highlight theme */
-body.theme-highlight-green .cm-highlight {
-    background-color: #96ceb466;
-}
-
-/* Individual highlight color classes for sidebar items */
+/* Individual highlight color classes for sidebar items - use CSS custom properties */
 .highlight-item-card.highlight-color-yellow {
-    border-left-color: #ffd700;
+    border-left-color: var(--sh-highlight-yellow, #ffd700);
 }
 
 .highlight-item-card.highlight-color-red {
-    border-left-color: #ff6b6b;
+    border-left-color: var(--sh-highlight-red, #ff6b6b);
 }
 
 .highlight-item-card.highlight-color-teal {
-    border-left-color: #4ecdc4;
+    border-left-color: var(--sh-highlight-teal, #4ecdc4);
 }
 
 .highlight-item-card.highlight-color-blue {
-    border-left-color: #45b7d1;
+    border-left-color: var(--sh-highlight-blue, #45b7d1);
 }
 
 .highlight-item-card.highlight-color-green {
-    border-left-color: #96ceb4;
+    border-left-color: var(--sh-highlight-green, #96ceb4);
 }
 
 .highlight-item-card.highlight-color-default {
@@ -312,10 +278,10 @@ body.theme-highlight-green .cm-highlight {
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: var(--size-2-1);
-    background-color: var(--background-primary);
     padding: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
-    flex-shrink: 0; 
+    flex-shrink: 0;
+    background: transparent !important;
 }
 
 .highlights-search-input {
@@ -464,11 +430,12 @@ body.theme-highlight-green .cm-highlight {
     background-color: var(--group-color, var(--background-modifier-border));
 }
 
-.group-color-square[data-color="#ffd700"] { background-color: #ffd700; }
-.group-color-square[data-color="#ff6b6b"] { background-color: #ff6b6b; }
-.group-color-square[data-color="#4ecdc4"] { background-color: #4ecdc4; }
-.group-color-square[data-color="#45b7d1"] { background-color: #45b7d1; }
-.group-color-square[data-color="#96ceb4"] { background-color: #96ceb4; }
+/* Group color squares - use CSS variables for dynamic colors */
+.group-color-square[data-color-name="yellow"] { background-color: var(--sh-highlight-yellow, #ffd700); }
+.group-color-square[data-color-name="red"] { background-color: var(--sh-highlight-red, #ff6b6b); }
+.group-color-square[data-color-name="teal"] { background-color: var(--sh-highlight-teal, #4ecdc4); }
+.group-color-square[data-color-name="blue"] { background-color: var(--sh-highlight-blue, #45b7d1); }
+.group-color-square[data-color-name="green"] { background-color: var(--sh-highlight-green, #96ceb4); }
 
 .group-tag-icon {
     width: 12px;
@@ -507,25 +474,25 @@ body.theme-highlight-green .cm-highlight {
     box-shadow: 0 0 0 1.5px rgb(var(--text-highlight-bg-rgb)), var(--shadow-s); /* Default selection color, overridden by color classes */
 }
 
-/* Color-specific selection box-shadows */
+/* Color-specific selection box-shadows - use CSS custom properties */
 .highlight-item-card.highlight-color-yellow.highlight-selected {
-    box-shadow: 0 0 0 1.5px #ffd700, var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--sh-highlight-yellow, #ffd700), var(--shadow-s);
 }
 
 .highlight-item-card.highlight-color-red.highlight-selected {
-    box-shadow: 0 0 0 1.5px #ff6b6b, var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--sh-highlight-red, #ff6b6b), var(--shadow-s);
 }
 
 .highlight-item-card.highlight-color-teal.highlight-selected {
-    box-shadow: 0 0 0 1.5px #4ecdc4, var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--sh-highlight-teal, #4ecdc4), var(--shadow-s);
 }
 
 .highlight-item-card.highlight-color-blue.highlight-selected {
-    box-shadow: 0 0 0 1.5px #45b7d1, var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--sh-highlight-blue, #45b7d1), var(--shadow-s);
 }
 
 .highlight-item-card.highlight-color-green.highlight-selected {
-    box-shadow: 0 0 0 1.5px #96ceb4, var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--sh-highlight-green, #96ceb4), var(--shadow-s);
 }
 
 /* Support for custom colors in selection state */
@@ -573,7 +540,7 @@ body.theme-highlight-green .cm-highlight {
     pointer-events: none;
 }
 
-.hover-color-picker.visible {
+.hover-color-picker.sh-visible {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
@@ -609,11 +576,17 @@ body.theme-highlight-green .cm-highlight {
     z-index: 1;
 }
 
-.hover-color-option[data-color="#ffd700"] { background-color: #ffd700; }
-.hover-color-option[data-color="#ff6b6b"] { background-color: #ff6b6b; }
-.hover-color-option[data-color="#4ecdc4"] { background-color: #4ecdc4; }
-.hover-color-option[data-color="#45b7d1"] { background-color: #45b7d1; }
-.hover-color-option[data-color="#96ceb4"] { background-color: #96ceb4; }
+/* Hover color options - match custom colors using CSS variables */
+/* Using data-color-name for cleaner semantic attributes */
+.hover-color-option[data-color-name="yellow"] { background-color: var(--sh-highlight-yellow, #ffd700); }
+.hover-color-option[data-color-name="red"] { background-color: var(--sh-highlight-red, #ff6b6b); }
+.hover-color-option[data-color-name="teal"] { background-color: var(--sh-highlight-teal, #4ecdc4); }
+.hover-color-option[data-color-name="blue"] { background-color: var(--sh-highlight-blue, #45b7d1); }
+.hover-color-option[data-color-name="green"] { background-color: var(--sh-highlight-green, #96ceb4); }
+
+/* Legacy support: fallback for old data-color hex values */
+/* These will be overridden by inline styles set by JavaScript */
+.hover-color-option[data-color] { background-color: var(--interactive-normal); }
 
 @keyframes slideIn {
     to {
@@ -624,11 +597,11 @@ body.theme-highlight-green .cm-highlight {
 
 .highlight-quote {
     color: var(--text-normal);
-    padding: 10px 15px; 
-    margin-bottom: 0; 
-    border-radius: 0 6px 0 0; 
+    padding: 10px 15px;
+    margin-bottom: 0;
+    border-radius: 0 6px 0 0;
     cursor: pointer;
-    font-size: inherit; 
+    font-size: var(--sh-quote-font-size, inherit);
     line-height: var(--line-height-normal);
     transition: background-color 0.2s ease;
 }
@@ -641,9 +614,9 @@ body.theme-highlight-green .cm-highlight {
     display: flex;
     flex-direction: column;
     margin-top: 0;
-    padding: 6px 15px 6px 15px; 
-    border-top: 0.5px solid var(--background-modifier-border); 
-    font-size: var(--font-ui-smaller); 
+    padding: 6px 15px 6px 15px;
+    border-top: 0.5px solid var(--background-modifier-border);
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
     transition: background-color 0.2s ease;
 }
 
@@ -658,7 +631,7 @@ body.theme-highlight-green .cm-highlight {
 
 .highlight-filename {
     color: var(--text-muted) !important;
-    font-size: var(--font-ui-smaller);
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
     margin-bottom: 4px;
     display: block;
     cursor: pointer;
@@ -705,7 +678,7 @@ body.theme-highlight-green .cm-highlight {
 .highlight-comment {
     cursor: pointer;
     color: var(--text-normal);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--sh-comment-font-size, var(--font-ui-smaller));
     line-height: var(--line-height-normal);
     padding: 6px 15px;
     transition: background-color 0.15s ease, color 0.15s ease;
@@ -867,7 +840,7 @@ body.theme-highlight-green .cm-highlight {
 /* Tabs container */
 .highlights-tabs-container {
     display: flex;
-    background-color: var(--background-primary);
+    background: transparent !important;
     flex-shrink: 0;
 }
 
@@ -1213,6 +1186,44 @@ body.theme-highlight-green .cm-highlight {
     opacity: 1;
 }
 
+/* Copy button in quote section - appears on hover */
+.highlight-quote {
+    position: relative;
+}
+
+.highlight-quote-copy-button {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.highlight-quote:hover .highlight-quote-copy-button {
+    opacity: 0.6;
+}
+
+.highlight-quote-copy-button:hover {
+    opacity: 1 !important;
+    color: var(--text-normal);
+}
+
+.highlight-quote-copy-button .copy-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.highlight-quote-copy-button .copy-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 /* Add Comment line styling - distinct from regular comments */
 .highlight-add-comment-line {
     color: var(--text-muted);
@@ -1285,7 +1296,7 @@ body.theme-highlight-green .cm-highlight {
 /* Highlight info line styling */
 .highlight-info-line {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
     margin-bottom: 2px;
     display: flex;
     align-items: center;
@@ -1312,7 +1323,7 @@ body.theme-highlight-green .cm-highlight {
 
 .highlight-timestamp-info {
     color: var(--text-muted);
-    font-size: var(--font-ui-smaller);
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
