@@ -1,8 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import fs from "fs";
-import path from "path";
 
 const banner =
 `/*
@@ -12,35 +10,6 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
-
-// Plugin to copy locale directory
-const copyLocalePlugin = {
-	name: 'copy-locale',
-	setup(build) {
-		build.onEnd(() => {
-			const sourceDir = 'locale';
-			const destDir = 'locale';
-
-			// Create destination directory if it doesn't exist
-			if (!fs.existsSync(destDir)) {
-				fs.mkdirSync(destDir, { recursive: true });
-			}
-
-			// Copy all JSON files from locale directory
-			if (fs.existsSync(sourceDir)) {
-				const files = fs.readdirSync(sourceDir);
-				files.forEach(file => {
-					if (file.endsWith('.json')) {
-						const sourcePath = path.join(sourceDir, file);
-						const destPath = path.join(destDir, file);
-						fs.copyFileSync(sourcePath, destPath);
-						console.log(`Copied ${sourcePath} to ${destPath}`);
-					}
-				});
-			}
-		});
-	},
-};
 
 const context = await esbuild.context({
 	banner: {
@@ -70,7 +39,6 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: "main.js",
 	minify: prod,
-	plugins: [copyLocalePlugin],
 });
 
 if (prod) {

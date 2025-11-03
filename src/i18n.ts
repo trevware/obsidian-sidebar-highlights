@@ -1,8 +1,16 @@
 import { moment } from 'obsidian';
+import enTranslations from '../locale/en.json';
+import zhCnTranslations from '../locale/zh-cn.json';
 
 interface Translations {
 	[key: string]: string | Translations;
 }
+
+// Bundled translations
+const BUNDLED_TRANSLATIONS: Record<string, Translations> = {
+	'en': enTranslations,
+	'zh-cn': zhCnTranslations
+};
 
 class I18n {
 	private locale: string = 'en';
@@ -19,14 +27,15 @@ class I18n {
 			console.log(`[i18n] Detected locale: ${moment.locale()} -> ${this.locale}`);
 
 			// Always load English as fallback
-			this.fallbackTranslations = await this.loadTranslations('en');
+			this.fallbackTranslations = this.loadTranslations('en');
 
 			// Load the detected locale if it's not English
 			if (this.locale !== 'en') {
-				try {
-					this.translations = await this.loadTranslations(this.locale);
-				} catch (error) {
-					console.warn(`[i18n] Failed to load translations for locale "${this.locale}", falling back to English:`, error);
+				const localeTranslations = this.loadTranslations(this.locale);
+				if (localeTranslations) {
+					this.translations = localeTranslations;
+				} else {
+					console.warn(`[i18n] No translations found for locale "${this.locale}", falling back to English`);
 					this.translations = this.fallbackTranslations;
 					this.locale = 'en';
 				}
@@ -61,26 +70,10 @@ class I18n {
 	}
 
 	/**
-	 * Load translation file for a given locale
+	 * Load bundled translations for a given locale
 	 */
-	private async loadTranslations(locale: string): Promise<Translations> {
-		try {
-			// Use Obsidian's file adapter to read the locale file
-			const adapter = (window as any).app.vault.adapter;
-			const localePath = `.obsidian/plugins/sidebar-highlights/locale/${locale}.json`;
-
-			console.log(`[i18n] Loading translations from: ${localePath}`);
-
-			// Read the file using Obsidian's adapter
-			const fileContents = await adapter.read(localePath);
-			const translations = JSON.parse(fileContents);
-
-			console.log(`[i18n] Successfully loaded ${locale} translations`);
-			return translations;
-		} catch (error) {
-			console.error(`[i18n] Failed to load locale file for "${locale}":`, error);
-			throw new Error(`Failed to load locale file for "${locale}": ${error.message}`);
-		}
+	private loadTranslations(locale: string): Translations {
+		return BUNDLED_TRANSLATIONS[locale] || BUNDLED_TRANSLATIONS['en'];
 	}
 
 	/**

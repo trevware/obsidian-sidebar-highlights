@@ -933,10 +933,14 @@
 
 /* Collections styles */
 .collections-container {
-    padding: 12px;
     height: 100%;
     display: flex;
     flex-direction: column;
+}
+
+/* Add padding only when there's a grid (not for empty state) */
+.collections-container:has(.collections-grid) {
+    padding: 12px;
 }
 
 .collections-header {

@@ -90,6 +90,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - View mode and grouping settings now properly maintained during refresh
   - Eliminated brief flashing of highlights in Tasks tab when creating new highlights
   - State restoration happens before rendering to prevent visual glitches
+- **Localization Loading**: Fixed translations not loading when plugin installed from release
+  - Translations now bundled directly into main.js instead of separate files
+  - Ensures consistent i18n behavior across all installations
 
 ## [1.21.0] - 2025-10-31
 
