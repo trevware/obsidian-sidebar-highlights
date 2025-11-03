@@ -22,6 +22,13 @@
 
 /* Plugin does not style editor highlights - themes handle .cm-highlight completely */
 
+/* Sidebar highlights in tasks - use same styling as editor */
+.task-text-content .cm-highlight,
+.task-context .cm-highlight {
+    background-color: var(--text-highlight-bg);
+    color: inherit;
+}
+
 /* Individual highlight color classes for sidebar items - use CSS custom properties */
 .highlight-item-card.highlight-color-yellow {
     border-left-color: var(--sh-highlight-yellow, #ffd700);
@@ -398,17 +405,16 @@
 }
 
 .highlight-group-header {
-    font-size: var(--font-ui-smaller);
-    font-weight: var(--font-weight-black);
-    padding: 16px 0 12px 0;
-    margin: 16px -12px 0 -12px;
+    font-size: var(--font-adaptive-smaller);
+    font-weight: 500;
+    padding: 0 8px 8px 8px;
+    margin: 24px 0 0 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding-left: 12px;
-    padding-right: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .highlight-group-header > span:first-child {
@@ -417,7 +423,7 @@
     gap: 8px;
 }
 
-.highlight-group-header:first-child {
+.highlight-group-header:first-of-type {
     margin-top: 0;
 }
 
@@ -1490,4 +1496,650 @@
     text-align: center;
 }
 
+/* ==================== TASKS TAB STYLES ==================== */
 
+/* Task count flair */
+.tree-item-flair {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-faint);
+    line-height: 1;
+    border-radius: var(--radius-s);
+    margin-left: auto;
+}
+
+/* Task item card - individual task with var(--radius-s) hover rectangle */
+.task-item-card {
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 0;
+    margin-bottom: 2px;
+    box-shadow: none;
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-light);
+    transition: background-color 0.15s ease-in-out;
+    position: relative;
+}
+
+.task-item-card:hover {
+    background: var(--background-modifier-hover);
+}
+
+.task-item-card.task-completed {
+    opacity: 0.6;
+}
+
+/* Grouped tasks - merge into one card (disabled - each task now individual) */
+.task-group-container {
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    overflow: visible;
+}
+
+.task-group-container .task-item-card {
+    margin-bottom: 2px;
+    border-radius: var(--radius-s);
+    box-shadow: none;
+    background: transparent;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.task-group-container .task-item-card:hover {
+    background: var(--background-modifier-hover);
+}
+
+.task-group-container .task-item-card:first-child .task-quote {
+    border-radius: 16px;
+}
+
+.task-group-container .task-item-card:last-child .task-quote {
+    border-radius: 16px;
+}
+
+.task-group-container .task-item-card:first-child:last-child .task-quote {
+    border-radius: 16px;
+}
+
+/* Task quote section - uses var(--radius-s) for individual task style */
+.task-quote {
+    color: var(--text-normal);
+    padding: 4px 72px 4px 8px; /* top right bottom left - right padding for calendar and flag buttons */
+    margin-bottom: 0;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    font-size: var(--sh-quote-font-size, inherit);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.15s ease-in-out;
+}
+
+.task-quote:hover {
+    background-color: transparent;
+}
+
+/* Hover border radius for grouped tasks */
+.task-group-container .task-quote {
+    border-radius: var(--radius-s);
+}
+
+.task-group-container .task-item-card:first-child .task-quote {
+    border-radius: var(--radius-s);
+}
+
+.task-group-container .task-item-card:last-child .task-quote {
+    border-radius: var(--radius-s);
+}
+
+.task-group-container .task-item-card:first-child:last-child .task-quote {
+    border-radius: var(--radius-s);
+}
+
+.task-item-card.task-completed .task-quote {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+/* Task checkbox */
+.task-checkbox-container {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    align-self: flex-start;
+}
+
+.task-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: color 0.2s ease, transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.task-checkbox:hover {
+    color: var(--text-normal);
+}
+
+.task-checkbox svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Checkbox animation when checking */
+.task-checkbox.checking {
+    animation: checkboxBounce 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Checkbox animation when unchecking */
+.task-checkbox.unchecking {
+    animation: checkboxPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes checkboxBounce {
+    0% {
+        transform: scale(1);
+    }
+    30% {
+        transform: scale(0.7);
+    }
+    50% {
+        transform: scale(1.3);
+    }
+    70% {
+        transform: scale(0.95);
+    }
+    85% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes checkboxPop {
+    0% {
+        transform: scale(1);
+    }
+    30% {
+        transform: scale(0.7);
+    }
+    60% {
+        transform: scale(1.2);
+    }
+    80% {
+        transform: scale(0.98);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.task-text-content {
+    flex: 1;
+    min-width: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    overflow: visible;
+}
+
+/* Make task text div display inline */
+.task-text-content > div:not(.task-context):not(.task-flag-icon):not(.task-date-badge):not(.task-filename-inline) {
+    display: inline;
+    vertical-align: middle;
+}
+
+/* Task context lines */
+.task-context {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-style: italic;
+    line-height: var(--line-height-tight);
+    margin-top: 4px;
+}
+
+.task-context-line {
+    padding-left: 8px;
+    border-left: 2px solid var(--background-modifier-border);
+    margin: 2px 0;
+}
+
+/* Inline filename (shown below context in date grouping) */
+.task-filename-inline {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.2s ease;
+    white-space: nowrap;
+}
+
+.task-filename-inline:hover {
+    color: var(--text-normal);
+}
+
+.task-filename-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.7;
+    width: 14px;
+    height: 14px;
+}
+
+.task-filename-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.task-filename-text {
+    font-size: var(--font-ui-smaller);
+}
+
+/* Task actions - hidden for individual task style */
+.task-actions {
+    display: none;
+    flex-direction: column;
+    margin-top: 0;
+    padding: 6px 15px 6px 15px;
+    border-top: none;
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
+    transition: background-color 0.2s ease;
+}
+
+.task-info-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: visible;
+}
+
+.task-info-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-stats-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-line-info {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+}
+
+.task-line-info .line-icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.task-line-info .line-icon svg {
+    width: 10px;
+    height: 10px;
+}
+
+.task-filename {
+    color: var(--text-muted) !important;
+    font-size: var(--sh-details-font-size, var(--font-ui-smaller));
+    margin-bottom: 4px;
+    display: block;
+    cursor: pointer;
+    padding: 0;
+}
+
+.task-filename:hover {
+    color: var(--text-normal) !important;
+    text-decoration: underline;
+}
+
+/* Empty state - shared between tasks and highlights */
+.task-empty-state,
+.highlight-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 20px;
+    color: var(--text-muted);
+}
+
+.task-empty-icon,
+.highlight-empty-icon {
+    display: none;
+}
+
+.task-empty-text,
+.highlight-empty-text {
+    font-size: var(--font-ui-medium);
+    text-align: center;
+}
+
+/* Loading state */
+.task-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-medium);
+}
+
+/* Search match highlighting in tasks */
+.task-search-match {
+    background-color: var(--text-highlight-bg);
+    color: var(--text-normal);
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+/* Task progress circle in group headers */
+.task-progress-circle-container {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.task-progress-circle-container svg {
+    display: block;
+}
+
+.task-progress-circle {
+    transition: stroke-dashoffset 0.3s ease;
+}
+
+/* Completed group checkmark */
+.task-progress-circle-container.task-progress-complete {
+    color: var(--interactive-accent);
+}
+
+.task-progress-circle-container.task-progress-complete svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Adjust group header to align with task checkboxes */
+.highlight-group-header > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* Task section headers (sub-groups) */
+.task-section-header {
+    font-size: var(--font-ui-smaller);
+    font-weight: 500;
+    color: var(--text-normal);
+    padding: 4px 8px;
+    margin: 16px 0 10px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: color 0.2s ease, opacity 0.2s ease;
+    opacity: 1;
+}
+
+.task-section-header:hover {
+    color: var(--text-normal);
+    opacity: 1;
+}
+
+.task-section-header.collapsed {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.task-section-header.collapsed:hover {
+    opacity: 0.9;
+}
+
+/* Ellipsis indicator for collapsed sections */
+.task-section-ellipsis {
+    margin-left: auto;
+    font-weight: 400;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.task-section-header.collapsed .task-section-ellipsis {
+    opacity: 1;
+}
+
+/* Task secondary group headers (tag/date/flagged grouping) */
+/* COMMENTED OUT FOR NOW
+.task-secondary-group-header {
+    font-size: var(--font-ui-smaller);
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    margin: 12px 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: color 0.2s ease, opacity 0.2s ease;
+    opacity: 0.9;
+}
+
+.task-secondary-group-header:hover {
+    color: var(--text-normal);
+    opacity: 1;
+}
+*/
+
+/* First section header should be closer to main group header */
+.highlight-group-header + .task-section-header {
+    margin-top: 6px;
+}
+
+/* Adjust spacing for group containers after group headers */
+.highlight-group-header + .task-group-container {
+    margin-top: 10px;
+}
+
+/* Adjust spacing for group containers after section headers */
+.task-section-header + .task-group-container {
+    margin-top: 10px;
+}
+
+/* Task date badge (on left side) */
+.task-date-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    margin-right: 6px;
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-weight-semibold);
+    border-radius: 4px;
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    flex-shrink: 0;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Task flag icon (on left side in text) */
+.task-flag-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-right: 6px;
+    color: #fbbf24;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+
+.task-flag-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Task flag button (on right side, appears on hover) */
+.task-flag-button {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    border-radius: var(--radius-s);
+}
+
+.task-flag-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.task-quote:hover .task-flag-button {
+    opacity: 1;
+}
+
+.task-flag-button:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+/* Task calendar button (on right side next to flag, appears on hover) */
+.task-calendar-button {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    border-radius: var(--radius-s);
+}
+
+.task-calendar-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.task-quote:hover .task-calendar-button {
+    opacity: 1;
+}
+
+.task-calendar-button:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+/* Task tags - ensure they display inline and wrap properly */
+.task-text-content .cm-hashtag {
+    display: inline;
+    white-space: normal;
+    overflow: visible;
+}
+
+/* Highlight tags that match search */
+.task-text-content .task-search-match-tag {
+    background-color: var(--text-highlight-bg);
+}
+
+/* Search match highlighting */
+.task-search-match {
+    background-color: var(--text-highlight-bg);
+    color: var(--text-normal);
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+/* Date input modal styles */
+.date-input-container {
+    margin: 20px 0;
+}
+
+.date-input-field {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: var(--font-ui-medium);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+}
+
+.date-input-field:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+.date-input-field.has-error {
+    border-color: var(--text-error);
+}
+
+.date-input-error {
+    margin-top: 8px;
+    color: var(--text-error);
+    font-size: var(--font-ui-smaller);
+}
+
+/* Date suggestion items (rendered within Obsidian's native suggestion container) */
+.date-suggestion-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.date-suggestion-label {
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+}
+
+.date-suggestion-date {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+    margin-left: 12px;
+}

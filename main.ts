@@ -5,6 +5,7 @@ import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
+import { i18n, t } from './src/i18n';
 
 export interface Highlight {
     id: string;
@@ -20,7 +21,8 @@ export interface Highlight {
     collectionIds?: string[]; // Add collection support
     createdAt?: number; // Timestamp when highlight was created
     isNativeComment?: boolean; // True if this is a native comment (%% %) rather than highlight (== ==)
-    type?: 'highlight' | 'comment' | 'html'; // Type of highlight for proper identification
+    type?: 'highlight' | 'comment' | 'html' | 'custom'; // Type of highlight for proper identification
+    fullMatch?: string; // Full matched text with delimiters (for custom patterns)
 }
 
 export interface Collection {
@@ -31,10 +33,49 @@ export interface Collection {
     createdAt: number;
 }
 
+export interface Task {
+    id: string;
+    text: string;
+    completed: boolean;
+    flagged: boolean; // Task is flagged with [!]
+    filePath: string;
+    lineNumber: number;
+    context: string[]; // Indented text lines below the task
+    indentLevel: number; // Indentation level for nested tasks
+    section?: string; // Markdown header above the task (if any)
+    date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
+    dateText?: string; // Original date text from task (to strip from display)
+}
+
 export interface CustomPattern {
     name: string;
     pattern: string;
     type: 'highlight' | 'comment';
+}
+
+export interface DisplayMode {
+    id: string;
+    name: string;
+    // Display settings
+    showFilenames: boolean;
+    showTimestamps: boolean;
+    showHighlightActions: boolean;
+    showToolbar: boolean;
+    autoToggleFold: boolean;
+    dateFormat: string;
+    minimumCharacterCount: number;
+    // Views settings
+    showCurrentNoteTab: boolean;
+    showAllNotesTab: boolean;
+    showCollectionsTab: boolean;
+    showTasksTab: boolean;
+}
+
+export interface TabSettings {
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' | 'date-desc';
+    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc';
+    commentsExpanded: boolean;
+    searchExpanded: boolean;
 }
 
 export interface CommentPluginSettings {
@@ -43,12 +84,13 @@ export interface CommentPluginSettings {
     sidebarPosition: 'left' | 'right';
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
-    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc'; // Add grouping mode persistence
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc'; // Add sort mode for A-Z and Z-A sorting
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' | 'date-desc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
+    taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
+    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
+    tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
-    showCollections: boolean; // Show Collections tab and collection icons
     showToolbar: boolean; // Show/hide the toolbar container
     autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
@@ -61,6 +103,7 @@ export interface CommentPluginSettings {
     detailsFontSize: number; // Font size for details (buttons, filename, etc.)
     commentFontSize: number; // Font size for comment text
     detectHtmlComments: boolean; // Detect HTML comments (<!-- -->)
+    detectAdjacentNativeComments: boolean; // Detect native comments (%% %%) adjacent to highlights as comments for those highlights
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -76,6 +119,15 @@ export interface CommentPluginSettings {
         blue: string;
         green: string;
     };
+    showCurrentNoteTab: boolean; // Show/hide Current Note tab
+    showAllNotesTab: boolean; // Show/hide All Notes tab
+    showCollectionsTab: boolean; // Show/hide Collections tab
+    showTasksTab: boolean; // Show/hide Tasks tab
+    showCompletedTasks: boolean; // Include completed tasks (- [x])
+    showTaskContext: boolean; // Show indented text below tasks as context
+    taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
+    displayModes: DisplayMode[]; // Saved display mode configurations
+    currentDisplayModeId: string | null; // Currently active display mode ID
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -84,12 +136,13 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     sidebarPosition: 'right',
     highlights: {},
     collections: {}, // Initialize empty collections
-    groupingMode: 'none', // Default grouping mode
-    sortMode: 'none', // Default sort mode
+    groupingMode: 'none', // Default grouping mode (legacy)
+    taskSecondaryGroupingMode: 'none', // Default task secondary grouping mode
+    sortMode: 'none', // Default sort mode (legacy)
+    tabSettings: {}, // Initialize empty per-tab settings
     showFilenames: true, // Show filenames by default
     showTimestamps: true, // Show timestamps by default
     showHighlightActions: true, // Show highlight actions by default
-    showCollections: true, // Show collections by default
     showToolbar: true, // Show toolbar by default
     autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
@@ -102,6 +155,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     detailsFontSize: 11, // Default details font size
     commentFontSize: 11, // Default comment text font size
     detectHtmlComments: false, // Do not detect HTML comments by default
+    detectAdjacentNativeComments: true, // Detect adjacent native comments by default (new behavior)
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -116,7 +170,16 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
         teal: '',
         blue: '',
         green: ''
-    }
+    },
+    showCurrentNoteTab: true, // Show Current Note tab by default
+    showAllNotesTab: true, // Show All Notes tab by default
+    showCollectionsTab: true, // Show Collections tab by default
+    showTasksTab: false, // Tasks tab hidden by default (enable in Settings > Views)
+    showCompletedTasks: true, // Show completed tasks by default
+    showTaskContext: true, // Show task context by default
+    taskDateFormat: 'YYYY-MM-DD', // Default task date format
+    displayModes: [], // Empty array by default
+    currentDisplayModeId: null // No active display mode by default
 }
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
@@ -134,6 +197,13 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
+
+        // Initialize i18n system
+        try {
+            await i18n.init();
+        } catch (error) {
+            console.error('Failed to initialize i18n, plugin will continue with English defaults:', error);
+        }
 
         // Migrate any existing backup files to the backups folder
         await this.migrateBackupFilesToFolder();
@@ -166,7 +236,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.addCommand({
             id: 'create-highlight',
-            name: 'Create highlight from selection',
+            name: t('commands.createHighlight'),
             editorCallback: (editor: Editor) => {
                 this.createHighlight(editor);
             }
@@ -174,7 +244,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.addCommand({
             id: 'open-highlights-sidebar',
-            name: 'Toggle',
+            name: t('commands.toggle'),
             callback: () => {
                 this.toggleView();
             }
@@ -223,6 +293,9 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Register collection commands
         this.registerCollectionCommands();
+
+        // Register display mode commands
+        this.registerDisplayModeCommands();
 
         // Register all vault events after workspace is ready to avoid processing during initialization
         this.app.workspace.onLayoutReady(async () => {
@@ -427,6 +500,89 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (this.sidebarView) {
             this.sidebarView.refresh();
         }
+    }
+
+    // Display Mode methods
+    createDisplayModeFromCurrent(name: string): DisplayMode {
+        return {
+            id: Date.now().toString(),
+            name: name,
+            // Capture current Display settings
+            showFilenames: this.settings.showFilenames,
+            showTimestamps: this.settings.showTimestamps,
+            showHighlightActions: this.settings.showHighlightActions,
+            showToolbar: this.settings.showToolbar,
+            autoToggleFold: this.settings.autoToggleFold,
+            dateFormat: this.settings.dateFormat,
+            minimumCharacterCount: this.settings.minimumCharacterCount,
+            // Capture current Views settings
+            showCurrentNoteTab: this.settings.showCurrentNoteTab,
+            showAllNotesTab: this.settings.showAllNotesTab,
+            showCollectionsTab: this.settings.showCollectionsTab,
+            showTasksTab: this.settings.showTasksTab
+        };
+    }
+
+    async applyDisplayMode(displayMode: DisplayMode) {
+        // Apply Display settings
+        this.settings.showFilenames = displayMode.showFilenames;
+        this.settings.showTimestamps = displayMode.showTimestamps;
+        this.settings.showHighlightActions = displayMode.showHighlightActions;
+        this.settings.showToolbar = displayMode.showToolbar;
+        this.settings.autoToggleFold = displayMode.autoToggleFold;
+        this.settings.dateFormat = displayMode.dateFormat;
+        this.settings.minimumCharacterCount = displayMode.minimumCharacterCount;
+        // Apply Views settings
+        this.settings.showCurrentNoteTab = displayMode.showCurrentNoteTab;
+        this.settings.showAllNotesTab = displayMode.showAllNotesTab;
+        this.settings.showCollectionsTab = displayMode.showCollectionsTab;
+        this.settings.showTasksTab = displayMode.showTasksTab;
+
+        // Mark this mode as active
+        this.settings.currentDisplayModeId = displayMode.id;
+
+        await this.saveSettings();
+
+        // Reset view mode to first visible tab if current tab is hidden
+        if (this.sidebarView) {
+            this.sidebarView.resetToFirstVisibleTab();
+        }
+
+        this.refreshSidebar();
+    }
+
+    async updateDisplayMode(displayMode: DisplayMode) {
+        // Update the display mode with current settings
+        displayMode.showFilenames = this.settings.showFilenames;
+        displayMode.showTimestamps = this.settings.showTimestamps;
+        displayMode.showHighlightActions = this.settings.showHighlightActions;
+        displayMode.showToolbar = this.settings.showToolbar;
+        displayMode.autoToggleFold = this.settings.autoToggleFold;
+        displayMode.dateFormat = this.settings.dateFormat;
+        displayMode.minimumCharacterCount = this.settings.minimumCharacterCount;
+        displayMode.showCurrentNoteTab = this.settings.showCurrentNoteTab;
+        displayMode.showAllNotesTab = this.settings.showAllNotesTab;
+        displayMode.showCollectionsTab = this.settings.showCollectionsTab;
+        displayMode.showTasksTab = this.settings.showTasksTab;
+
+        // Keep this mode as active
+        this.settings.currentDisplayModeId = displayMode.id;
+
+        await this.saveSettings();
+    }
+
+    registerDisplayModeCommands() {
+        // Register a command for each display mode
+        this.settings.displayModes.forEach(mode => {
+            this.addCommand({
+                id: `apply-display-mode-${mode.id}`,
+                name: t('commands.applyDisplayMode', { name: mode.name }),
+                callback: () => {
+                    this.applyDisplayMode(mode);
+                    new Notice(t('notices.displayModeApplied', { name: mode.name }));
+                }
+            });
+        });
     }
 
     async reloadAllSettings() {
@@ -729,7 +885,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Always register/re-register to update the name if it changed
             this.addCommand({
                 id: goToId,
-                name: `Go to ${collection.name}`,
+                name: t('commands.goToCollection', { name: collection.name }),
                 callback: () => {
                     this.goToCollection(collection.id);
                 }
@@ -856,12 +1012,14 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
+        console.log('[DEBUG] debounceDetectMarkdownHighlights - keystroke detected, resetting timer');
         if (this.detectHighlightsTimeout) {
             window.clearTimeout(this.detectHighlightsTimeout);
         }
         this.detectHighlightsTimeout = window.setTimeout(() => {
+            console.log('[DEBUG] Debounce timer expired, calling detectMarkdownHighlights');
             this.detectMarkdownHighlights(editor, view);
-        }, 1000);
+        }, 1000); // 1 second
     }
 
     async detectMarkdownHighlights(editor: Editor, view: MarkdownView) {
@@ -1004,7 +1162,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const markdownLinkRanges = this.getMarkdownLinkRanges(content);
 
         // Process all highlight types
-        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string}> = [];
+        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string, isCustomPattern?: boolean}> = [];
 
         // Find all highlight matches
         let match;
@@ -1037,7 +1195,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         }
 
-        // Find HTML comments if enabled
+        // Find HTML comments if enabled and track their ranges
+        const htmlCommentRanges: Array<{start: number, end: number}> = [];
         if (this.settings.detectHtmlComments) {
             const htmlCommentRegex = /<!--([^]*?)-->/g;
             while ((match = htmlCommentRegex.exec(content)) !== null) {
@@ -1045,6 +1204,11 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
                     !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
                     allMatches.push({match, type: 'comment'});
+                    // Track HTML comment range to exclude from custom pattern detection
+                    htmlCommentRanges.push({
+                        start: match.index,
+                        end: match.index + match[0].length
+                    });
                 }
             }
         }
@@ -1071,12 +1235,14 @@ export default class HighlightCommentsPlugin extends Plugin {
                         customRegex.lastIndex++;
                     }
 
-                    // Skip if match is inside a code block or markdown link
+                    // Skip if match is inside a code block, markdown link, or HTML comment
                     if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
-                        !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
+                        !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges) &&
+                        !this.isInsideCodeBlock(match.index, match.index + match[0].length, htmlCommentRanges)) {
                         allMatches.push({
                             match,
-                            type: customPattern.type === 'comment' ? 'comment' : 'highlight'
+                            type: customPattern.type === 'comment' ? 'comment' : 'highlight',
+                            isCustomPattern: true
                         });
                     }
                 }
@@ -1128,20 +1294,28 @@ export default class HighlightCommentsPlugin extends Plugin {
                 // A blank line (two or more newlines with optional whitespace between) breaks adjacency
                 const hasBlankLine = /\n\s*\n/.test(afterFootnotes);
                 if (/^\s*$/.test(afterFootnotes) && !hasBlankLine) {
-                    // This is a comment adjacent to a highlight (HTML, native, or custom)
-                    // It may be after inline footnotes like ==text==^[note]<!-- comment -->
-                    // Store both the text and the actual position of the comment
-                    adjacentComments.set(i, {
-                        text: next.match[1].trim(),
-                        position: commentStart // Use the comment's actual position for sorting
-                    });
-                    // Mark the comment for skipping in main loop
-                    allMatches[i + 1] = { ...next, type: 'comment' as any, skip: true } as any;
+                    // Check if this is a native comment (%% %%)
+                    const isNativeComment = next.match[0].startsWith('%%') && next.match[0].endsWith('%%');
+
+                    // Apply adjacency logic for both native and HTML comments based on the setting
+                    const shouldApplyAdjacency = this.settings.detectAdjacentNativeComments;
+
+                    if (shouldApplyAdjacency) {
+                        // This is a comment adjacent to a highlight (HTML, native, or custom)
+                        // It may be after inline footnotes like ==text==^[note]<!-- comment -->
+                        // Store both the text and the actual position of the comment
+                        adjacentComments.set(i, {
+                            text: next.match[1].trim(),
+                            position: commentStart // Use the comment's actual position for sorting
+                        });
+                        // Mark the comment for skipping in main loop
+                        allMatches[i + 1] = { ...next, type: 'comment' as any, skip: true } as any;
+                    }
                 }
             }
         }
 
-        allMatches.forEach(({match, type, color, skip}: any, index) => {
+        allMatches.forEach(({match, type, color, skip, isCustomPattern}: any, index) => {
             // Skip matches that were merged as adjacent comments
             if (skip) return;
             const [, highlightText] = match;
@@ -1252,7 +1426,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Preserve existing createdAt timestamp if it exists
                     createdAt: existingHighlight.createdAt || Date.now(),
                     // Store the type for proper identification
-                    type: type
+                    type: isCustomPattern ? 'custom' : type,
+                    // Store full match for custom patterns
+                    fullMatch: isCustomPattern ? match[0] : undefined
                 });
             } else {
                 // For new highlights, use file modification time to preserve historical context
@@ -1273,7 +1449,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Set color for HTML highlights
                     color: type === 'html' ? color : undefined,
                     // Store the type for proper identification
-                    type: type
+                    type: isCustomPattern ? 'custom' : type,
+                    // Store full match for custom patterns
+                    fullMatch: isCustomPattern ? match[0] : undefined
                 });
             }
         });
@@ -1295,9 +1473,26 @@ export default class HighlightCommentsPlugin extends Plugin {
      * Smart sidebar update: use targeted updates when possible, full refresh only when necessary
      */
     private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
+        console.log('[DEBUG] smartUpdateSidebar called');
+
         if (!this.sidebarView) {
+            console.log('[DEBUG] No sidebarView, returning');
             return;
         }
+
+        // Skip refresh if we're in a tab that doesn't display highlights
+        // Tasks and Collections tabs don't show highlights, so no need to refresh UI
+        const viewMode = this.sidebarView.getViewMode();
+        console.log('[DEBUG] Current viewMode:', viewMode);
+
+        if (viewMode === 'tasks' || viewMode === 'collections') {
+            // Data is still updated in storage, but UI doesn't refresh
+            // This prevents unnecessary flashing when working in these tabs
+            console.log('[DEBUG] Skipping update - in tasks/collections tab');
+            return;
+        }
+
+        console.log('[DEBUG] Proceeding with update - in highlight tab');
 
         // Create maps for quick lookup
         const oldByID = new Map<string, Highlight>();
@@ -1314,8 +1509,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                                    [...newIDs].some(id => !oldIDs.has(id));
 
         if (hasStructuralChanges) {
-            // New or deleted highlights require full refresh
-            this.refreshSidebar();
+            // New or deleted highlights - use updateContent() instead of full refresh
+            // This avoids clearing task cache and rebuilding entire DOM
+            this.sidebarView.updateContent();
         } else {
             // Only content changes - use targeted updates
             for (const [id, newHighlight] of newByID) {
@@ -1681,22 +1877,23 @@ class CustomPatternModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        contentEl.createEl('div', { cls: 'modal-title', text: this.pattern ? 'Edit custom pattern' : 'Add custom pattern' });
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: this.pattern ? t('modals.customPattern.editTitle') : t('modals.customPattern.addTitle') });
+        titleEl.style.marginBottom = '20px';
 
         // Name input (Setting component adds divider automatically)
         new Setting(contentEl)
-            .setName('Name')
-            .setDesc('A descriptive name for this pattern (e.g., "Regex Mark", "IA Writer comments")')
+            .setName(t('modals.customPattern.nameLabel'))
+            .setDesc(t('modals.customPattern.nameDesc'))
             .addText(text => {
                 this.nameInput = text.inputEl;
                 text.setValue(this.pattern?.name || '')
-                    .setPlaceholder('Pattern name');
+                    .setPlaceholder(t('modals.customPattern.namePlaceholder'));
             });
 
         // Pattern input
         const patternDesc = document.createDocumentFragment();
         patternDesc.append(
-            'Regex pattern with a capturing group for the content. Examples:',
+            t('modals.customPattern.patternDesc'),
             document.createElement('br'),
             document.createElement('code'),
         );
@@ -1707,12 +1904,12 @@ class CustomPatternModal extends Modal {
         patternDesc.append(code2);
 
         new Setting(contentEl)
-            .setName('Pattern')
+            .setName(t('modals.customPattern.patternLabel'))
             .setDesc(patternDesc)
             .addText(text => {
                 this.patternInput = text.inputEl;
                 text.setValue(this.pattern?.pattern || '')
-                    .setPlaceholder('//(.+)//')
+                    .setPlaceholder(t('modals.customPattern.patternPlaceholder'))
                     .then(textComponent => {
                         textComponent.inputEl.style.width = '100%';
                         textComponent.inputEl.style.fontFamily = 'monospace';
@@ -1721,12 +1918,12 @@ class CustomPatternModal extends Modal {
 
         // Type select
         new Setting(contentEl)
-            .setName('Type')
-            .setDesc('Whether to treat matches as highlights or comments')
+            .setName(t('modals.customPattern.typeLabel'))
+            .setDesc(t('modals.customPattern.typeDesc'))
             .addDropdown(dropdown => {
                 this.typeSelect = dropdown.selectEl;
-                dropdown.addOption('highlight', 'Highlight')
-                    .addOption('comment', 'Comment')
+                dropdown.addOption('highlight', t('modals.customPattern.typeHighlight'))
+                    .addOption('comment', t('modals.customPattern.typeComment'))
                     .setValue(this.pattern?.type || 'highlight');
             });
 
@@ -1737,22 +1934,22 @@ class CustomPatternModal extends Modal {
         buttonContainer.style.gap = '10px';
         buttonContainer.style.marginTop = '20px';
 
-        const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+        const cancelButton = buttonContainer.createEl('button', { text: t('modals.customPattern.cancel') });
         cancelButton.addEventListener('click', () => this.close());
 
-        const submitButton = buttonContainer.createEl('button', { text: 'Save', cls: 'mod-cta' });
+        const submitButton = buttonContainer.createEl('button', { text: t('modals.customPattern.save'), cls: 'mod-cta' });
         submitButton.addEventListener('click', () => {
             const name = this.nameInput.value.trim();
             const pattern = this.patternInput.value.trim();
             const type = this.typeSelect.value as 'highlight' | 'comment';
 
             if (!name) {
-                new Notice('Please enter a name for the pattern');
+                new Notice(t('modals.customPattern.nameRequired'));
                 return;
             }
 
             if (!pattern) {
-                new Notice('Please enter a regex pattern');
+                new Notice(t('modals.customPattern.patternRequired'));
                 return;
             }
 
@@ -1761,13 +1958,13 @@ class CustomPatternModal extends Modal {
             try {
                 regex = new RegExp(pattern, 'g');
             } catch (e) {
-                new Notice('Invalid regex pattern: ' + e.message);
+                new Notice(t('modals.customPattern.invalidRegex') + ': ' + e.message);
                 return;
             }
 
             // Check if pattern has a capturing group
             if (!pattern.includes('(') || !pattern.includes(')')) {
-                new Notice('Pattern must include a capturing group, e.g., //(.+)//');
+                new Notice(t('modals.customPattern.capturingGroupRequired'));
                 return;
             }
 
@@ -1780,7 +1977,7 @@ class CustomPatternModal extends Modal {
 
             for (const builtIn of builtInPatterns) {
                 if (builtIn.pattern.test(pattern)) {
-                    new Notice(`Warning: Pattern may conflict with built-in ${builtIn.name}. This could cause unexpected behavior.`, 5000);
+                    new Notice(t('modals.customPattern.conflictWarning', { name: builtIn.name }), 5000);
                 }
             }
 
@@ -1828,6 +2025,79 @@ class CustomPatternModal extends Modal {
     }
 }
 
+class DisplayModeNameModal extends Modal {
+    onSubmit: (name: string) => void;
+    nameInput: HTMLInputElement;
+    currentName: string;
+
+    constructor(app: App, onSubmit: (name: string) => void, currentName: string = '') {
+        super(app);
+        this.onSubmit = onSubmit;
+        this.currentName = currentName;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        // Set the modal title (appears in upper left corner)
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: this.currentName ? t('modals.displayMode.renameTitle') : t('modals.displayMode.createTitle') });
+        titleEl.style.marginBottom = '20px';
+
+        new Setting(contentEl)
+            .setName(t('modals.displayMode.nameLabel'))
+            .setDesc(t('modals.displayMode.nameDesc'))
+            .addText(text => {
+                this.nameInput = text.inputEl;
+                text.setValue(this.currentName)
+                    .setPlaceholder(t('modals.displayMode.namePlaceholder'));
+                // Focus the name input
+                window.setTimeout(() => {
+                    text.inputEl.focus();
+                    if (this.currentName) {
+                        text.inputEl.select();
+                    }
+                }, 100);
+            });
+
+        // Buttons
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'flex-end';
+        buttonContainer.style.gap = '10px';
+        buttonContainer.style.marginTop = '20px';
+
+        const cancelButton = buttonContainer.createEl('button', { text: t('modals.displayMode.cancel') });
+        cancelButton.addEventListener('click', () => this.close());
+
+        const submitButton = buttonContainer.createEl('button', { text: t('modals.displayMode.save'), cls: 'mod-cta' });
+        submitButton.addEventListener('click', () => {
+            const name = this.nameInput.value.trim();
+            if (!name) {
+                new Notice(t('modals.displayMode.nameRequired'));
+                this.nameInput.focus();
+                return;
+            }
+            this.onSubmit(name);
+            this.close();
+        });
+
+        // Handle Enter key
+        contentEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                submitButton.click();
+            } else if (e.key === 'Escape') {
+                this.close();
+            }
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+    }
+}
+
 class HighlightSettingTab extends PluginSettingTab {
     plugin: HighlightCommentsPlugin;
 
@@ -1841,11 +2111,11 @@ class HighlightSettingTab extends PluginSettingTab {
         containerEl.empty();
 
         // DISPLAY SECTION
-        new Setting(containerEl).setHeading().setName('Display');
+        new Setting(containerEl).setHeading().setName(t('settings.display.heading'));
 
         new Setting(containerEl)
-            .setName('Show note titles in all notes and collections')
-            .setDesc('Display the filename/note title below highlights when viewing All Notes or Collections.')
+            .setName(t('settings.display.showTitles.name'))
+            .setDesc(t('settings.display.showTitles.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showFilenames)
                 .onChange(async (value) => {
@@ -1855,8 +2125,8 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Show note timestamps')
-            .setDesc('Display creation timestamps for highlights.')
+            .setName(t('settings.display.showTimestamps.name'))
+            .setDesc(t('settings.display.showTimestamps.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showTimestamps)
                 .onChange(async (value) => {
@@ -1866,8 +2136,8 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Show highlight actions')
-            .setDesc('Display the actions area below each highlight (filename, stats, and buttons).')
+            .setName(t('settings.display.showActions.name'))
+            .setDesc(t('settings.display.showActions.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showHighlightActions)
                 .onChange(async (value) => {
@@ -1877,19 +2147,8 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Show collections')
-            .setDesc('Display the Collections tab and collection icons in highlights.')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCollections)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCollections = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
-            .setName('Show toolbar')
-            .setDesc('Display the toolbar with search, grouping, and other action buttons.')
+            .setName(t('settings.display.showToolbar.name'))
+            .setDesc(t('settings.display.showToolbar.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showToolbar)
                 .onChange(async (value) => {
@@ -1899,8 +2158,8 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Auto-unfold on focus')
-            .setDesc('Automatically unfold content when focusing highlights from the sidebar.')
+            .setName(t('settings.display.autoUnfold.name'))
+            .setDesc(t('settings.display.autoUnfold.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.autoToggleFold)
                 .onChange(async (value) => {
@@ -1909,11 +2168,11 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Date format')
-            .setDesc('Format string for timestamps using moment.js syntax (e.g., YYYY-MM-DD HH:mm, MMM DD YYYY, DD/MM/YYYY h:mm A).')
+            .setName(t('settings.display.dateFormat.name'))
+            .setDesc(t('settings.display.dateFormat.desc'))
             .addMomentFormat(format => format
                 .setValue(this.plugin.settings.dateFormat)
-                .setPlaceholder('YYYY-MM-DD HH:mm')
+                .setPlaceholder(t('settings.display.dateFormat.placeholder'))
                 .onChange(async (value) => {
                     this.plugin.settings.dateFormat = value;
                     await this.plugin.saveSettings();
@@ -1921,10 +2180,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Minimum character count')
-            .setDesc('Hide highlights and native comments shorter than this character count from the sidebar (default 0).')
+            .setName(t('settings.display.minimumCharCount.name'))
+            .setDesc(t('settings.display.minimumCharCount.desc'))
             .addText(text => text
-                .setPlaceholder('0')
+                .setPlaceholder(t('settings.display.minimumCharCount.placeholder'))
                 .setValue(this.plugin.settings.minimumCharacterCount.toString())
                 .onChange(async (value) => {
                     const numValue = parseInt(value) || 0;
@@ -1933,14 +2192,87 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.refreshSidebar();
                 }));
 
-        // TYPOGRAPHY SECTION
-        new Setting(containerEl).setHeading().setName('Typography');
+        // VIEWS SECTION
+        new Setting(containerEl).setHeading().setName(t('settings.views.heading'));
 
         new Setting(containerEl)
-            .setName('Main highlight text')
-            .setDesc('Adjust main highlight text size (default 11).')
+            .setName(t('settings.views.showCurrentNoteTab.name'))
+            .setDesc(t('settings.views.showCurrentNoteTab.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCurrentNoteTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCurrentNoteTab = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.views.showAllNotesTab.name'))
+            .setDesc(t('settings.views.showAllNotesTab.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showAllNotesTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.showAllNotesTab = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.views.showCollectionsTab.name'))
+            .setDesc(t('settings.views.showCollectionsTab.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCollectionsTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCollectionsTab = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.views.showTasksTab.name'))
+            .setDesc(t('settings.views.showTasksTab.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showTasksTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.showTasksTab = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        // DISPLAY MODES SECTION
+        new Setting(containerEl).setHeading().setName(t('settings.displayModes.heading'));
+
+        // Save Current Display Settings button
+        new Setting(containerEl)
+            .setName(t('settings.displayModes.saveCurrentLabel'))
+            .setDesc(t('settings.displayModes.saveCurrentDesc'))
+            .addButton(button => button
+                .setButtonText(t('settings.displayModes.saveButton'))
+                .setCta()
+                .onClick(() => {
+                    const modal = new DisplayModeNameModal(this.app, (name) => {
+                        const displayMode = this.plugin.createDisplayModeFromCurrent(name);
+                        this.plugin.settings.displayModes.push(displayMode);
+                        this.plugin.saveSettings();
+                        this.plugin.registerDisplayModeCommands();
+                        this.display();  // Refresh settings to show new display mode
+                        new Notice(t('notices.displayModeSaved', { name: name }));
+                    });
+                    modal.open();
+                }));
+
+        // List existing display modes
+        const displayModesContainer = containerEl.createDiv();
+        this.renderDisplayModes(displayModesContainer);
+
+        // TYPOGRAPHY SECTION
+        new Setting(containerEl).setHeading().setName(t('settings.typography.heading'));
+
+        new Setting(containerEl)
+            .setName(t('settings.typography.highlightTextSize.name'))
+            .setDesc(t('settings.typography.highlightTextSize.desc'))
             .addText(text => text
-                .setPlaceholder('11')
+                .setPlaceholder(t('settings.typography.highlightTextSize.placeholder'))
                 .setValue(this.plugin.settings.highlightFontSize.toString())
                 .onChange(async (value) => {
                     const fontSize = parseInt(value);
@@ -1953,10 +2285,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Details text size')
-            .setDesc('Adjust details text size (filename, line number, etc) (default 11).')
+            .setName(t('settings.typography.detailsTextSize.name'))
+            .setDesc(t('settings.typography.detailsTextSize.desc'))
             .addText(text => text
-                .setPlaceholder('11')
+                .setPlaceholder(t('settings.typography.detailsTextSize.placeholder'))
                 .setValue(this.plugin.settings.detailsFontSize.toString())
                 .onChange(async (value) => {
                     const fontSize = parseInt(value);
@@ -1969,10 +2301,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Comment text size')
-            .setDesc('Adjust comment text size (default 11).')
+            .setName(t('settings.typography.commentTextSize.name'))
+            .setDesc(t('settings.typography.commentTextSize.desc'))
             .addText(text => text
-                .setPlaceholder('11')
+                .setPlaceholder(t('settings.typography.commentTextSize.placeholder'))
                 .setValue(this.plugin.settings.commentFontSize.toString())
                 .onChange(async (value) => {
                     const fontSize = parseInt(value);
@@ -1985,144 +2317,144 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         // STYLING SECTION
-        new Setting(containerEl).setHeading().setName('Styling');
+        new Setting(containerEl).setHeading().setName(t('settings.styling.heading'));
 
         // Colors subsection
-        new Setting(containerEl).setName('Colors').setHeading();
+        new Setting(containerEl).setName(t('settings.colors.heading')).setHeading();
 
         let yellowNameSetting: Setting;
 
         const yellowSetting = new Setting(containerEl)
-            .setName(`Highlight color: ${this.plugin.settings.customColors.yellow.toUpperCase()}`)
-            .setDesc('Customize the first highlight color for the sidebar hover color picker.')
+            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
+            .setDesc(t('settings.colors.customizeFirst'))
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.yellow)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.yellow = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    yellowSetting.setName(`Highlight color: ${value.toUpperCase()}`);
-                    yellowNameSetting?.setName(`Name for ${value.toUpperCase()}`);
+                    yellowSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                    yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
                 }))
             .addButton(button => button
-                .setButtonText('Reset')
-                .setTooltip('Reset to default yellow (#ffd700)')
+                .setButtonText(t('settings.colors.reset'))
+                .setTooltip(t('settings.colors.resetToYellow'))
                 .onClick(async () => {
                     this.plugin.settings.customColors.yellow = '#ffd700';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    yellowSetting.setName(`Highlight color: ${this.plugin.settings.customColors.yellow.toUpperCase()}`);
+                    yellowSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
                     this.display(); // Refresh settings display
                 }));
 
         let redNameSetting: Setting;
 
         const redSetting = new Setting(containerEl)
-            .setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`)
-            .setDesc('Customize the second highlight color for the sidebar hover color picker.')
+            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
+            .setDesc(t('settings.colors.customizeSecond'))
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.red)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.red = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    redSetting.setName(`Highlight color: ${value.toUpperCase()}`);
-                    redNameSetting?.setName(`Name for ${value.toUpperCase()}`);
+                    redSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                    redNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
                 }))
             .addButton(button => button
-                .setButtonText('Reset')
-                .setTooltip('Reset to default red (#ff6b6b)')
+                .setButtonText(t('settings.colors.reset'))
+                .setTooltip(t('settings.colors.resetToRed'))
                 .onClick(async () => {
                     this.plugin.settings.customColors.red = '#ff6b6b';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    redSetting.setName(`Highlight color: ${this.plugin.settings.customColors.red.toUpperCase()}`);
+                    redSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
                     this.display(); // Refresh settings display
                 }));
 
         let tealNameSetting: Setting;
 
         const tealSetting = new Setting(containerEl)
-            .setName(`Highlight color: ${this.plugin.settings.customColors.teal.toUpperCase()}`)
-            .setDesc('Customize the third highlight color for the sidebar hover color picker.')
+            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
+            .setDesc(t('settings.colors.customizeThird'))
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.teal)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.teal = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    tealSetting.setName(`Highlight color: ${value.toUpperCase()}`);
-                    tealNameSetting?.setName(`Name for ${value.toUpperCase()}`);
+                    tealSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                    tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
                 }))
             .addButton(button => button
-                .setButtonText('Reset')
-                .setTooltip('Reset to default teal (#4ecdc4)')
+                .setButtonText(t('settings.colors.reset'))
+                .setTooltip(t('settings.colors.resetToTeal'))
                 .onClick(async () => {
                     this.plugin.settings.customColors.teal = '#4ecdc4';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    tealSetting.setName(`Highlight color: ${this.plugin.settings.customColors.teal.toUpperCase()}`);
+                    tealSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
                     this.display(); // Refresh settings display
                 }));
 
         let blueNameSetting: Setting;
 
         const blueSetting = new Setting(containerEl)
-            .setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`)
-            .setDesc('Customize the fourth highlight color for the sidebar hover color picker.')
+            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
+            .setDesc(t('settings.colors.customizeFourth'))
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.blue)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.blue = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    blueSetting.setName(`Highlight color: ${value.toUpperCase()}`);
-                    blueNameSetting?.setName(`Name for ${value.toUpperCase()}`);
+                    blueSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                    blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
                 }))
             .addButton(button => button
-                .setButtonText('Reset')
-                .setTooltip('Reset to default blue (#45b7d1)')
+                .setButtonText(t('settings.colors.reset'))
+                .setTooltip(t('settings.colors.resetToBlue'))
                 .onClick(async () => {
                     this.plugin.settings.customColors.blue = '#45b7d1';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    blueSetting.setName(`Highlight color: ${this.plugin.settings.customColors.blue.toUpperCase()}`);
+                    blueSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
                     this.display(); // Refresh settings display
                 }));
 
         let greenNameSetting: Setting;
 
         const greenSetting = new Setting(containerEl)
-            .setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`)
-            .setDesc('Customize the fifth highlight color for the sidebar hover color picker.')
+            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }))
+            .setDesc(t('settings.colors.customizeFifth'))
             .addColorPicker(colorPicker => colorPicker
                 .setValue(this.plugin.settings.customColors.green)
                 .onChange(async (value) => {
                     this.plugin.settings.customColors.green = value;
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    greenSetting.setName(`Highlight color: ${value.toUpperCase()}`);
-                    greenNameSetting?.setName(`Name for ${value.toUpperCase()}`);
+                    greenSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                    greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
                 }))
             .addButton(button => button
-                .setButtonText('Reset')
-                .setTooltip('Reset to default green (#96ceb4)')
+                .setButtonText(t('settings.colors.reset'))
+                .setTooltip(t('settings.colors.resetToGreen'))
                 .onClick(async () => {
                     this.plugin.settings.customColors.green = '#96ceb4';
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
-                    greenSetting.setName(`Highlight color: ${this.plugin.settings.customColors.green.toUpperCase()}`);
+                    greenSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
                     this.display(); // Refresh settings display
                 }));
 
         // Color names subsection
-        new Setting(containerEl).setName('Color names').setHeading();
+        new Setting(containerEl).setName(t('settings.colorNames.heading')).setHeading();
 
         yellowNameSetting = new Setting(containerEl)
-            .setName(`Name for ${this.plugin.settings.customColors.yellow.toUpperCase()}`)
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
+            .setDesc(t('settings.colorNames.desc'))
             .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
+                .setPlaceholder(t('settings.colorNames.placeholder'))
                 .setValue(this.plugin.settings.customColorNames.yellow)
                 .onChange(async (value) => {
                     this.plugin.settings.customColorNames.yellow = value;
@@ -2131,10 +2463,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         redNameSetting = new Setting(containerEl)
-            .setName(`Name for ${this.plugin.settings.customColors.red.toUpperCase()}`)
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
+            .setDesc(t('settings.colorNames.desc'))
             .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
+                .setPlaceholder(t('settings.colorNames.placeholder'))
                 .setValue(this.plugin.settings.customColorNames.red)
                 .onChange(async (value) => {
                     this.plugin.settings.customColorNames.red = value;
@@ -2143,10 +2475,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         tealNameSetting = new Setting(containerEl)
-            .setName(`Name for ${this.plugin.settings.customColors.teal.toUpperCase()}`)
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
+            .setDesc(t('settings.colorNames.desc'))
             .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
+                .setPlaceholder(t('settings.colorNames.placeholder'))
                 .setValue(this.plugin.settings.customColorNames.teal)
                 .onChange(async (value) => {
                     this.plugin.settings.customColorNames.teal = value;
@@ -2155,10 +2487,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         blueNameSetting = new Setting(containerEl)
-            .setName(`Name for ${this.plugin.settings.customColors.blue.toUpperCase()}`)
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
+            .setDesc(t('settings.colorNames.desc'))
             .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
+                .setPlaceholder(t('settings.colorNames.placeholder'))
                 .setValue(this.plugin.settings.customColorNames.blue)
                 .onChange(async (value) => {
                     this.plugin.settings.customColorNames.blue = value;
@@ -2167,10 +2499,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         greenNameSetting = new Setting(containerEl)
-            .setName(`Name for ${this.plugin.settings.customColors.green.toUpperCase()}`)
-            .setDesc('Optional: Add a custom name for this color to use in Group By Color instead of the hex code.')
+            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.green.toUpperCase() }))
+            .setDesc(t('settings.colorNames.desc'))
             .addText(text => text
-                .setPlaceholder('e.g., "Important", "Research"')
+                .setPlaceholder(t('settings.colorNames.placeholder'))
                 .setValue(this.plugin.settings.customColorNames.green)
                 .onChange(async (value) => {
                     this.plugin.settings.customColorNames.green = value;
@@ -2179,11 +2511,11 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         // COMMENTS SECTION
-        new Setting(containerEl).setHeading().setName('Comments');
+        new Setting(containerEl).setHeading().setName(t('settings.comments.heading'));
 
         new Setting(containerEl)
-            .setName('Use inline footnotes by default')
-            .setDesc('When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment).')
+            .setName(t('settings.comments.useInlineFootnotes.name'))
+            .setDesc(t('settings.comments.useInlineFootnotes.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.useInlineFootnotes)
                 .onChange(async (value) => {
@@ -2192,8 +2524,8 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Select text on click')
-            .setDesc('When clicking a comment, select the comment instead of positioning the cursor in front of it. Note: Only works for inline footnotes (^[...]) and standard footnotes ([^1]), not HTML comments or custom patterns.')
+            .setName(t('settings.comments.selectTextOnClick.name'))
+            .setDesc(t('settings.comments.selectTextOnClick.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.selectTextOnCommentClick)
                 .onChange(async (value) => {
@@ -2201,12 +2533,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // DETECTION SECTION
-        new Setting(containerEl).setHeading().setName('Detection');
-
         new Setting(containerEl)
-            .setName('Detect HTML comments')
-            .setDesc('Detect HTML comments (<!-- -->) as highlights. Note: HTML comments are hidden in Live Preview mode and only visible in Source mode.')
+            .setName(t('settings.detection.detectHtmlComments.name'))
+            .setDesc(t('settings.detection.detectHtmlComments.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.detectHtmlComments)
                 .onChange(async (value) => {
@@ -2216,37 +2545,51 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.scanAllFilesForHighlights();
                 }));
 
-        // Custom patterns section
+        new Setting(containerEl)
+            .setName(t('settings.detection.detectAdjacentNativeComments.name'))
+            .setDesc(t('settings.detection.detectAdjacentNativeComments.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.detectAdjacentNativeComments)
+                .onChange(async (value) => {
+                    this.plugin.settings.detectAdjacentNativeComments = value;
+                    await this.plugin.saveSettings();
+                    // Re-scan all files to apply new detection setting
+                    this.plugin.scanAllFilesForHighlights();
+                }));
+
+        // CUSTOM PATTERNS SECTION
+        // Create heading with experimental badge
+        const customPatternsHeadingName = document.createDocumentFragment();
+        customPatternsHeadingName.append(t('settings.detection.customPatterns.heading') + ' ');
+        const headingBadge = document.createElement('span');
+        headingBadge.textContent = t('settings.detection.customPatterns.experimental');
+        headingBadge.style.fontSize = '0.8em';
+        headingBadge.style.padding = '2px 6px';
+        headingBadge.style.borderRadius = '3px';
+        headingBadge.style.backgroundColor = 'var(--interactive-accent)';
+        headingBadge.style.color = 'var(--text-on-accent)';
+        headingBadge.style.fontWeight = '500';
+        headingBadge.style.marginLeft = '6px';
+        customPatternsHeadingName.appendChild(headingBadge);
+
+        new Setting(containerEl).setHeading().setName(customPatternsHeadingName as any);
+
+        // Custom patterns description
         const customPatternsDesc = document.createDocumentFragment();
         customPatternsDesc.append(
-            'Define custom highlight or comment patterns using regex. This allows detection of syntax from other plugins or custom formats.',
+            t('settings.detection.customPatterns.desc'),
             document.createElement('br'),
-            'Examples: ',
+            t('settings.detection.customPatterns.examples'),
             document.createElement('code'),
         );
         customPatternsDesc.lastChild!.textContent = '//(.+)//';
-        customPatternsDesc.append(' for Regex Mark plugin, or ');
+        customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forRegexMark') + ' ');
         const code2 = document.createElement('code');
         code2.textContent = '\\[\\[(.+?)\\]\\]';
         customPatternsDesc.append(code2);
-        customPatternsDesc.append(' for wikilinks.');
-
-        // Create name with experimental badge
-        const customPatternsName = document.createDocumentFragment();
-        customPatternsName.append('Custom patterns ');
-        const badge = document.createElement('span');
-        badge.textContent = 'Experimental';
-        badge.style.fontSize = '0.8em';
-        badge.style.padding = '2px 6px';
-        badge.style.borderRadius = '3px';
-        badge.style.backgroundColor = 'var(--interactive-accent)';
-        badge.style.color = 'var(--text-on-accent)';
-        badge.style.fontWeight = '500';
-        badge.style.marginLeft = '6px';
-        customPatternsName.appendChild(badge);
+        customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forWikilinks'));
 
         const customPatternsSetting = new Setting(containerEl)
-            .setName(customPatternsName as any)
             .setDesc(customPatternsDesc);
 
         // Container for custom pattern list
@@ -2260,7 +2603,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     .setName(pattern.name || `Pattern ${index + 1}`)
                     .setDesc(`Type: ${pattern.type} | Pattern: ${pattern.pattern}`)
                     .addButton(button => button
-                        .setButtonText('Edit')
+                        .setButtonText(t('settings.detection.customPatterns.editButton'))
                         .onClick(() => {
                             new CustomPatternModal(this.app, pattern, async (edited) => {
                                 this.plugin.settings.customPatterns[index] = edited;
@@ -2270,7 +2613,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             }).open();
                         }))
                     .addButton(button => button
-                        .setButtonText('Delete')
+                        .setButtonText(t('settings.detection.customPatterns.deleteButton'))
                         .setWarning()
                         .onClick(async () => {
                             this.plugin.settings.customPatterns.splice(index, 1);
@@ -2283,7 +2626,7 @@ class HighlightSettingTab extends PluginSettingTab {
             // Add new pattern button
             new Setting(patternsContainer)
                 .addButton(button => button
-                    .setButtonText('Add custom pattern')
+                    .setButtonText(t('settings.detection.customPatterns.addButton'))
                     .setCta()
                     .onClick(() => {
                         new CustomPatternModal(this.app, null, async (newPattern) => {
@@ -2298,11 +2641,11 @@ class HighlightSettingTab extends PluginSettingTab {
         renderPatterns();
 
         // FILTERS SECTION
-        new Setting(containerEl).setHeading().setName('Filters');
+        new Setting(containerEl).setHeading().setName(t('settings.filters.heading'));
 
         new Setting(containerEl)
-            .setName('Exclude Excalidraw files')
-            .setDesc('Skip .excalidraw files when scanning for highlights. This prevents highlights from being detected in Excalidraw drawing files.')
+            .setName(t('settings.filters.excludeExcalidraw.name'))
+            .setDesc(t('settings.filters.excludeExcalidraw.desc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.excludeExcalidraw)
                 .onChange(async (value) => {
@@ -2313,10 +2656,10 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName('Excluded files')
-            .setDesc('Excluded files or folders will be hidden from Sidebar Highlights.')
+            .setName(t('settings.filters.excludedFiles.name'))
+            .setDesc(t('settings.filters.excludedFiles.desc'))
             .addButton(button => {
-                button.setButtonText('Manage')
+                button.setButtonText(t('settings.filters.excludedFiles.manageButton'))
                     .onClick(() => {
                         const modal = new ExcludedFilesModal(
                             this.app,
@@ -2331,6 +2674,112 @@ class HighlightSettingTab extends PluginSettingTab {
                         modal.open();
                     });
             });
+
+        // ========== TASKS TAB SETTINGS ==========
+
+        new Setting(containerEl).setHeading().setName(t('settings.tasks.heading'));
+
+        new Setting(containerEl)
+            .setName(t('settings.tasks.showTaskContext.name'))
+            .setDesc(t('settings.tasks.showTaskContext.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showTaskContext)
+                .onChange(async (value) => {
+                    this.plugin.settings.showTaskContext = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.tasks.showCompletedTasks.name'))
+            .setDesc(t('settings.tasks.showCompletedTasks.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCompletedTasks)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCompletedTasks = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.tasks.taskDateFormat.name'))
+            .setDesc(t('settings.tasks.taskDateFormat.desc'))
+            .addText(text => text
+                .setPlaceholder(t('settings.tasks.taskDateFormat.placeholder'))
+                .setValue(this.plugin.settings.taskDateFormat)
+                .onChange(async (value) => {
+                    this.plugin.settings.taskDateFormat = value || 'YYYY-MM-DD';
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+    }
+
+    private renderDisplayModes(container: HTMLElement) {
+        container.empty();
+
+        if (this.plugin.settings.displayModes.length === 0) {
+            container.createEl('p', {
+                text: t('settings.displayModes.noModes'),
+                cls: 'setting-item-description'
+            });
+            return;
+        }
+
+        this.plugin.settings.displayModes.forEach((mode, index) => {
+            const isActive = this.plugin.settings.currentDisplayModeId === mode.id;
+
+            new Setting(container)
+                .setName(mode.name)
+                .addButton(button => {
+                    button.setButtonText(isActive ? t('settings.displayModes.appliedButton') : t('settings.displayModes.applyButton'))
+                        .onClick(async () => {
+                            await this.plugin.applyDisplayMode(mode);
+                            new Notice(t('notices.displayModeApplied', { name: mode.name }));
+                            this.display(); // Refresh settings to update toggles and button states
+                        });
+
+                    // Add active class to button if this is the current mode
+                    if (isActive) {
+                        button.buttonEl.addClass('mod-cta');
+                    }
+
+                    return button;
+                })
+                .addButton(button => button
+                    .setButtonText(t('settings.displayModes.updateButton'))
+                    .setTooltip(t('settings.displayModes.updateTooltip'))
+                    .onClick(async () => {
+                        await this.plugin.updateDisplayMode(mode);
+                        new Notice(t('notices.displayModeUpdated', { name: mode.name }));
+                        this.display(); // Refresh settings
+                    }))
+                .addButton(button => button
+                    .setButtonText(t('settings.displayModes.renameButton'))
+                    .onClick(() => {
+                        const modal = new DisplayModeNameModal(this.app, (newName) => {
+                            mode.name = newName;
+                            this.plugin.saveSettings();
+                            this.plugin.registerDisplayModeCommands();
+                            this.renderDisplayModes(container);
+                            new Notice(t('notices.displayModeRenamed', { name: newName }));
+                        }, mode.name);
+                        modal.open();
+                    }))
+                .addButton(button => button
+                    .setButtonText(t('settings.displayModes.deleteButton'))
+                    .setWarning()
+                    .onClick(() => {
+                        this.plugin.settings.displayModes.splice(index, 1);
+                        // Clear current mode if we're deleting it
+                        if (this.plugin.settings.currentDisplayModeId === mode.id) {
+                            this.plugin.settings.currentDisplayModeId = null;
+                        }
+                        this.plugin.saveSettings();
+                        this.plugin.registerDisplayModeCommands();
+                        this.renderDisplayModes(container);
+                        new Notice(t('notices.displayModeDeleted', { name: mode.name }));
+                    }));
+        });
     }
 
     private updateColorMappings(): void {

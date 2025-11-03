@@ -67,17 +67,17 @@ export class HighlightRenderer {
     }
 
     private applyHighlightStyling(item: HTMLElement, highlight: Highlight): void {
-        if (highlight.isNativeComment) {
-            // Native comments get special styling
+        if (highlight.isNativeComment && !highlight.color) {
+            // Native comments without a color get special gray styling
             item.classList.add('highlight-native-comment');
         } else {
-            // Regular highlights get color styling
+            // Regular highlights and native comments with colors get color styling
             const highlightColor = highlight.color || this.plugin.settings.highlightColor;
             const colorClass = this.getColorClassName(highlightColor);
-            
+
             // Apply color class for border styling
             item.classList.add(colorClass);
-            
+
             // For custom colors, use CSS custom property
             if (colorClass === 'highlight-color-default') {
                 item.classList.remove('highlight-color-default');
@@ -85,7 +85,7 @@ export class HighlightRenderer {
                 item.style.setProperty('--highlight-color', highlightColor);
             }
         }
-        
+
         if (this.plugin.selectedHighlightId === highlight.id) {
             item.classList.add('highlight-selected');
         }
@@ -240,7 +240,7 @@ export class HighlightRenderer {
         }
 
         // Collection count section (only if collections are enabled)
-        if (this.plugin.settings.showCollections) {
+        if (this.plugin.settings.showCollectionsTab) {
             const collectionCount = this.plugin.collectionsManager.getHighlightCollectionCount(highlight.id);
             const collectionContainer = this.createInfoItem(
                 statsSection,
@@ -712,9 +712,9 @@ export class HighlightRenderer {
     }
 
     private isColorChangeable(highlight: Highlight): boolean {
-        // Only allow color changes for regular markdown highlights (==text==)
-        // Don't allow for native comments (%%text%%) or HTML highlights (<font>, <span>, <mark>)
-        return !highlight.isNativeComment && !this.isHtmlHighlight(highlight);
+        // Only allow color changes for regular markdown highlights (==text==) and native comments (%%text%%)
+        // Don't allow for HTML highlights (<font>, <span>, <mark>)
+        return !this.isHtmlHighlight(highlight);
     }
 
     private isHtmlHighlight(highlight: Highlight): boolean {
@@ -723,12 +723,12 @@ export class HighlightRenderer {
     }
 
     private createHoverColorPicker(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        // Don't create hover color picker for native comments or HTML highlights
+        // Don't create hover color picker for HTML highlights
         if (!this.isColorChangeable(highlight)) return;
-        
+
         // Create a hover zone for the left border area
         const hoverZone = item.createDiv({ cls: 'highlight-border-hover-zone' });
-        
+
         const hoverColorPicker = item.createDiv({ cls: 'hover-color-picker' });
         const colorOptionsContainer = hoverColorPicker.createDiv({ cls: 'hover-color-options' });
         const colors = [
@@ -739,13 +739,20 @@ export class HighlightRenderer {
             { name: 'green', value: this.plugin.settings.customColors.green }
         ];
 
+        // Add default gray option for native comments
+        if (highlight.isNativeComment) {
+            colors.push({ name: 'default', value: '' });
+        }
+
         colors.forEach((color, index) => {
             const colorOption = colorOptionsContainer.createDiv({
-                cls: 'hover-color-option',
+                cls: `hover-color-option${color.name === 'default' ? ' hover-color-option-default' : ''}`,
                 attr: {
                     'data-color': color.value,
                     'data-color-name': color.name,
-                    'style': `background-color: ${color.value}; --option-index: ${index}`
+                    'style': color.name === 'default'
+                        ? `background-color: var(--text-faint); --option-index: ${index}`
+                        : `background-color: ${color.value}; --option-index: ${index}`
                 }
             });
             colorOption.addEventListener('click', (event) => {
@@ -778,5 +785,22 @@ export class HighlightRenderer {
             hoverColorPicker.classList.add('sh-visible');
         });
         hoverColorPicker.addEventListener('mouseleave', hideColorPicker);
+    }
+
+    /**
+     * Create an empty state message when no highlights are found
+     */
+    createEmptyState(container: HTMLElement, message: string): HTMLElement {
+        const emptyState = container.createDiv({ cls: 'highlight-empty-state' });
+
+        const icon = emptyState.createDiv({ cls: 'highlight-empty-icon' });
+        setIcon(icon, 'highlighter');
+
+        const text = emptyState.createEl('p', {
+            cls: 'highlight-empty-text',
+            text: message
+        });
+
+        return emptyState;
     }
 }

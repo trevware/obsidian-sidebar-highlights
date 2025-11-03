@@ -401,6 +401,115 @@ describe('InlineFootnoteManager', () => {
                 expect(editor.getValue()).toBe('Some text without highlight');
             });
         });
+
+        describe('Custom patterns', () => {
+            it('should insert footnote after custom pattern highlight', () => {
+                const editor = new MockEditor('This is --custom text-- here.');
+                const highlight = {
+                    id: '1',
+                    text: 'custom text',
+                    startOffset: 8,
+                    endOffset: 24,
+                    line: 0,
+                    tags: [],
+                    filePath: 'test.md',
+                    isNativeComment: false,
+                    type: 'custom' as 'custom',
+                    fullMatch: '--custom text--'
+                };
+
+                const result = manager.insertInlineFootnote(editor as any, highlight, '');
+
+                expect(result.success).toBe(true);
+                expect(editor.getValue()).toBe('This is --custom text--^[] here.');
+            });
+
+            it('should insert footnote with content for custom pattern', () => {
+                const editor = new MockEditor('--Hello-- world');
+                const highlight = {
+                    id: '1',
+                    text: 'Hello',
+                    startOffset: 0,
+                    endOffset: 9,
+                    line: 0,
+                    tags: [],
+                    filePath: 'test.md',
+                    isNativeComment: false,
+                    type: 'custom' as 'custom',
+                    fullMatch: '--Hello--'
+                };
+
+                const result = manager.insertInlineFootnote(editor as any, highlight, 'my note');
+
+                expect(result.success).toBe(true);
+                expect(editor.getValue()).toBe('--Hello--^[my note] world');
+                expect(result.contentLength).toBe(7);
+            });
+
+            it('should handle duplicate custom pattern text using distance matching', () => {
+                const editor = new MockEditor('--test-- some text --test-- more');
+                const highlight = {
+                    id: '1',
+                    text: 'test',
+                    startOffset: 19, // Second occurrence
+                    endOffset: 27,
+                    line: 0,
+                    tags: [],
+                    filePath: 'test.md',
+                    isNativeComment: false,
+                    type: 'custom' as 'custom',
+                    fullMatch: '--test--'
+                };
+
+                const result = manager.insertInlineFootnote(editor as any, highlight, 'note2');
+
+                expect(result.success).toBe(true);
+                // Should add footnote to the second occurrence
+                expect(editor.getValue()).toBe('--test-- some text --test--^[note2] more');
+            });
+
+            it('should insert after existing footnote for custom pattern', () => {
+                const editor = new MockEditor('--highlighted--^[first] text');
+                const highlight = {
+                    id: '1',
+                    text: 'highlighted',
+                    startOffset: 0,
+                    endOffset: 15,
+                    line: 0,
+                    tags: [],
+                    filePath: 'test.md',
+                    isNativeComment: false,
+                    type: 'custom' as 'custom',
+                    fullMatch: '--highlighted--'
+                };
+
+                const result = manager.insertInlineFootnote(editor as any, highlight, 'second');
+
+                expect(result.success).toBe(true);
+                expect(editor.getValue()).toBe('--highlighted--^[first]^[second] text');
+            });
+
+            it('should handle custom pattern at end of line', () => {
+                const editor = new MockEditor('Text --end--\nNew line');
+                const highlight = {
+                    id: '1',
+                    text: 'end',
+                    startOffset: 5,
+                    endOffset: 12,
+                    line: 0,
+                    tags: [],
+                    filePath: 'test.md',
+                    isNativeComment: false,
+                    type: 'custom' as 'custom',
+                    fullMatch: '--end--'
+                };
+
+                const result = manager.insertInlineFootnote(editor as any, highlight, '');
+
+                expect(result.success).toBe(true);
+                expect(editor.getValue()).toBe('Text --end--^[]\nNew line');
+            });
+        });
     });
 
     describe('calculateFootnoteLength', () => {

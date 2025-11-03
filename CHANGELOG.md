@@ -5,6 +5,92 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-11-03
+
+### Added
+- **Tasks Tab** (NEW): Complete task management system integrated into the sidebar
+  - **Note**: Tasks tab is hidden by default - enable it in Settings > Views > Show Tasks tab
+  - Automatically scans vault for all tasks (`- [ ]` and `- [x]`)
+  - Task context support showing indented content below tasks
+  - Flag tasks for priority marking
+  - Natural language date parsing for due dates (e.g., `📅 2024-11-15`, `due: tomorrow`)
+  - Toggle completed task visibility in Settings
+  - Dedicated task date format setting (YYYY-MM-DD, MM/DD/YYYY, etc.)
+  - Click tasks to navigate to their location in files
+  - Inline file name display with click-to-open
+- **Task Grouping Options**: Multiple grouping modes for task organization
+  - Group by Due Date (ascending/descending) with "Overdue", "Today", "Tomorrow" smart labels
+  - Group by Filename for project-based organization
+  - Automatic section grouping by markdown headers (when not grouping by date)
+  - Overdue tasks automatically pinned at top when grouping by date
+- **Task Filtering System**: Advanced filtering options for task management
+  - Filter by completion status (Completed, Incomplete)
+  - Filter by flagged tasks
+  - Filter by due date (Overdue, Due Today, Upcoming, No Date)
+  - Dynamic filter menu shows only relevant filters based on task data
+- **Display Modes** (NEW): Save and restore display configurations
+  - Save current display settings (visibility, timestamps, etc.) as named presets
+  - Apply saved modes from settings or Command Palette
+  - Update existing modes with current settings
+  - Rename and delete display modes
+  - Quick switching between different viewing preferences (e.g., "Reading Mode", "Full View")
+- **Internationalization** (NEW): Full Chinese (Simplified) localization support
+  - Complete translation of all UI elements, settings, and messages
+  - Locale switching follows Obsidian's language setting
+  - Framework in place for additional language support
+  - Localized empty states, filter labels, and date formats
+- **Task Highlight Rendering**: Tasks now properly render `==highlighted text==` with Obsidian's native highlight styling
+  - Uses `span.cm-highlight` class matching editor appearance
+  - Maintains theme color consistency between editor and sidebar
+- **Intelligent Task Change Detection**: Sidebar now detects changes to task context (sub-bullets/comments below tasks)
+  - Adding or editing indented lines below tasks triggers sidebar refresh
+  - Compares full task blocks including context for accurate change detection
+  - Cache system tracks task content per file for efficient comparison
+
+### Enhanced
+- **Natural Language Date Input**: Intelligent date picker with smart suggestions
+  - Autocomplete suggestions: "today", "tomorrow", "next Monday", "in 2 weeks"
+  - Relative date parsing: "+3d", "2w", "next Friday"
+  - Calendar helper for picking specific dates
+  - Update or remove existing task dates
+  - Suggestion dropdown with keyboard navigation
+- **Command Palette Integration**: Display modes accessible via command palette
+  - Quick application of saved display configurations
+  - Commands automatically created/removed when modes are added/deleted
+  - Consistent command naming: "Apply display mode: [Mode Name]"
+- **Optimized Task Updates**: Dramatically improved task update performance
+  - Only re-scans modified files instead of entire vault
+  - Incremental cache updates for changed tasks
+  - 1-second debounce prevents excessive refreshes while typing
+  - File-level change tracking with smart comparison logic
+  - Smart change detection: only refreshes when task content actually changes
+- **Streamlined Date Grouping**: Reduced visual clutter when grouping tasks by date
+  - Removed markdown section headers in date grouping mode
+  - Date badges hidden on individual tasks (redundant with group header)
+  - Consistent spacing between date groups and tasks
+  - Filenames displayed inline for better context
+  - Progress circles show completion percentage per date group
+- **Unified Empty States**: Consistent empty state design across tasks and highlights
+  - Simplified layout with centered text
+  - Localized for both English and Chinese
+- **Settings Organization**: Improved settings layout with new sections
+  - Display Modes section for managing saved configurations
+  - Tasks section for task-specific settings
+  - Views section for controlling tab visibility
+
+### Fixed
+- **Adjacent Comments Toggle**: Fixed bug where HTML comments were always treated as adjacent regardless of setting
+  - Both native (`%% %%`) and HTML (`<!-- -->`) comments now respect the "Detect adjacent native comments" toggle
+  - Setting now controls adjacency behavior for all comment types uniformly
+- **Comment Focus Navigation**: Fixed navigation to adjacent comments from sidebar
+  - All comment types now focusable: inline footnotes, standard footnotes, native comments, HTML comments, custom patterns
+  - Proper selection and cursor positioning for each comment type
+  - Distance-based matching prevents focusing wrong occurrence of duplicate comments
+- **Per-Tab State Persistence**: Fixed temporary display of wrong content during sidebar refresh
+  - View mode and grouping settings now properly maintained during refresh
+  - Eliminated brief flashing of highlights in Tasks tab when creating new highlights
+  - State restoration happens before rendering to prevent visual glitches
+
 ## [1.21.0] - 2025-10-31
 
 ### Added

@@ -1,5 +1,6 @@
 import { Modal, App, setIcon, Notice } from 'obsidian';
 import { FileFolderSuggest } from '../utils/file-folder-suggest';
+import { t } from '../i18n';
 
 export class ExcludedFilesModal extends Modal {
     private excludedFiles: string[];
@@ -28,12 +29,15 @@ export class ExcludedFilesModal extends Modal {
         if (this.excludedFiles.length < initialCount) {
             const removedCount = initialCount - this.excludedFiles.length;
             this.onUpdate(this.excludedFiles);
-            new Notice(`Removed ${removedCount} excluded ${removedCount === 1 ? 'path' : 'paths'} that no longer exist`);
+            new Notice(t('modals.excludedFiles.removedNonExistent', {
+                count: removedCount,
+                paths: removedCount === 1 ? 'path' : 'paths'
+            }));
         }
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: 'Excluded files' });
-        titleEl.style.marginBottom = '12px';
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: t('modals.excludedFiles.title') });
+        titleEl.style.marginBottom = '20px';
 
         // Add divider after title
         const divider = contentEl.createDiv();
@@ -48,27 +52,27 @@ export class ExcludedFilesModal extends Modal {
 
         // Filter section
         const filterSection = contentEl.createDiv({ cls: 'setting-item' });
-        
+
         const filterInfo = filterSection.createDiv({ cls: 'setting-item-info' });
-        filterInfo.createDiv({ cls: 'setting-item-name', text: 'Filter' });
-        
+        filterInfo.createDiv({ cls: 'setting-item-name', text: t('modals.excludedFiles.filterLabel') });
+
         const filterControl = filterSection.createDiv({ cls: 'setting-item-control' });
-        
+
         const inputContainer = filterControl.createDiv({ cls: 'excluded-files-input-container' });
         inputContainer.style.display = 'flex';
         inputContainer.style.gap = '8px';
-        
+
         this.filterInput = inputContainer.createEl('input', {
             type: 'text',
-            placeholder: 'Enter file or folder path...'
+            placeholder: t('modals.excludedFiles.filterPlaceholder')
         });
         this.filterInput.style.flex = '1';
-        
+
         // Initialize the file/folder suggestion system
         this.fileFolderSuggest = new FileFolderSuggest(this.app, this.filterInput);
-        
+
         const addButton = inputContainer.createEl('button', {
-            text: 'Add',
+            text: t('modals.excludedFiles.add'),
             cls: 'mod-cta'
         });
         
@@ -95,10 +99,10 @@ export class ExcludedFilesModal extends Modal {
         messageEl.style.color = 'var(--text-muted)';
 
         if (this.excludedFiles.length === 0) {
-            messageEl.setText('No excluded filter is applied right now. Add one below.');
+            messageEl.setText(t('modals.excludedFiles.noFilter'));
             messageEl.style.paddingBottom = '20px';
         } else {
-            messageEl.setText('Files matching the following filters are currently excluded:');
+            messageEl.setText(t('modals.excludedFiles.currentlyExcluded'));
             messageEl.style.paddingBottom = '10px';
         }
     }
@@ -147,11 +151,11 @@ export class ExcludedFilesModal extends Modal {
         buttonContainer.style.gap = '8px';
         buttonContainer.style.marginTop = '20px';
 
-        const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+        const cancelBtn = buttonContainer.createEl('button', { text: t('modals.excludedFiles.cancel') });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const saveBtn = buttonContainer.createEl('button', { 
-            text: 'Save',
+        const saveBtn = buttonContainer.createEl('button', {
+            text: t('modals.excludedFiles.save'),
             cls: 'mod-cta'
         });
         saveBtn.addEventListener('click', () => this.close());
@@ -178,10 +182,10 @@ export class ExcludedFilesModal extends Modal {
         const statusEl = this.contentEl.querySelector('.excluded-files-status') as HTMLElement;
         if (statusEl) {
             if (this.excludedFiles.length === 0) {
-                statusEl.setText('No excluded filter is applied right now. Add one below.');
+                statusEl.setText(t('modals.excludedFiles.noFilter'));
                 statusEl.style.paddingBottom = '20px';
             } else {
-                statusEl.setText('Files matching the following filters are currently excluded:');
+                statusEl.setText(t('modals.excludedFiles.currentlyExcluded'));
                 statusEl.style.paddingBottom = '10px';
             }
         }

@@ -1,5 +1,6 @@
 import { Modal, Setting, App, Notice } from 'obsidian';
 import type { Collection } from '../../main';
+import { t } from '../i18n';
 
 export class NewCollectionModal extends Modal {
     private nameInput: HTMLInputElement;
@@ -15,14 +16,15 @@ export class NewCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Create a new collection' });
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: t('modals.collection.createTitle') });
+        titleEl.style.marginBottom = '20px';
 
         new Setting(contentEl)
-            .setName('Collection name')
-            .setDesc('The name of your collection (Required)')
+            .setName(t('modals.collection.nameLabel'))
+            .setDesc(t('modals.collection.nameDesc'))
             .addText(text => {
                 this.nameInput = text.inputEl;
-                text.setPlaceholder('Important Highlights')
+                text.setPlaceholder(t('modals.collection.namePlaceholder'))
                     .onChange(value => {
                         // Enable/disable submit based on name presence
                         const submitBtn = contentEl.querySelector('.mod-cta') as HTMLButtonElement;
@@ -35,21 +37,21 @@ export class NewCollectionModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName('Collection description')
-            .setDesc('Provide more context about the collection (Optional)')
+            .setName(t('modals.collection.descLabel'))
+            .setDesc(t('modals.collection.descDesc'))
             .addText(text => {
                 this.descriptionInput = text.inputEl;
-                text.setPlaceholder('Research, etc.');
+                text.setPlaceholder(t('modals.collection.descPlaceholder'));
             });
 
         // Buttons
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 
-        const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+        const cancelBtn = buttonContainer.createEl('button', { text: t('modals.collection.cancel') });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const submitBtn = buttonContainer.createEl('button', { 
-            text: 'Create collection',
+        const submitBtn = buttonContainer.createEl('button', {
+            text: t('modals.collection.create'),
             cls: 'mod-cta'
         });
         submitBtn.disabled = true; // Start disabled
@@ -70,7 +72,7 @@ export class NewCollectionModal extends Modal {
         const description = this.descriptionInput.value.trim();
 
         if (!name) {
-            new Notice('Collection name is required');
+            new Notice(t('modals.collection.nameRequired'));
             this.nameInput.focus();
             return;
         }
@@ -101,14 +103,15 @@ export class EditCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        contentEl.createEl('h3', { text: 'Edit collection' });
+        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: t('modals.collection.editTitle') });
+        titleEl.style.marginBottom = '20px';
 
         new Setting(contentEl)
-            .setName('Collection name')
-            .setDesc('The name of your collection (Required)')
+            .setName(t('modals.collection.nameLabel'))
+            .setDesc(t('modals.collection.nameDesc'))
             .addText(text => {
                 this.nameInput = text.inputEl;
-                text.setPlaceholder('Important Highlights')
+                text.setPlaceholder(t('modals.collection.namePlaceholder'))
                     .setValue(this.collection.name)
                     .onChange(value => {
                         // Enable/disable submit based on name presence
@@ -125,22 +128,22 @@ export class EditCollectionModal extends Modal {
             });
 
         new Setting(contentEl)
-            .setName('Collection description')
-            .setDesc('Provide more context about the collection (Optional)')
+            .setName(t('modals.collection.descLabel'))
+            .setDesc(t('modals.collection.descDesc'))
             .addText(text => {
                 this.descriptionInput = text.inputEl;
-                text.setPlaceholder('Research, etc.')
+                text.setPlaceholder(t('modals.collection.descPlaceholder'))
                     .setValue(this.collection.description || '');
             });
 
         // Buttons
         const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 
-        const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+        const cancelBtn = buttonContainer.createEl('button', { text: t('modals.collection.cancel') });
         cancelBtn.addEventListener('click', () => this.close());
 
-        const submitBtn = buttonContainer.createEl('button', { 
-            text: 'Save changes',
+        const submitBtn = buttonContainer.createEl('button', {
+            text: t('modals.collection.save'),
             cls: 'mod-cta'
         });
         submitBtn.addEventListener('click', () => this.handleSubmit());
@@ -160,7 +163,7 @@ export class EditCollectionModal extends Modal {
         const description = this.descriptionInput.value.trim();
 
         if (!name) {
-            new Notice('Collection name is required');
+            new Notice(t('modals.collection.nameRequired'));
             this.nameInput.focus();
             return;
         }

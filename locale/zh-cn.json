@@ -1,0 +1,373 @@
+{
+  "commands": {
+    "createHighlight": "从选中文本创建高亮",
+    "toggle": "切换",
+    "goToCollection": "转到{{name}}",
+    "applyDisplayMode": "应用显示模式：{{name}}"
+  },
+  "tabs": {
+    "currentNote": "当前笔记",
+    "allNotes": "所有笔记",
+    "collections": "合集",
+    "tasks": "任务"
+  },
+  "settings": {
+    "display": {
+      "heading": "显示",
+      "showTitles": {
+        "name": "在所有笔记和合集中显示笔记标题",
+        "desc": "在查看所有笔记或合集时，在高亮下方显示文件名/笔记标题。"
+      },
+      "showTimestamps": {
+        "name": "显示笔记时间戳",
+        "desc": "显示高亮的创建时间戳。"
+      },
+      "showActions": {
+        "name": "显示高亮操作",
+        "desc": "在每个高亮下方显示操作区域（文件名、统计信息和按钮）。"
+      },
+      "showToolbar": {
+        "name": "显示工具栏",
+        "desc": "显示包含搜索、分组和其他操作按钮的工具栏。"
+      },
+      "autoUnfold": {
+        "name": "聚焦时自动展开",
+        "desc": "从侧边栏聚焦高亮时自动展开内容。"
+      },
+      "dateFormat": {
+        "name": "日期格式",
+        "desc": "使用 moment.js 语法的时间戳格式字符串（例如：YYYY-MM-DD HH:mm、MMM DD YYYY、DD/MM/YYYY h:mm A）。",
+        "placeholder": "YYYY-MM-DD HH:mm"
+      },
+      "minimumCharCount": {
+        "name": "最小字符数",
+        "desc": "在侧边栏中隐藏少于此字符数的高亮和原生注释（默认为 0）。",
+        "placeholder": "0"
+      }
+    },
+    "views": {
+      "heading": "视图",
+      "showCurrentNoteTab": {
+        "name": "显示【当前笔记】标签页",
+        "desc": "在侧边栏中显示【当前笔记】标签页。"
+      },
+      "showAllNotesTab": {
+        "name": "显示【所有笔记】标签页",
+        "desc": "在侧边栏中显示【所有笔记】标签页。"
+      },
+      "showCollectionsTab": {
+        "name": "显示【合集】标签页",
+        "desc": "在侧边栏中显示【合集】标签页。"
+      },
+      "showTasksTab": {
+        "name": "显示【任务】标签页",
+        "desc": "在侧边栏中显示【任务】标签页。"
+      }
+    },
+    "displayModes": {
+      "heading": "显示模式",
+      "saveCurrentLabel": "将当前设置保存为显示模式",
+      "saveCurrentDesc": "从当前的【显示】和【视图】设置创建新的显示模式。保存的模式可以通过命令面板或下方的【应用】按钮使用。",
+      "saveButton": "添加显示模式",
+      "noModes": "尚未保存显示模式。创建一个开始使用。",
+      "applyButton": "应用",
+      "appliedButton": "已应用",
+      "updateButton": "更新",
+      "updateTooltip": "使用当前设置更新此模式",
+      "renameButton": "重命名",
+      "deleteButton": "删除"
+    },
+    "typography": {
+      "heading": "排版",
+      "highlightTextSize": {
+        "name": "主高亮文本",
+        "desc": "调整主高亮文本大小（默认为 11）。",
+        "placeholder": "11"
+      },
+      "detailsTextSize": {
+        "name": "详细信息文本大小",
+        "desc": "调整详细信息文本大小（文件名、行号等）（默认为 11）。",
+        "placeholder": "11"
+      },
+      "commentTextSize": {
+        "name": "注释文本大小",
+        "desc": "调整注释文本大小（默认为 11）。",
+        "placeholder": "11"
+      }
+    },
+    "styling": {
+      "heading": "样式"
+    },
+    "colors": {
+      "heading": "颜色",
+      "highlightColor": "高亮颜色：{{color}}",
+      "customizeFirst": "为侧边栏悬停颜色选择器自定义第一个高亮颜色。",
+      "customizeSecond": "为侧边栏悬停颜色选择器自定义第二个高亮颜色。",
+      "customizeThird": "为侧边栏悬停颜色选择器自定义第三个高亮颜色。",
+      "customizeFourth": "为侧边栏悬停颜色选择器自定义第四个高亮颜色。",
+      "customizeFifth": "为侧边栏悬停颜色选择器自定义第五个高亮颜色。",
+      "reset": "重置",
+      "resetToYellow": "重置为默认黄色 (#ffd700)",
+      "resetToRed": "重置为默认红色 (#ff6b6b)",
+      "resetToTeal": "重置为默认青色 (#4ecdc4)",
+      "resetToBlue": "重置为默认蓝色 (#45b7d1)",
+      "resetToGreen": "重置为默认绿色 (#96ceb4)"
+    },
+    "colorNames": {
+      "heading": "颜色名称",
+      "nameFor": "{{color}} 的名称",
+      "desc": "可选：为此颜色添加自定义名称，以便在【按颜色分组】中使用，而不是显示十六进制代码。",
+      "placeholder": "例如：【重要】、【研究】"
+    },
+    "comments": {
+      "heading": "注释",
+      "useInlineFootnotes": {
+        "name": "默认使用内联脚注",
+        "desc": "通过侧边栏添加注释时，使用内联脚注 (^[注释]) 而不是标准脚注 ([^ref]: 注释)。"
+      },
+      "selectTextOnClick": {
+        "name": "点击时选择文本",
+        "desc": "点击注释时，选择注释而不是将光标定位在其前面。注意：仅适用于内联脚注 (^[...]) 和标准脚注 ([^1])，不适用于 HTML 注释或自定义模式。"
+      }
+    },
+    "detection": {
+      "heading": "检测",
+      "detectHtmlComments": {
+        "name": "检测 HTML 注释",
+        "desc": "将 HTML 注释 (<!-- -->) 检测为高亮。注意：HTML 注释在实时预览模式下隐藏，仅在源码模式下可见。"
+      },
+      "detectAdjacentNativeComments": {
+        "name": "检测相邻的原生注释",
+        "desc": "启用时，紧跟在高亮后的 Obsidian 原生注释 (%% %%) 将被视为该高亮的注释。禁用时，所有原生注释将单独显示在侧边栏中。"
+      },
+      "customPatterns": {
+        "heading": "自定义模式",
+        "experimental": "实验性",
+        "desc": "使用正则表达式定义自定义高亮或注释模式。这允许检测来自其他插件或自定义格式的语法。",
+        "examples": "示例：",
+        "forRegexMark": "用于 Regex Mark 插件，或",
+        "forWikilinks": "用于维基链接。",
+        "addButton": "添加自定义模式",
+        "editButton": "编辑",
+        "deleteButton": "删除"
+      }
+    },
+    "filters": {
+      "heading": "过滤器",
+      "excludeExcalidraw": {
+        "name": "排除 Excalidraw 文件",
+        "desc": "扫描高亮时跳过 .excalidraw 文件。这可以防止在 Excalidraw 绘图文件中检测到高亮。"
+      },
+      "excludedFiles": {
+        "name": "排除的文件",
+        "desc": "排除的文件或文件夹将从侧边栏高亮中隐藏。",
+        "manageButton": "管理"
+      }
+    },
+    "tasks": {
+      "heading": "任务",
+      "showTaskContext": {
+        "name": "显示任务上下文",
+        "desc": "在侧边栏中将任务下方的缩进文本显示为上下文。"
+      },
+      "showCompletedTasks": {
+        "name": "显示已完成的任务",
+        "desc": "在【任务】标签页中包含已完成的任务 (- [x])。"
+      },
+      "taskDateFormat": {
+        "name": "任务日期格式",
+        "desc": "用于解析任务中日期的日期格式（例如：YYYY-MM-DD、MM/DD/YYYY）。匹配此格式的日期将显示为徽章。",
+        "placeholder": "YYYY-MM-DD"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "高亮"
+  },
+  "toolbar": {
+    "search": "搜索",
+    "searchPlaceholder": "搜索高亮，使用 #标签 @合集（-# 排除）...",
+    "group": "分组高亮",
+    "secondaryGroup": "二级分组",
+    "sort": "排序高亮",
+    "toggleComments": "切换原生注释",
+    "toggleHighlightComments": "切换高亮注释",
+    "revertColors": "还原高亮颜色",
+    "filter": "过滤",
+    "backToCollections": "返回合集",
+    "newCollection": "新建合集",
+    "closeSearch": "关闭搜索"
+  },
+  "grouping": {
+    "none": "无",
+    "color": "颜色",
+    "commentsAsc": "高亮注释 ↑",
+    "commentsDesc": "高亮注释 ↓",
+    "dateAsc": "创建日期 ↑",
+    "dateDesc": "创建日期 ↓",
+    "dueDateAsc": "截止日期 ↑",
+    "dueDateDesc": "截止日期 ↓",
+    "parent": "父级",
+    "collection": "合集",
+    "filename": "文件名",
+    "tag": "标签",
+    "date": "日期",
+    "flagged": "已标记"
+  },
+  "sorting": {
+    "none": "无",
+    "aToZ": "A → Z",
+    "zToA": "Z → A"
+  },
+  "emptyStates": {
+    "noComments": "无注释",
+    "noTags": "无标签",
+    "root": "根目录",
+    "noCollections": "无合集",
+    "noDate": "无日期",
+    "noSection": "无章节",
+    "allTasks": "所有任务",
+    "default": "默认",
+    "noCollectionsYet": "暂无合集。",
+    "noDescription": "无描述",
+    "noHighlightsInCollection": "合集中无高亮。",
+    "noMatchingInCollection": "合集中无匹配的高亮。",
+    "noFileOpen": "未打开文件。",
+    "pdfNotSupported": "不支持 PDF 高亮。",
+    "noMatching": "无匹配的高亮。",
+    "noHighlightsInFile": "此文件中无高亮。",
+    "noMatchingAcrossAll": "所有文件中无匹配的高亮。",
+    "noHighlightsAcrossAll": "所有文件中未找到高亮。",
+    "loadingTasks": "加载任务中...",
+    "noMatchingTasks": "所有文件中无匹配的任务。",
+    "noTasksAcrossAll": "所有文件中未找到任务。",
+    "noCollectionsAvailable": "无可用合集",
+    "noTagsOrFilters": "未找到标签或过滤器",
+    "overdue": "已逾期",
+    "today": "今天",
+    "upcoming": "即将到来",
+    "flagged": "已标记",
+    "unflagged": "未标记"
+  },
+  "contextMenu": {
+    "openNewTab": "在新标签页中打开",
+    "openRight": "在右侧打开",
+    "edit": "编辑",
+    "delete": "删除",
+    "markUnread": "标记为未读",
+    "markRead": "标记为已读",
+    "markAboveRead": "将上方标记为已读",
+    "markBelowRead": "将下方标记为已读"
+  },
+  "filterMenu": {
+    "clear": "清除",
+    "flagged": "已标记",
+    "upcoming": "即将到来",
+    "completed": "已完成",
+    "incomplete": "未完成",
+    "dueToday": "今天到期",
+    "overdue": "已逾期",
+    "noDate": "无日期"
+  },
+  "dateSuggestions": {
+    "today": "今天",
+    "tomorrow": "明天",
+    "yesterday": "昨天",
+    "endOfWeek": "本周结束",
+    "inOneWeek": "一周后",
+    "inTwoWeeks": "两周后",
+    "dayFromNow": "{{count}} 天后",
+    "daysFromNow": "{{count}} 天后",
+    "dayAgo": "{{count}} 天前",
+    "daysAgo": "{{count}} 天前",
+    "weekFromNow": "{{count}} 周后",
+    "weeksFromNow": "{{count}} 周后",
+    "weekAgo": "{{count}} 周前",
+    "weeksAgo": "{{count}} 周前",
+    "monthFromNow": "{{count}} 月后",
+    "monthsFromNow": "{{count}} 月后",
+    "monthAgo": "{{count}} 月前",
+    "monthsAgo": "{{count}} 月前",
+    "next": "下",
+    "last": "上",
+    "this": "本",
+    "monday": "周一",
+    "tuesday": "周二",
+    "wednesday": "周三",
+    "thursday": "周四",
+    "friday": "周五",
+    "saturday": "周六",
+    "sunday": "周日"
+  },
+  "modals": {
+    "collection": {
+      "createTitle": "创建新合集",
+      "editTitle": "编辑合集",
+      "nameLabel": "合集名称",
+      "nameDesc": "合集的名称（必填）",
+      "namePlaceholder": "重要高亮",
+      "descLabel": "合集描述",
+      "descDesc": "提供有关合集的更多上下文（可选）",
+      "descPlaceholder": "研究等",
+      "cancel": "取消",
+      "create": "创建合集",
+      "save": "保存更改",
+      "nameRequired": "合集名称为必填项"
+    },
+    "excludedFiles": {
+      "title": "排除的文件",
+      "noFilter": "当前未应用排除过滤器。在下方添加一个。",
+      "currentlyExcluded": "当前排除了匹配以下过滤器的文件：",
+      "filterLabel": "过滤器",
+      "filterPlaceholder": "输入文件或文件夹路径...",
+      "add": "添加",
+      "cancel": "取消",
+      "save": "保存",
+      "removedNonExistent": "已删除 {{count}} 个不存在的排除{{paths}}"
+    },
+    "taskDate": {
+      "title": "任务日期"
+    },
+    "customPattern": {
+      "editTitle": "编辑自定义模式",
+      "addTitle": "添加自定义模式",
+      "nameLabel": "名称",
+      "nameDesc": "此模式的描述性名称（例如：【Regex Mark】、【IA Writer 注释】）",
+      "namePlaceholder": "模式名称",
+      "patternLabel": "模式",
+      "patternDesc": "包含内容捕获组的正则表达式模式。示例：",
+      "patternPlaceholder": "//(.+)//",
+      "typeLabel": "类型",
+      "typeDesc": "将匹配项视为高亮还是注释",
+      "typeHighlight": "高亮",
+      "typeComment": "注释",
+      "cancel": "取消",
+      "save": "保存",
+      "nameRequired": "请输入模式名称",
+      "patternRequired": "请输入正则表达式模式",
+      "invalidRegex": "无效的正则表达式模式",
+      "capturingGroupRequired": "模式必须包含捕获组，例如：//(.+)//",
+      "conflictWarning": "警告：模式可能与内置{{name}}冲突。这可能导致意外行为。"
+    },
+    "displayMode": {
+      "createTitle": "添加显示模式",
+      "renameTitle": "重命名显示模式",
+      "nameLabel": "名称",
+      "nameDesc": "此显示配置的描述性名称",
+      "namePlaceholder": "例如：【阅读模式】、【完整视图】",
+      "cancel": "取消",
+      "save": "保存",
+      "nameRequired": "请输入显示模式名称"
+    }
+  },
+  "notices": {
+    "highlightCreated": "已创建高亮",
+    "noTextSelected": "请先选择一些文本",
+    "noActiveFile": "没有活动文件",
+    "displayModeSaved": "显示模式【{{name}}】已保存",
+    "displayModeApplied": "已应用显示模式【{{name}}】",
+    "displayModeUpdated": "显示模式【{{name}}】已更新",
+    "displayModeRenamed": "显示模式已重命名为【{{name}}】",
+    "displayModeDeleted": "显示模式【{{name}}】已删除"
+  }
+}

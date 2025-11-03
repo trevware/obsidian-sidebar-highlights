@@ -202,11 +202,23 @@ export class InlineFootnoteManager {
     public insertInlineFootnote(editor: Editor, highlight: Highlight, footnoteContent: string): { success: boolean, insertPos?: { line: number, ch: number }, contentLength: number } {
         const content = editor.getValue();
         const escapedText = this.escapeRegex(highlight.text);
-        
+
         let bestMatch: { index: number, length: number } | null = null;
         let minDistance = Infinity;
 
-        if (highlight.isNativeComment) {
+        if (highlight.type === 'custom' && highlight.fullMatch) {
+            // Custom pattern highlight - use the full match text
+            const regexPattern = this.escapeRegex(highlight.fullMatch);
+            const highlightRegex = new RegExp(regexPattern, 'g');
+            let match;
+            while ((match = highlightRegex.exec(content)) !== null) {
+                const distance = Math.abs(match.index - highlight.startOffset);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { index: match.index, length: match[0].length };
+                }
+            }
+        } else if (highlight.isNativeComment) {
             // Try HTML comment pattern first
             const htmlCommentPattern = `<!--\\s*${escapedText}\\s*-->`;
             const htmlCommentRegex = new RegExp(htmlCommentPattern, 'g');

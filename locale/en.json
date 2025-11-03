@@ -1,0 +1,373 @@
+{
+  "commands": {
+    "createHighlight": "Create highlight from selection",
+    "toggle": "Toggle",
+    "goToCollection": "Go to {{name}}",
+    "applyDisplayMode": "Apply display mode: {{name}}"
+  },
+  "tabs": {
+    "currentNote": "Current note",
+    "allNotes": "All notes",
+    "collections": "Collections",
+    "tasks": "Tasks"
+  },
+  "settings": {
+    "display": {
+      "heading": "Display",
+      "showTitles": {
+        "name": "Show note titles in all notes and collections",
+        "desc": "Display the filename/note title below highlights when viewing All Notes or Collections."
+      },
+      "showTimestamps": {
+        "name": "Show note timestamps",
+        "desc": "Display creation timestamps for highlights."
+      },
+      "showActions": {
+        "name": "Show highlight actions",
+        "desc": "Display the actions area below each highlight (filename, stats, and buttons)."
+      },
+      "showToolbar": {
+        "name": "Show toolbar",
+        "desc": "Display the toolbar with search, grouping, and other action buttons."
+      },
+      "autoUnfold": {
+        "name": "Auto-unfold on focus",
+        "desc": "Automatically unfold content when focusing highlights from the sidebar."
+      },
+      "dateFormat": {
+        "name": "Date format",
+        "desc": "Format string for timestamps using moment.js syntax (e.g., YYYY-MM-DD HH:mm, MMM DD YYYY, DD/MM/YYYY h:mm A).",
+        "placeholder": "YYYY-MM-DD HH:mm"
+      },
+      "minimumCharCount": {
+        "name": "Minimum character count",
+        "desc": "Hide highlights and native comments shorter than this character count from the sidebar (default 0).",
+        "placeholder": "0"
+      }
+    },
+    "views": {
+      "heading": "Views",
+      "showCurrentNoteTab": {
+        "name": "Show Current Note tab",
+        "desc": "Show the Current Note tab in the sidebar."
+      },
+      "showAllNotesTab": {
+        "name": "Show All Notes tab",
+        "desc": "Show the All Notes tab in the sidebar."
+      },
+      "showCollectionsTab": {
+        "name": "Show Collections tab",
+        "desc": "Show the Collections tab in the sidebar."
+      },
+      "showTasksTab": {
+        "name": "Show Tasks tab",
+        "desc": "Show the Tasks tab in the sidebar."
+      }
+    },
+    "displayModes": {
+      "heading": "Display modes",
+      "saveCurrentLabel": "Save current settings as a display mode",
+      "saveCurrentDesc": "Create a new display mode from your current Display and Views settings. Saved modes can be applied from the Command Palette or using the Apply button below.",
+      "saveButton": "Add display mode",
+      "noModes": "No display modes saved yet. Create one to get started.",
+      "applyButton": "Apply",
+      "appliedButton": "Applied",
+      "updateButton": "Update",
+      "updateTooltip": "Update this mode with current settings",
+      "renameButton": "Rename",
+      "deleteButton": "Delete"
+    },
+    "typography": {
+      "heading": "Typography",
+      "highlightTextSize": {
+        "name": "Main highlight text",
+        "desc": "Adjust main highlight text size (default 11).",
+        "placeholder": "11"
+      },
+      "detailsTextSize": {
+        "name": "Details text size",
+        "desc": "Adjust details text size (filename, line number, etc) (default 11).",
+        "placeholder": "11"
+      },
+      "commentTextSize": {
+        "name": "Comment text size",
+        "desc": "Adjust comment text size (default 11).",
+        "placeholder": "11"
+      }
+    },
+    "styling": {
+      "heading": "Styling"
+    },
+    "colors": {
+      "heading": "Colors",
+      "highlightColor": "Highlight color: {{color}}",
+      "customizeFirst": "Customize the first highlight color for the sidebar hover color picker.",
+      "customizeSecond": "Customize the second highlight color for the sidebar hover color picker.",
+      "customizeThird": "Customize the third highlight color for the sidebar hover color picker.",
+      "customizeFourth": "Customize the fourth highlight color for the sidebar hover color picker.",
+      "customizeFifth": "Customize the fifth highlight color for the sidebar hover color picker.",
+      "reset": "Reset",
+      "resetToYellow": "Reset to default yellow (#ffd700)",
+      "resetToRed": "Reset to default red (#ff6b6b)",
+      "resetToTeal": "Reset to default teal (#4ecdc4)",
+      "resetToBlue": "Reset to default blue (#45b7d1)",
+      "resetToGreen": "Reset to default green (#96ceb4)"
+    },
+    "colorNames": {
+      "heading": "Color names",
+      "nameFor": "Name for {{color}}",
+      "desc": "Optional: Add a custom name for this color to use in Group By Color instead of the hex code.",
+      "placeholder": "e.g., \"Important\", \"Research\""
+    },
+    "comments": {
+      "heading": "Comments",
+      "useInlineFootnotes": {
+        "name": "Use inline footnotes by default",
+        "desc": "When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment)."
+      },
+      "selectTextOnClick": {
+        "name": "Select text on click",
+        "desc": "When clicking a comment, select the comment instead of positioning the cursor in front of it. Note: Only works for inline footnotes (^[...]) and standard footnotes ([^1]), not HTML comments or custom patterns."
+      }
+    },
+    "detection": {
+      "heading": "Detection",
+      "detectHtmlComments": {
+        "name": "Detect HTML comments",
+        "desc": "Detect HTML comments (<!-- -->) as highlights. Note: HTML comments are hidden in Live Preview mode and only visible in Source mode."
+      },
+      "detectAdjacentNativeComments": {
+        "name": "Detect adjacent native comments",
+        "desc": "When enabled, native Obsidian comments (%% %%) that appear immediately after a highlight will be treated as comments for that highlight. When disabled, all native comments appear separately in the sidebar."
+      },
+      "customPatterns": {
+        "heading": "Custom patterns",
+        "experimental": "Experimental",
+        "desc": "Define custom highlight or comment patterns using regex. This allows detection of syntax from other plugins or custom formats.",
+        "examples": "Examples:",
+        "forRegexMark": "for Regex Mark plugin, or",
+        "forWikilinks": "for wikilinks.",
+        "addButton": "Add custom pattern",
+        "editButton": "Edit",
+        "deleteButton": "Delete"
+      }
+    },
+    "filters": {
+      "heading": "Filters",
+      "excludeExcalidraw": {
+        "name": "Exclude Excalidraw files",
+        "desc": "Skip .excalidraw files when scanning for highlights. This prevents highlights from being detected in Excalidraw drawing files."
+      },
+      "excludedFiles": {
+        "name": "Excluded files",
+        "desc": "Excluded files or folders will be hidden from Sidebar Highlights.",
+        "manageButton": "Manage"
+      }
+    },
+    "tasks": {
+      "heading": "Tasks",
+      "showTaskContext": {
+        "name": "Show task context",
+        "desc": "Show indented text below tasks as context in the sidebar."
+      },
+      "showCompletedTasks": {
+        "name": "Show completed tasks",
+        "desc": "Include completed tasks (- [x]) in the Tasks tab."
+      },
+      "taskDateFormat": {
+        "name": "Task date format",
+        "desc": "Date format for parsing dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Dates matching this format will be displayed as badges.",
+        "placeholder": "YYYY-MM-DD"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "Highlights"
+  },
+  "toolbar": {
+    "search": "Search",
+    "searchPlaceholder": "Search highlights, use #tag @collection (-# to exclude)...",
+    "group": "Group highlights",
+    "secondaryGroup": "Secondary grouping",
+    "sort": "Sort highlights",
+    "toggleComments": "Toggle native comments",
+    "toggleHighlightComments": "Toggle highlight comments",
+    "revertColors": "Revert highlight colors",
+    "filter": "Filter",
+    "backToCollections": "Back to Collections",
+    "newCollection": "New collection",
+    "closeSearch": "Close search"
+  },
+  "grouping": {
+    "none": "None",
+    "color": "Color",
+    "commentsAsc": "Highlight comments ↑",
+    "commentsDesc": "Highlight comments ↓",
+    "dateAsc": "Date created ↑",
+    "dateDesc": "Date created ↓",
+    "dueDateAsc": "Due date ↑",
+    "dueDateDesc": "Due date ↓",
+    "parent": "Parent",
+    "collection": "Collection",
+    "filename": "Filename",
+    "tag": "Tag",
+    "date": "Date",
+    "flagged": "Flagged"
+  },
+  "sorting": {
+    "none": "None",
+    "aToZ": "A → Z",
+    "zToA": "Z → A"
+  },
+  "emptyStates": {
+    "noComments": "No Comments",
+    "noTags": "No Tags",
+    "root": "Root",
+    "noCollections": "No Collections",
+    "noDate": "No Date",
+    "noSection": "No section",
+    "allTasks": "All Tasks",
+    "default": "Default",
+    "noCollectionsYet": "No collections.",
+    "noDescription": "No description",
+    "noHighlightsInCollection": "No highlights in collection.",
+    "noMatchingInCollection": "No matching highlights in collection.",
+    "noFileOpen": "No file open.",
+    "pdfNotSupported": "PDF highlights are not supported.",
+    "noMatching": "No matching highlights.",
+    "noHighlightsInFile": "No highlights in this file.",
+    "noMatchingAcrossAll": "No matching highlights across all files.",
+    "noHighlightsAcrossAll": "No highlights found across all files.",
+    "loadingTasks": "Loading tasks...",
+    "noMatchingTasks": "No matching tasks across all files.",
+    "noTasksAcrossAll": "No tasks found across all files.",
+    "noCollectionsAvailable": "No collections available",
+    "noTagsOrFilters": "No tags or filters found",
+    "overdue": "Overdue",
+    "today": "Today",
+    "upcoming": "Upcoming",
+    "flagged": "Flagged",
+    "unflagged": "Unflagged"
+  },
+  "contextMenu": {
+    "openNewTab": "Open in new tab",
+    "openRight": "Open to the right",
+    "edit": "Edit",
+    "delete": "Delete",
+    "markUnread": "Mark as Unread",
+    "markRead": "Mark as Read",
+    "markAboveRead": "Mark above as read",
+    "markBelowRead": "Mark below as read"
+  },
+  "filterMenu": {
+    "clear": "Clear",
+    "flagged": "Flagged",
+    "upcoming": "Upcoming",
+    "completed": "Completed",
+    "incomplete": "Incomplete",
+    "dueToday": "Due Today",
+    "overdue": "Overdue",
+    "noDate": "No Date"
+  },
+  "dateSuggestions": {
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "endOfWeek": "End of this week",
+    "inOneWeek": "In one week",
+    "inTwoWeeks": "In two weeks",
+    "dayFromNow": "{{count}} day from now",
+    "daysFromNow": "{{count}} days from now",
+    "dayAgo": "{{count}} day ago",
+    "daysAgo": "{{count}} days ago",
+    "weekFromNow": "{{count}} week from now",
+    "weeksFromNow": "{{count}} weeks from now",
+    "weekAgo": "{{count}} week ago",
+    "weeksAgo": "{{count}} weeks ago",
+    "monthFromNow": "{{count}} month from now",
+    "monthsFromNow": "{{count}} months from now",
+    "monthAgo": "{{count}} month ago",
+    "monthsAgo": "{{count}} months ago",
+    "next": "Next",
+    "last": "Last",
+    "this": "This",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  },
+  "modals": {
+    "collection": {
+      "createTitle": "Create a new collection",
+      "editTitle": "Edit collection",
+      "nameLabel": "Collection name",
+      "nameDesc": "The name of your collection (Required)",
+      "namePlaceholder": "Important Highlights",
+      "descLabel": "Collection description",
+      "descDesc": "Provide more context about the collection (Optional)",
+      "descPlaceholder": "Research, etc.",
+      "cancel": "Cancel",
+      "create": "Create collection",
+      "save": "Save changes",
+      "nameRequired": "Collection name is required"
+    },
+    "excludedFiles": {
+      "title": "Excluded files",
+      "noFilter": "No excluded filter is applied right now. Add one below.",
+      "currentlyExcluded": "Files matching the following filters are currently excluded:",
+      "filterLabel": "Filter",
+      "filterPlaceholder": "Enter file or folder path...",
+      "add": "Add",
+      "cancel": "Cancel",
+      "save": "Save",
+      "removedNonExistent": "Removed {{count}} excluded {{paths}} that no longer exist"
+    },
+    "taskDate": {
+      "title": "Task Date"
+    },
+    "customPattern": {
+      "editTitle": "Edit custom pattern",
+      "addTitle": "Add custom pattern",
+      "nameLabel": "Name",
+      "nameDesc": "A descriptive name for this pattern (e.g., \"Regex Mark\", \"IA Writer comments\")",
+      "namePlaceholder": "Pattern name",
+      "patternLabel": "Pattern",
+      "patternDesc": "Regex pattern with a capturing group for the content. Examples:",
+      "patternPlaceholder": "//(.+)//",
+      "typeLabel": "Type",
+      "typeDesc": "Whether to treat matches as highlights or comments",
+      "typeHighlight": "Highlight",
+      "typeComment": "Comment",
+      "cancel": "Cancel",
+      "save": "Save",
+      "nameRequired": "Please enter a name for the pattern",
+      "patternRequired": "Please enter a regex pattern",
+      "invalidRegex": "Invalid regex pattern",
+      "capturingGroupRequired": "Pattern must include a capturing group, e.g., //(.+)//",
+      "conflictWarning": "Warning: Pattern may conflict with built-in {{name}}. This could cause unexpected behavior."
+    },
+    "displayMode": {
+      "createTitle": "Add display mode",
+      "renameTitle": "Rename display mode",
+      "nameLabel": "Name",
+      "nameDesc": "A descriptive name for this display configuration",
+      "namePlaceholder": "e.g., \"Reading Mode\", \"Full View\"",
+      "cancel": "Cancel",
+      "save": "Save",
+      "nameRequired": "Please enter a name for the display mode"
+    }
+  },
+  "notices": {
+    "highlightCreated": "Highlight created",
+    "noTextSelected": "Please select some text first",
+    "noActiveFile": "No active file",
+    "displayModeSaved": "Display mode \"{{name}}\" saved",
+    "displayModeApplied": "Applied display mode \"{{name}}\"",
+    "displayModeUpdated": "Display mode \"{{name}}\" updated",
+    "displayModeRenamed": "Display mode renamed to \"{{name}}\"",
+    "displayModeDeleted": "Display mode \"{{name}}\" deleted"
+  }
+}
