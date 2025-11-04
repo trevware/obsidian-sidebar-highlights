@@ -81,8 +81,8 @@ export class TaskRenderer {
         // Render date badge if date exists (and not hidden)
         if (task.date && !options.hideDateBadge) {
             const dateBadge = textContent.createSpan({ cls: 'task-date-badge' });
-            // Format as "MMM DD" (e.g., "May 25")
-            const formattedDate = moment(task.date, 'YYYY-MM-DD').format('MMM DD');
+            // Format as "MM-DD" (e.g., "07-23")
+            const formattedDate = moment(task.date, 'YYYY-MM-DD').format('MM-DD');
             dateBadge.textContent = formattedDate;
         }
 

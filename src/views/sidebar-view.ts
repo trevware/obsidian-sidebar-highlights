@@ -22,7 +22,7 @@ export class HighlightsSidebarView extends ItemView {
     private listContainerEl!: HTMLElement;
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
-    private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' | 'date-desc' = 'none';
+    private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
     private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
     private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' = 'none';
     private commentsExpanded: boolean = false;
@@ -208,18 +208,29 @@ export class HighlightsSidebarView extends ItemView {
         const taskBlocks: string[] = [];
         let currentBlock: string[] = [];
         let inTaskBlock = false;
+        let lastHeader: string | null = null;
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const isTaskLine = /^[\s]*[-*]\s*\[[ xX-]\]/.test(line);
+            const isHeader = /^#{1,6}\s+/.test(line);
+
+            // Track the most recent header
+            if (isHeader) {
+                lastHeader = line.trim();
+            }
 
             if (isTaskLine) {
                 // Save previous block if exists
                 if (currentBlock.length > 0) {
                     taskBlocks.push(currentBlock.join('\n'));
                 }
-                // Start new block with this task
-                currentBlock = [line.trim()];
+                // Start new block with header (if any) + task
+                currentBlock = [];
+                if (lastHeader) {
+                    currentBlock.push(lastHeader);
+                }
+                currentBlock.push(line.trim());
                 inTaskBlock = true;
             } else if (inTaskBlock) {
                 // Check if this is a context line (indented or starts with whitespace)
@@ -427,25 +438,11 @@ export class HighlightsSidebarView extends ItemView {
 
                     menu.addItem((item) => {
                         item
-                            .setTitle(t('grouping.dueDateAsc'))
+                            .setTitle(t('grouping.dueDate'))
                             .setIcon('calendar')
                             .setChecked(this.groupingMode === 'date-asc')
                             .onClick(() => {
                                 this.groupingMode = 'date-asc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.dueDateDesc'))
-                            .setIcon('calendar')
-                            .setChecked(this.groupingMode === 'date-desc')
-                            .onClick(() => {
-                                this.groupingMode = 'date-desc';
                                 this.updateGroupButtonState(groupButton);
                                 this.updateSortButtonState(this.sortButton);
                                 this.saveGroupingModeToSettings();
@@ -897,11 +894,18 @@ export class HighlightsSidebarView extends ItemView {
                     const tasks = this.extractTaskLines(content);
 
                     if (tasks.length > 0) {
-                        console.log('[DEBUG] New file has tasks, refreshing task view');
+                        console.log('[DEBUG] New file has tasks, debouncing refresh');
                         // Initialize cache for this file
                         this.fileTaskCache.set(file.path, tasks);
                         this.cachedAllTasks = null;
-                        this.renderContent();
+
+                        // Debounce to avoid excessive re-renders during bulk operations
+                        if (this.taskRefreshTimeout) {
+                            window.clearTimeout(this.taskRefreshTimeout);
+                        }
+                        this.taskRefreshTimeout = window.setTimeout(() => {
+                            this.renderContent();
+                        }, 300);
                     }
                 }
             })
@@ -913,7 +917,14 @@ export class HighlightsSidebarView extends ItemView {
                     // Clear cache for deleted file
                     this.fileTaskCache.delete(file.path);
                     this.cachedAllTasks = null;
-                    this.renderContent();
+
+                    // Debounce to avoid excessive re-renders during bulk deletions
+                    if (this.taskRefreshTimeout) {
+                        window.clearTimeout(this.taskRefreshTimeout);
+                    }
+                    this.taskRefreshTimeout = window.setTimeout(() => {
+                        this.renderContent();
+                    }, 300);
                 }
             })
         );
@@ -928,7 +939,14 @@ export class HighlightsSidebarView extends ItemView {
                         this.fileTaskCache.set(file.path, oldTasks);
                     }
                     this.cachedAllTasks = null;
-                    this.renderContent();
+
+                    // Debounce to avoid excessive re-renders during bulk operations
+                    if (this.taskRefreshTimeout) {
+                        window.clearTimeout(this.taskRefreshTimeout);
+                    }
+                    this.taskRefreshTimeout = window.setTimeout(() => {
+                        this.renderContent();
+                    }, 300);
                 }
             })
         );
@@ -1515,7 +1533,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Helper function to determine group key for a task
         const getGroupKey = (task: Task): string => {
-            if (this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc') {
+            if (this.groupingMode === 'date-asc') {
                 // Group by due date
                 if (task.date) {
                     const taskDate = moment(task.date, 'YYYY-MM-DD');
@@ -1523,7 +1541,27 @@ export class HighlightsSidebarView extends ItemView {
                     if (taskDate.isBefore(today) && !task.completed) {
                         return 'OVERDUE'; // Special group key for overdue tasks
                     }
-                    return task.date; // Already in YYYY-MM-DD format
+
+                    const daysFromToday = taskDate.diff(today, 'days');
+
+                    // First 7 days (today through day 6): individual dates
+                    if (daysFromToday >= 0 && daysFromToday <= 6) {
+                        return task.date; // YYYY-MM-DD format
+                    }
+
+                    // Rest of current month
+                    if (taskDate.year() === today.year() && taskDate.month() === today.month()) {
+                        return `${taskDate.format('YYYY-MM')}-CURRENT-MONTH`;
+                    }
+
+                    // Next 4 months: group by month
+                    const endOfFourMonths = moment(today).add(4, 'months').endOf('month');
+                    if (taskDate.isSameOrBefore(endOfFourMonths, 'day')) {
+                        return taskDate.format('YYYY-MM'); // Group by month
+                    }
+
+                    // Years thereafter: group by year
+                    return taskDate.format('YYYY');
                 } else {
                     return 'No Date';
                 }
@@ -1561,7 +1599,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Sort groups
         const sortedGroups = Array.from(groups.entries()).sort(([a], [b]) => {
-            if (this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc') {
+            if (this.groupingMode === 'date-asc') {
                 // Pin "OVERDUE" at the top
                 if (a === 'OVERDUE' && b === 'OVERDUE') return 0;
                 if (a === 'OVERDUE') return -1;
@@ -1571,9 +1609,31 @@ export class HighlightsSidebarView extends ItemView {
                 if (a === 'No Date' && b === 'No Date') return 0;
                 if (a === 'No Date') return 1;
                 if (b === 'No Date') return -1;
-                // Sort dates chronologically
-                const comparison = a.localeCompare(b);
-                return this.groupingMode === 'date-asc' ? comparison : -comparison;
+
+                // Helper to get sort priority for date groups
+                const getSortValue = (key: string): string => {
+                    // Individual dates (YYYY-MM-DD) - use as is
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+                        return key;
+                    }
+                    // Current month remainder - extract month and append high day number
+                    if (key.endsWith('-CURRENT-MONTH')) {
+                        const monthKey = key.replace('-CURRENT-MONTH', '');
+                        return `${monthKey}-32`; // Day 32 ensures it comes after individual dates
+                    }
+                    // Month groups (YYYY-MM) - append day 33 to sort after current month
+                    if (/^\d{4}-\d{2}$/.test(key)) {
+                        return `${key}-33`;
+                    }
+                    // Year groups (YYYY) - append month 13 and day 34 to sort after month groups
+                    if (/^\d{4}$/.test(key)) {
+                        return `${key}-13-34`;
+                    }
+                    return key;
+                };
+
+                // Sort dates chronologically (always ascending - today first)
+                return getSortValue(a).localeCompare(getSortValue(b));
             } else if (this.groupingMode === 'filename') {
                 // Sort filename groups alphabetically
                 return a.localeCompare(b);
@@ -1607,7 +1667,7 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             // Skip section grouping when grouping by date (reduces clutter)
-            const skipSectionGrouping = this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc';
+            const skipSectionGrouping = this.groupingMode === 'date-asc';
 
             if (skipSectionGrouping) {
                 // Render tasks directly without section grouping
@@ -1627,11 +1687,15 @@ export class HighlightsSidebarView extends ItemView {
                 // Create wrapper container for consistent spacing
                 const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
 
+                // Only hide date badge for individual day groups (YYYY-MM-DD format)
+                // Show it for month/year groups so users can see the specific date
+                const isIndividualDayGroup = /^\d{4}-\d{2}-\d{2}$/.test(groupName) || groupName === 'OVERDUE';
+
                 sortedTasks.forEach(task => {
                     this.taskRenderer.createTaskItem(groupTasksContainer, task, {
                         searchTerm,
                         hideFilename: false, // Show filename when grouping by date
-                        hideDateBadge: true, // Hide date badge when grouping by date
+                        hideDateBadge: isIndividualDayGroup, // Only hide for Today/Tomorrow/named days
                         onTaskToggle: async (task, checkboxEl) => {
                             await this.handleTaskToggle(task, checkboxEl);
                         },
@@ -1662,10 +1726,10 @@ export class HighlightsSidebarView extends ItemView {
 
             // Sort sections
             const sortedSections = Array.from(sectionGroups.entries()).sort(([a], [b]) => {
-                // Put "No section" at the end
+                // Put "No section" at the beginning
                 if (a === t('emptyStates.noSection') && b === t('emptyStates.noSection')) return 0;
-                if (a === t('emptyStates.noSection')) return 1;
-                if (b === t('emptyStates.noSection')) return -1;
+                if (a === t('emptyStates.noSection')) return -1;
+                if (b === t('emptyStates.noSection')) return 1;
                 return a.localeCompare(b);
             });
 
@@ -1801,7 +1865,7 @@ export class HighlightsSidebarView extends ItemView {
                             this.taskRenderer.createTaskItem(groupTasksContainer, task, {
                                 searchTerm,
                                 hideFilename: true,
-                                hideDateBadge: this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc',
+                                hideDateBadge: this.groupingMode === 'date-asc',
                                 onTaskToggle: async (task, checkboxEl) => {
                                     await this.handleTaskToggle(task, checkboxEl);
                                 },
@@ -1855,8 +1919,8 @@ export class HighlightsSidebarView extends ItemView {
                     sortedTasks.forEach(task => {
                         this.taskRenderer.createTaskItem(groupTasksContainer, task, {
                             searchTerm,
-                            hideFilename: !(this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc'), // Show filename when grouping by due date
-                            hideDateBadge: this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc', // Hide date badge when grouping by due date
+                            hideFilename: !(this.groupingMode === 'date-asc'), // Show filename when grouping by due date
+                            hideDateBadge: this.groupingMode === 'date-asc', // Hide date badge when grouping by due date
                             onTaskToggle: async (task, checkboxEl) => {
                                 await this.handleTaskToggle(task, checkboxEl);
                             },
@@ -2003,7 +2067,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Find the group this task belongs to
         const getGroupKey = (task: Task): string => {
-            if (this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc') {
+            if (this.groupingMode === 'date-asc') {
                 // Group by due date
                 if (task.date) {
                     const taskDate = moment(task.date, 'YYYY-MM-DD');
@@ -2011,7 +2075,27 @@ export class HighlightsSidebarView extends ItemView {
                     if (taskDate.isBefore(today) && !task.completed) {
                         return 'OVERDUE'; // Special group key for overdue tasks
                     }
-                    return task.date; // Already in YYYY-MM-DD format
+
+                    const daysFromToday = taskDate.diff(today, 'days');
+
+                    // First 7 days (today through day 6): individual dates
+                    if (daysFromToday >= 0 && daysFromToday <= 6) {
+                        return task.date; // YYYY-MM-DD format
+                    }
+
+                    // Rest of current month
+                    if (taskDate.year() === today.year() && taskDate.month() === today.month()) {
+                        return `${taskDate.format('YYYY-MM')}-CURRENT-MONTH`;
+                    }
+
+                    // Next 4 months: group by month
+                    const endOfFourMonths = moment(today).add(4, 'months').endOf('month');
+                    if (taskDate.isSameOrBefore(endOfFourMonths, 'day')) {
+                        return taskDate.format('YYYY-MM'); // Group by month
+                    }
+
+                    // Years thereafter: group by year
+                    return taskDate.format('YYYY');
                 } else {
                     return 'No Date';
                 }
@@ -2424,15 +2508,24 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the active markdown view
                 const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
                 if (activeView) {
-                    // Set the cursor to the end of the task line
                     const editor = activeView.editor;
                     const line = editor.getLine(task.lineNumber);
-                    const endOfLine = line.length;
-                    editor.setCursor({ line: task.lineNumber, ch: endOfLine });
+
+                    // Find the start of the task text (after checkbox)
+                    const taskMatch = line.match(/^(\s*[-*]\s*\[[ xX-]\]\s*)/);
+                    const taskTextStart = taskMatch ? taskMatch[1].length : 0;
+                    const taskTextEnd = line.length;
+
+                    // Select the task text (highlighting it)
+                    editor.setSelection(
+                        { line: task.lineNumber, ch: taskTextStart },
+                        { line: task.lineNumber, ch: taskTextEnd }
+                    );
+
                     // Scroll to the line
                     editor.scrollIntoView({
-                        from: { line: task.lineNumber, ch: endOfLine },
-                        to: { line: task.lineNumber, ch: endOfLine }
+                        from: { line: task.lineNumber, ch: taskTextStart },
+                        to: { line: task.lineNumber, ch: taskTextEnd }
                     }, true);
                 }
             });
@@ -4461,24 +4554,52 @@ export class HighlightsSidebarView extends ItemView {
                 if (this.groupingMode === 'color') {
                     return this.getColorName(groupKey);
                 }
-                // For date groups, format as "MMM DD" to match inline task date badges
-                if (this.groupingMode === 'date-asc' || this.groupingMode === 'date-desc' ||
+                // For date groups, show descriptive labels based on distance from today
+                if (this.groupingMode === 'date-asc' ||
                     this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
-                    // Check if groupKey is in YYYY-MM-DD format
+
+                    // Handle current month remainder
+                    if (groupKey.endsWith('-CURRENT-MONTH')) {
+                        const monthKey = groupKey.replace('-CURRENT-MONTH', '');
+                        const monthDate = moment(monthKey, 'YYYY-MM');
+                        const today = moment().startOf('day');
+                        const startDay = today.date() + 7; // Start from day 7 onwards
+                        const endDay = monthDate.endOf('month').date();
+                        return `${monthDate.format('MMMM')} ${startDay}-${endDay}`;
+                    }
+
+                    // Handle month groups (YYYY-MM format)
+                    if (/^\d{4}-\d{2}$/.test(groupKey)) {
+                        const monthDate = moment(groupKey, 'YYYY-MM');
+                        return monthDate.format('MMMM');
+                    }
+
+                    // Handle year groups (YYYY format)
+                    if (/^\d{4}$/.test(groupKey)) {
+                        return groupKey;
+                    }
+
+                    // Check if groupKey is in YYYY-MM-DD format (individual dates)
                     if (/^\d{4}-\d{2}-\d{2}$/.test(groupKey)) {
                         const groupDate = moment(groupKey, 'YYYY-MM-DD');
                         const today = moment().startOf('day');
-                        const tomorrow = moment().add(1, 'day').startOf('day');
 
-                        // Check for today
-                        if (groupDate.isSame(today, 'day')) {
+                        const daysFromToday = groupDate.diff(today, 'days');
+
+                        // Today
+                        if (daysFromToday === 0) {
                             return t('emptyStates.today');
                         }
-                        // Check for tomorrow
-                        if (groupDate.isSame(tomorrow, 'day')) {
+                        // Tomorrow
+                        if (daysFromToday === 1) {
                             return t('dateSuggestions.tomorrow');
                         }
+                        // Days 2-6: show day name
+                        if (daysFromToday >= 2 && daysFromToday <= 6) {
+                            return groupDate.format('dddd'); // Full day name
+                        }
 
+                        // Fallback to date format
                         return groupDate.format('MMM DD');
                     }
                 }

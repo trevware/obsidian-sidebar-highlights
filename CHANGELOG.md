@@ -5,6 +5,47 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-11-03
+
+### Added
+- **Smart Date Grouping**: Intelligent date-based grouping for tasks with contextual labels
+  - First 7 days (Today through 6 days out): Individual day groups with descriptive names (Today, Tomorrow, Wednesday, etc.)
+  - Rest of current month: Single group showing date range (e.g., "November 11-30")
+  - Next 4 months: Month name groups (December, January, February, March)
+  - Years thereafter: Year number groups (2026, 2027, etc.)
+  - Always shows nearest dates first for better task prioritization
+- **Task Text Highlighting**: Clicking a task from the sidebar now highlights the task text in the editor
+  - Provides clear visual feedback of which task was clicked
+  - Automatically selects task text (excluding checkbox) and scrolls into view
+
+### Enhanced
+- **Simplified Date Grouping**: Removed descending date order option (always shows soonest dates first)
+  - "Due Date" grouping option replaces previous "Due date ↑" and "Due date ↓" options
+  - Chronological ordering makes more sense for task management
+- **Smart Date Badge Display**: Date badges now intelligently show/hide based on group type
+  - Hidden for individual day groups (Today, Tuesday, etc.) where date is redundant
+  - Shown for month/year groups (December, 2026) so users can see specific dates
+  - Date badge format changed from "MMM DD" to "MM-DD" (e.g., "07-23")
+- **Section Ordering**: Tasks without headers now appear first in each group
+  - Makes it easier to find tasks that aren't organized under headers
+  - Followed by alphabetically sorted header sections
+
+### Fixed
+- **Bulk Operations**: Fixed duplicate empty state messages when bulk deleting/adding files
+  - Added 300ms debouncing to file create/delete/rename events
+  - Prevents multiple simultaneous renders causing visual glitches
+- **Exclusion Settings**: Fixed Tasks view not updating when removing directories from exclusion list
+  - Sidebar now automatically refreshes when exclusion settings change
+  - No manual reload required to see tasks from newly included folders
+- **Header Changes**: Fixed task headers not updating when markdown headers are deleted or modified
+  - Task change detection now includes header tracking
+  - Sidebar automatically refreshes when headers above tasks change
+- **Localization Loading**: Fixed translations not loading when plugin installed from release
+  - Translations now bundled directly into main.js instead of separate files
+  - Ensures consistent i18n behavior across all installations
+- **Collections Empty State**: Fixed alignment of "No Collections" text
+  - Now matches other empty state messages for visual consistency
+
 ## [1.3.0] - 2025-11-03
 
 ### Added

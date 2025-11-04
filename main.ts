@@ -72,7 +72,7 @@ export interface DisplayMode {
 }
 
 export interface TabSettings {
-    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' | 'date-desc';
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
     sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc';
     commentsExpanded: boolean;
     searchExpanded: boolean;
@@ -84,7 +84,7 @@ export interface CommentPluginSettings {
     sidebarPosition: 'left' | 'right';
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
-    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' | 'date-desc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
     sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
     tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
@@ -2669,6 +2669,9 @@ class HighlightSettingTab extends PluginSettingTab {
                                 await this.plugin.saveSettings();
                                 // Re-scan all files to apply new exclusions
                                 this.plugin.scanAllFilesForHighlights();
+                                // Refresh sidebar to update tasks from newly included/excluded files
+                                // (invalidates task cache and re-renders)
+                                this.plugin.refreshSidebar();
                             }
                         );
                         modal.open();
