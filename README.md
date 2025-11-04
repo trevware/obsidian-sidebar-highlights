@@ -1,6 +1,6 @@
 # Sidebar Highlights
 
-Simplify and streamline how you work with highlights and comments in Obsidian. This plugin helps you capture, organize, and navigate your thoughts across your entire vault with advanced search capabilities and a flexible comment system.
+Simplify and streamline how you work with highlights, comments, and tasks in Obsidian. This plugin helps you capture, organize, and navigate your thoughts across your entire vault with advanced search capabilities, a flexible comment system, and comprehensive task management.
 
 <p align="center">
   <picture>
@@ -9,16 +9,26 @@ Simplify and streamline how you work with highlights and comments in Obsidian. T
 </p>
 
 ### **Flexible Comment System using Obsidian's Footnote Syntax**
-- **Standard comments**: `==highlight==[^1]` with `[^1]: Your comment` 
+- **Standard comments**: `==highlight==[^1]` with `[^1]: Your comment`
 - **Inline comments**: `==highlight==^[immediate comment]`
 - **Native Obsidian comments**: `%%standalone comment%%` will also appear in the sidebar
 - **Mixed commenting**: Combine different comment types on the same highlight
 
+### **Comprehensive Task Management**
+- **Smart task detection** automatically scans vault for all tasks (`- [ ]` and `- [x]`)
+- **Natural language dates** like "tomorrow", "next Monday", or "+3d" for due dates
+- **Intelligent grouping** by due date with contextual labels (Today, Tomorrow, day names, months, years)
+- **Task filtering** by completion status, flagged tasks, or due dates (Overdue, Due Today, etc.)
+- **Task context** shows indented content and sub-bullets below tasks
+- **Flag tasks** for priority marking and quick filtering
+
 ### **Visual Organization**
-- **Smart grouping** by color, date, folder, collection, or filename
+- **Smart grouping** by color, date, folder, collection, filename, or due date
 - **Collections system** to organize highlights across multiple files
+- **Display modes** to save and restore different display configurations
 - **Clean sidebar interface** with optional toolbar and action hiding
 - **Color-coded highlights**: Gold, Red, Teal, Blue, and Green
+- **International support**: Full Chinese (Simplified) localization
 
 ### **Seamless Integration**
 - **Works directly with Obsidian's markdown syntax** - no custom formats required
@@ -95,22 +105,45 @@ The search bar supports powerful queries:
 
 ### Using the Sidebar
 
-2. **Navigate**: Three tabs available:
+2. **Navigate**: Four tabs available:
    - **Current Note**: See highlights from active file
    - **All Notes**: Browse your entire vault
    - **Collections**: Organized highlight groups
-3. **Click to jump**: Any highlight takes you directly to its location
+   - **Tasks**: Manage tasks from across your vault (enable in Settings)
+3. **Click to jump**: Any highlight or task takes you directly to its location
 4. **Search & filter**: Use the powerful search and filter options
-5. **Group & organize**: Sort by color, date, folder, or collection
+5. **Group & organize**: Sort by color, date, folder, collection, or due date
 
 ### Collections - Organize Highlights Across Files
 
 Collections help you group related highlights from different notes:
 
 1. **Create**: Go to Collections tab → "New Collection"
-2. **Add highlights**: Click the collection button on any highlight 
+2. **Add highlights**: Click the collection button on any highlight
 3. **Browse**: Click collection cards to see contents
 4. **Quick access**: Use Command Palette → "Go to [Collection Name]"
+
+### Tasks - Manage Your To-Dos
+
+The Tasks tab provides a unified view of all tasks in your vault:
+
+1. **Enable**: Go to Settings → Views → Show Tasks tab
+2. **Add dates**: Click the calendar icon to set due dates with natural language ("tomorrow", "next week", etc.)
+3. **Flag tasks**: Mark important tasks for quick filtering
+4. **Group by date**: Organize tasks with smart labels (Today, Tomorrow, day names, month names, years)
+5. **Filter**: Show only overdue, due today, flagged, or incomplete tasks
+6. **Click to edit**: Any task takes you directly to its location in the file
+
+**Pro tip**: Tasks automatically show their context (indented content below them) for better understanding.
+
+### Display Modes - Save Your View Preferences
+
+Display Modes let you save and quickly switch between different display configurations:
+
+1. **Save a mode**: Set up your preferred view → Settings → Display Modes → Save Current Display
+2. **Apply modes**: Use the Command Palette → "Apply display mode: [Mode Name]"
+3. **Update modes**: Make changes and update existing modes with new settings
+4. **Quick switching**: Perfect for different workflows (Reading Mode, Full View, etc.)
 
 ### Color Your Highlights
 
@@ -134,16 +167,30 @@ Collections help you group related highlights from different notes:
 
 Access plugin settings via **Settings** → **Sidebar Highlights**:
 
+**Display:**
 - **Use inline footnotes by default**: Toggle between footnote styles
 - **Hide toolbar/actions**: Clean up the interface
 - **Show timestamps**: Display creation times on highlights
 - **Show filenames**: Show note titles in multi-file views
+
+**Views:**
+- **Show Tasks tab**: Enable the Tasks tab in the sidebar
+
+**Tasks:**
+- **Show completed tasks**: Toggle visibility of completed tasks
+- **Show task context**: Display indented content below tasks
+- **Task date format**: Choose how dates appear (YYYY-MM-DD, MM/DD/YYYY, etc.)
+
+**Display Modes:**
+- **Save current display**: Create named presets for different viewing configurations
+- **Manage modes**: Update, rename, or delete existing display modes
 
 ## Keyboard Shortcuts & Commands
 
 - **Toggle sidebar**: Open/close the highlights panel
 - **Create highlight**: Convert selected text to highlight
 - **Go to [Collection]**: Jump directly to specific collections
+- **Apply display mode**: Quickly switch between saved display configurations
 
 *Tip: Set custom hotkeys in Obsidian's Hotkeys settings*
 
@@ -153,6 +200,9 @@ Access plugin settings via **Settings** → **Sidebar Highlights**:
 - **Take advantage of search**: Use `(#urgent OR #important) AND -#completed` for complex filtering
 - **Color coding system**: Develop your own color meanings for consistent organization
 - **Collection workflows**: Create collections for projects, topics, or review cycles
+- **Natural language dates**: Use "tomorrow", "next Monday", "+3d", or "in 2 weeks" for quick task scheduling
+- **Display modes for workflows**: Save different modes for reading, reviewing, or editing sessions
+- **Smart date grouping**: Group tasks by due date to see what's coming up (Today, Tomorrow, day names, months)
 
 ## Troubleshooting & FAQ
 
@@ -161,6 +211,9 @@ A: PDF highlights aren't supported.
 
 **Q: Why can't I jump to highlights from within Reading View?**
 A: Jumping to highlights from within Reading View is not currently supported.
+
+**Q: Where is the Tasks tab?**
+A: The Tasks tab is hidden by default. Enable it in Settings → Views → Show Tasks tab.
 
 ### Need More Help?
 
