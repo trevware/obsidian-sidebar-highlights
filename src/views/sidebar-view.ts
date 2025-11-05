@@ -30,6 +30,9 @@ export class HighlightsSidebarView extends ItemView {
     private selectedTags: Set<string> = new Set();
     private selectedCollections: Set<string> = new Set();
     private selectedSpecialFilters: Set<string> = new Set(); // For task special filters (Flagged, Upcoming, etc.)
+    private selectedHighlightIds: Set<string> = new Set(); // Multi-select for highlights
+    private actionsButton: HTMLElement | null = null; // Actions menu button for multi-select
+    private collectionNavButton: HTMLElement | null = null; // Collection navigation button
     private viewMode: 'current' | 'all' | 'collections' | 'tasks' = 'current';
     private currentCollectionId: string | null = null;
     private taskManager: TaskManager;
@@ -55,6 +58,8 @@ export class HighlightsSidebarView extends ItemView {
 
     private isColorChanging: boolean = false;
     private searchExpanded: boolean = false;
+    private isRenderingTasks: boolean = false; // Guard to prevent concurrent task renders
+    private recentlyMovedTaskId: string | null = null; // Track task that was just moved for flash animation
     private searchButton!: HTMLElement;
     private simpleSearchManager!: SimpleSearchManager;
     private currentSearchTokens: SearchToken[] = [];
@@ -131,7 +136,10 @@ export class HighlightsSidebarView extends ItemView {
             groupingMode: this.groupingMode,
             sortMode: this.sortMode,
             commentsExpanded: this.commentsExpanded,
-            searchExpanded: this.searchExpanded
+            searchExpanded: this.searchExpanded,
+            selectedTags: Array.from(this.selectedTags),
+            selectedCollections: Array.from(this.selectedCollections),
+            selectedSpecialFilters: Array.from(this.selectedSpecialFilters)
         };
 
         this.plugin.saveSettings();
@@ -149,6 +157,11 @@ export class HighlightsSidebarView extends ItemView {
             this.sortMode = tabSettings.sortMode;
             this.commentsExpanded = tabSettings.commentsExpanded;
             this.searchExpanded = tabSettings.searchExpanded ?? false;
+
+            // Restore filter selections
+            this.selectedTags = new Set(tabSettings.selectedTags || []);
+            this.selectedCollections = new Set(tabSettings.selectedCollections || []);
+            this.selectedSpecialFilters = new Set(tabSettings.selectedSpecialFilters || []);
         } else {
             // Use defaults for this tab type
             const defaults = this.getDefaultTabSettings(viewMode);
@@ -156,6 +169,11 @@ export class HighlightsSidebarView extends ItemView {
             this.sortMode = defaults.sortMode;
             this.commentsExpanded = defaults.commentsExpanded;
             this.searchExpanded = defaults.searchExpanded;
+
+            // Clear filters for new tabs
+            this.selectedTags.clear();
+            this.selectedCollections.clear();
+            this.selectedSpecialFilters.clear();
         }
 
         // Update UI button states if they exist
@@ -654,13 +672,13 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             // Add collection navigation button (New Collection / Back to Collections)
-            const collectionNavButton = searchContainer.createEl('button', {
+            this.collectionNavButton = searchContainer.createEl('button', {
                 cls: 'highlights-group-button'
             });
-            setTooltip(collectionNavButton, 'Collection Navigation');
-            this.updateCollectionNavButton(collectionNavButton);
-            
-            collectionNavButton.addEventListener('click', () => {
+            setTooltip(this.collectionNavButton, 'Collection Navigation');
+            this.updateCollectionNavButton(this.collectionNavButton);
+
+            this.collectionNavButton.addEventListener('click', () => {
                 if (this.viewMode === 'collections' && this.currentCollectionId) {
                     // Back to collections
                     this.currentCollectionId = null;
@@ -669,6 +687,18 @@ export class HighlightsSidebarView extends ItemView {
                     // New collection
                     this.showNewCollectionDialog();
                 }
+            });
+
+            // Add Actions button for multi-select (initially hidden)
+            this.actionsButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button'
+            });
+            setTooltip(this.actionsButton, t('toolbar.actions'));
+            setIcon(this.actionsButton, 'ellipsis');
+            this.actionsButton.style.display = 'none'; // Hidden by default
+
+            this.actionsButton.addEventListener('click', (event) => {
+                this.showActionsMenu(event);
             });
 
             // Create search input container (initially hidden)
@@ -762,10 +792,8 @@ export class HighlightsSidebarView extends ItemView {
                     if (collectionsTab) collectionsTab.classList.remove('active');
                     if (tasksTab) tasksTab.classList.remove('active');
                     this.viewMode = 'current';
-                    this.restoreTabSettings('current'); // Restore tab-specific settings
-                    this.selectedTags.clear();
-                    this.selectedCollections.clear();
-                    this.selectedSpecialFilters.clear();
+                    this.clearSelection(); // Clear multi-select when switching tabs
+                    this.restoreTabSettings('current'); // Restore tab-specific settings (including filters)
                     this.updateContent(); // Content update instead of full rebuild
                 }
             });
@@ -779,10 +807,8 @@ export class HighlightsSidebarView extends ItemView {
                     if (collectionsTab) collectionsTab.classList.remove('active');
                     if (tasksTab) tasksTab.classList.remove('active');
                     this.viewMode = 'all';
-                    this.restoreTabSettings('all'); // Restore tab-specific settings
-                    this.selectedTags.clear();
-                    this.selectedCollections.clear();
-                    this.selectedSpecialFilters.clear();
+                    this.clearSelection(); // Clear multi-select when switching tabs
+                    this.restoreTabSettings('all'); // Restore tab-specific settings (including filters)
                     this.updateContent(); // Content update instead of full rebuild
                 }
             });
@@ -796,11 +822,9 @@ export class HighlightsSidebarView extends ItemView {
                     if (allNotesTab) allNotesTab.classList.remove('active');
                     if (tasksTab) tasksTab.classList.remove('active');
                     this.viewMode = 'collections';
-                    this.restoreTabSettings('collections'); // Restore tab-specific settings
+                    this.clearSelection(); // Clear multi-select when switching tabs
+                    this.restoreTabSettings('collections'); // Restore tab-specific settings (including filters)
                     this.currentCollectionId = null;
-                    this.selectedTags.clear();
-                    this.selectedCollections.clear();
-                    this.selectedSpecialFilters.clear();
                     this.updateContent(); // Content update instead of full rebuild
                 }
             });
@@ -814,10 +838,8 @@ export class HighlightsSidebarView extends ItemView {
                     if (allNotesTab) allNotesTab.classList.remove('active');
                     if (collectionsTab) collectionsTab.classList.remove('active');
                     this.viewMode = 'tasks';
-                    this.restoreTabSettings('tasks'); // Restore tab-specific settings
-                    this.selectedTags.clear();
-                    this.selectedCollections.clear();
-                    this.selectedSpecialFilters.clear();
+                    this.clearSelection(); // Clear multi-select when switching tabs
+                    this.restoreTabSettings('tasks'); // Restore tab-specific settings (including filters)
                     this.updateContent(); // Content update instead of full rebuild
                 }
             });
@@ -829,7 +851,6 @@ export class HighlightsSidebarView extends ItemView {
         // Register vault events for task auto-updates
         this.registerEvent(
             this.app.vault.on('modify', async (file) => {
-                console.log('[DEBUG] vault.modify event - file:', file.path, 'viewMode:', this.viewMode);
                 if (file instanceof TFile && this.viewMode === 'tasks') {
                     // Get current content
                     const newContent = await this.app.vault.cachedRead(file);
@@ -841,10 +862,7 @@ export class HighlightsSidebarView extends ItemView {
                     // Check if tasks have actually changed
                     const tasksChanged = this.haveTasksChanged(oldContent, newContent);
 
-                    console.log('[DEBUG] Tasks changed:', tasksChanged);
-
                     if (tasksChanged) {
-                        console.log('[DEBUG] Tasks modified, debouncing renderContent for 1000ms');
                         // Update cache with new task content
                         this.fileTaskCache.set(file.path, this.extractTaskLines(newContent));
 
@@ -853,8 +871,6 @@ export class HighlightsSidebarView extends ItemView {
                             window.clearTimeout(this.taskRefreshTimeout);
                         }
                         this.taskRefreshTimeout = window.setTimeout(async () => {
-                            console.log('[DEBUG] Task refresh timeout expired, updating tasks for file:', file.path);
-
                             // Only re-scan the modified file, not all files
                             if (this.cachedAllTasks) {
                                 // Remove old tasks from this file
@@ -869,8 +885,6 @@ export class HighlightsSidebarView extends ItemView {
 
                                 // Add the new tasks from this file
                                 this.cachedAllTasks.push(...newFileTasks);
-
-                                console.log('[DEBUG] Updated', newFileTasks.length, 'tasks from', file.path);
                             } else {
                                 // No cache yet, clear it to trigger full scan
                                 this.cachedAllTasks = null;
@@ -879,8 +893,6 @@ export class HighlightsSidebarView extends ItemView {
                             // Re-render with updated cache (no full rescan!)
                             this.renderContent();
                         }, 1000); // 1 second - consistent with highlight detection debounce
-                    } else {
-                        console.log('[DEBUG] Skipping task refresh - no task changes detected');
                     }
                 }
             })
@@ -894,7 +906,6 @@ export class HighlightsSidebarView extends ItemView {
                     const tasks = this.extractTaskLines(content);
 
                     if (tasks.length > 0) {
-                        console.log('[DEBUG] New file has tasks, debouncing refresh');
                         // Initialize cache for this file
                         this.fileTaskCache.set(file.path, tasks);
                         this.cachedAllTasks = null;
@@ -930,14 +941,13 @@ export class HighlightsSidebarView extends ItemView {
         );
 
         this.registerEvent(
-            this.app.vault.on('rename', (file, oldPath) => {
+            this.app.vault.on('rename', async (file, oldPath) => {
                 if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Update cache key for renamed file
-                    const oldTasks = this.fileTaskCache.get(oldPath);
-                    if (oldTasks) {
-                        this.fileTaskCache.delete(oldPath);
-                        this.fileTaskCache.set(file.path, oldTasks);
-                    }
+                    // Update cache for renamed file
+                    this.fileTaskCache.delete(oldPath);
+                    // Re-extract tasks from the file with new path
+                    const content = await this.app.vault.cachedRead(file);
+                    this.fileTaskCache.set(file.path, this.extractTaskLines(content));
                     this.cachedAllTasks = null;
 
                     // Debounce to avoid excessive re-renders during bulk operations
@@ -1011,7 +1021,6 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     refresh() {
-        console.log('[DEBUG] sidebar-view refresh() called');
         this.selectedTags.clear();
         this.selectedSpecialFilters.clear();
         // Invalidate task cache on refresh (settings may have changed)
@@ -1022,8 +1031,7 @@ export class HighlightsSidebarView extends ItemView {
         // Preserve current view mode and collection state
         const currentViewMode = this.viewMode;
         const currentCollectionId = this.currentCollectionId;
-        console.log('[DEBUG] refresh() - preserving viewMode:', currentViewMode);
-        
+
         // If we're in the middle of highlighting focus or color change, preserve that scroll position instead
         const shouldUseHighlightScroll = this.isHighlightFocusing || this.isColorChanging;
         const highlightScrollPosition = this.preservedScrollTop;
@@ -1174,9 +1182,6 @@ export class HighlightsSidebarView extends ItemView {
      * Use for: file switches, search changes, bulk content updates
      */
     public updateContent() {
-        console.log('[DEBUG] sidebar-view updateContent() called');
-        console.trace('[DEBUG] updateContent() call stack');
-
         // Simplified: just use renderContent() which handles all view modes properly with consistent grouping
         // The performance benefit of the old populate methods was minimal compared to the maintenance burden
         this.renderContent();
@@ -1227,9 +1232,6 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private renderContent() {
-        console.log('[DEBUG] sidebar-view renderContent() called - viewMode:', this.viewMode);
-        console.trace('[DEBUG] renderContent() call stack');
-
         // Capture scroll position before DOM rebuild
         this.captureScrollPosition();
 
@@ -1250,9 +1252,8 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // Update the collection navigation button when view changes
-        const collectionNavButton = this.contentEl.querySelector('.highlights-search-container button:last-of-type') as HTMLElement;
-        if (collectionNavButton) {
-            this.updateCollectionNavButton(collectionNavButton);
+        if (this.collectionNavButton) {
+            this.updateCollectionNavButton(this.collectionNavButton);
         }
 
         // Restore scroll position after DOM rebuild
@@ -1361,171 +1362,205 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private async renderTasksView() {
-        // Capture scroll position before DOM rebuild
-        this.captureScrollPosition();
-
-        // Preserve collapsed sections state from DOM before clearing
-        this.preserveCollapsedSections();
-
-        this.contentAreaEl.empty();
-
-        // Create the standard list container
-        this.listContainerEl = this.contentAreaEl.createDiv({
-            cls: 'highlights-list tasks-container'
-        });
-
-        let allTasks: Task[];
-
-        // Use cached tasks if available, otherwise scan
-        if (this.cachedAllTasks !== null) {
-            allTasks = this.cachedAllTasks;
-        } else {
-            // Show loading state only when actually scanning
-            const loadingEl = this.listContainerEl.createDiv({ cls: 'task-loading' });
-            loadingEl.textContent = t('emptyStates.loadingTasks');
-
-            // Scan all tasks (always include completed for accurate progress calculation)
-            allTasks = await this.taskManager.scanAllTasks(
-                true, // Always scan completed tasks for progress calculation
-                this.plugin.settings.showTaskContext // Show context based on settings
-            );
-
-            // Cache the scanned tasks
-            this.cachedAllTasks = allTasks;
-
-            // Populate task cache for each file with tasks
-            // This provides baseline for future comparisons
-            // Read actual file content to capture tasks with context
-            this.fileTaskCache.clear();
-            const uniqueFilePaths = new Set(allTasks.map(t => t.filePath));
-            for (const filePath of uniqueFilePaths) {
-                const file = this.app.vault.getAbstractFileByPath(filePath);
-                if (file instanceof TFile) {
-                    const content = await this.app.vault.cachedRead(file);
-                    const taskBlocks = this.extractTaskLines(content);
-                    this.fileTaskCache.set(filePath, taskBlocks);
-                }
-            }
-
-            // Remove loading state
-            loadingEl.remove();
+        // Guard against concurrent renders (prevents task duplication when grouping is enabled)
+        if (this.isRenderingTasks) {
+            return;
         }
+        this.isRenderingTasks = true;
 
-        // Filter by completion status if needed
-        let tasks = allTasks;
-        if (!this.plugin.settings.showCompletedTasks) {
-            tasks = allTasks.filter(task => !task.completed);
-        }
+        try {
+            // Capture scroll position before DOM rebuild
+            this.captureScrollPosition();
 
-        // Store tasks for later use
-        this.currentTasks = tasks;
+            // Preserve collapsed sections state from DOM before clearing
+            this.preserveCollapsedSections();
 
-        // Filter tasks by search term if present
-        const searchTerm = this.getSearchTerm();
-        let filteredTasks = tasks;
-        if (searchTerm && searchTerm.length > 0) {
-            filteredTasks = tasks.filter(task =>
-                task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.filePath.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-        }
+            this.contentAreaEl.empty();
 
-        // Filter tasks by selected tags if present
-        if (this.selectedTags.size > 0) {
-            filteredTasks = filteredTasks.filter(task => {
-                // Extract tags from task text using regex
-                const tagRegex = /#([a-zA-Z0-9_-]+)/g;
-                const taskTags: string[] = [];
-                let match;
-                while ((match = tagRegex.exec(task.text)) !== null) {
-                    taskTags.push(match[1]);
-                }
-
-                // Check if any selected tag matches any task tag
-                return Array.from(this.selectedTags).some(selectedTag =>
-                    taskTags.includes(selectedTag)
-                );
+            // Create the standard list container
+            this.listContainerEl = this.contentAreaEl.createDiv({
+                cls: 'highlights-list tasks-container'
             });
-        }
 
-        // Filter tasks by selected special filters if present
-        if (this.selectedSpecialFilters.size > 0) {
-            filteredTasks = filteredTasks.filter(task => {
-                const today = moment().startOf('day');
+            let allTasks: Task[];
 
-                // Check each selected special filter
-                return Array.from(this.selectedSpecialFilters).every(filterId => {
-                    switch (filterId) {
-                        case 'flagged':
-                            return task.flagged;
-
-                        case 'upcoming':
-                            if (!task.date) return false;
-                            const upcomingDate = moment(task.date, 'YYYY-MM-DD');
-                            return upcomingDate.isAfter(today);
-
-                        case 'completed':
-                            return task.completed;
-
-                        case 'incomplete':
-                            return !task.completed;
-
-                        case 'due-today':
-                            if (!task.date) return false;
-                            const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
-                            return dueTodayDate.isSame(today, 'day');
-
-                        case 'overdue':
-                            if (!task.date) return false;
-                            const overdueDate = moment(task.date, 'YYYY-MM-DD');
-                            return overdueDate.isBefore(today) && !task.completed;
-
-                        case 'no-date':
-                            return !task.date;
-
-                        default:
-                            return true;
-                    }
-                });
-            });
-        }
-
-        // Render tasks
-        if (filteredTasks.length === 0) {
-            const hasActiveFilters = (searchTerm && searchTerm.length > 0) || this.selectedTags.size > 0 || this.selectedSpecialFilters.size > 0;
-            this.taskRenderer.createEmptyState(
-                this.listContainerEl,
-                hasActiveFilters ? t('emptyStates.noMatchingTasks') : t('emptyStates.noTasksAcrossAll')
-            );
-        } else {
-            if (this.groupingMode === 'none') {
-                // Sort tasks
-                const sortedTasks = filteredTasks.sort((a, b) => {
-                    // Apply alphabetical sorting if enabled
-                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                        const textA = a.text.toLowerCase();
-                        const textB = b.text.toLowerCase();
-                        const comparison = textA.localeCompare(textB);
-                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                    }
-
-                    // Default: sort by file path, then by line number
-                    if (a.filePath !== b.filePath) {
-                        return a.filePath.localeCompare(b.filePath);
-                    }
-                    return a.lineNumber - b.lineNumber;
-                });
-
-                // Use pagination for performance
-                this.renderTasksWithPagination(sortedTasks, searchTerm);
+            // Use cached tasks if available, otherwise scan
+            if (this.cachedAllTasks !== null) {
+                allTasks = this.cachedAllTasks;
             } else {
-                // Render grouped tasks (pass allTasks for progress calculation)
-                this.renderGroupedTasks(filteredTasks, searchTerm, allTasks);
-            }
-        }
+                // Show loading state only when actually scanning
+                const loadingEl = this.listContainerEl.createDiv({ cls: 'task-loading' });
+                loadingEl.textContent = t('emptyStates.loadingTasks');
 
-        // Restore scroll position after DOM rebuild
-        this.restoreScrollPosition();
+                // Scan all tasks (always include completed for accurate progress calculation)
+                allTasks = await this.taskManager.scanAllTasks(
+                    true, // Always scan completed tasks for progress calculation
+                    this.plugin.settings.showTaskContext // Show context based on settings
+                );
+
+                // Cache the scanned tasks
+                this.cachedAllTasks = allTasks;
+
+                // Populate task cache for each file with tasks
+                // This provides baseline for future comparisons
+                // Read actual file content to capture tasks with context
+                this.fileTaskCache.clear();
+                const uniqueFilePaths = new Set(allTasks.map(t => t.filePath));
+                for (const filePath of uniqueFilePaths) {
+                    const file = this.app.vault.getAbstractFileByPath(filePath);
+                    if (file instanceof TFile) {
+                        const content = await this.app.vault.cachedRead(file);
+                        const taskBlocks = this.extractTaskLines(content);
+                        this.fileTaskCache.set(filePath, taskBlocks);
+                    }
+                }
+
+                // Remove loading state
+                loadingEl.remove();
+            }
+
+            // Filter by completion status if needed
+            let tasks = allTasks;
+            if (!this.plugin.settings.showCompletedTasks) {
+                tasks = allTasks.filter(task => !task.completed);
+            }
+
+            // Store tasks for later use
+            this.currentTasks = tasks;
+
+            // Filter tasks by search term if present
+            const searchTerm = this.getSearchTerm();
+            let filteredTasks = tasks;
+            if (searchTerm && searchTerm.length > 0) {
+                filteredTasks = tasks.filter(task =>
+                    task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    task.filePath.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+            }
+
+            // Filter tasks by selected tags if present
+            if (this.selectedTags.size > 0) {
+                filteredTasks = filteredTasks.filter(task => {
+                    // Extract tags from task text using regex
+                    const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+                    const taskTags: string[] = [];
+                    let match;
+                    while ((match = tagRegex.exec(task.text)) !== null) {
+                        taskTags.push(match[1]);
+                    }
+
+                    // Check if any selected tag matches any task tag
+                    return Array.from(this.selectedTags).some(selectedTag =>
+                        taskTags.includes(selectedTag)
+                    );
+                });
+            }
+
+            // Filter tasks by selected special filters if present
+            if (this.selectedSpecialFilters.size > 0) {
+                filteredTasks = filteredTasks.filter(task => {
+                    const today = moment().startOf('day');
+
+                    // Check each selected special filter
+                    return Array.from(this.selectedSpecialFilters).every(filterId => {
+                        switch (filterId) {
+                            case 'flagged':
+                                return task.flagged;
+
+                            case 'upcoming':
+                                if (!task.date) return false;
+                                const upcomingDate = moment(task.date, 'YYYY-MM-DD');
+                                return upcomingDate.isAfter(today);
+
+                            case 'completed':
+                                return task.completed;
+
+                            case 'incomplete':
+                                return !task.completed;
+
+                            case 'due-today':
+                                if (!task.date) return false;
+                                const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
+                                return dueTodayDate.isSame(today, 'day');
+
+                            case 'overdue':
+                                if (!task.date) return false;
+                                const overdueDate = moment(task.date, 'YYYY-MM-DD');
+                                return overdueDate.isBefore(today) && !task.completed;
+
+                            case 'no-date':
+                                return !task.date;
+
+                            default:
+                                return true;
+                        }
+                    });
+                });
+            }
+
+            // Render tasks
+            if (filteredTasks.length === 0) {
+                const hasActiveFilters = (searchTerm && searchTerm.length > 0) || this.selectedTags.size > 0 || this.selectedSpecialFilters.size > 0;
+                this.taskRenderer.createEmptyState(
+                    this.listContainerEl,
+                    hasActiveFilters ? t('emptyStates.noMatchingTasks') : t('emptyStates.noTasksAcrossAll')
+                );
+            } else {
+                if (this.groupingMode === 'none') {
+                    // Sort tasks
+                    const sortedTasks = filteredTasks.sort((a, b) => {
+                        // Apply alphabetical sorting if enabled
+                        if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                            const textA = a.text.toLowerCase();
+                            const textB = b.text.toLowerCase();
+                            const comparison = textA.localeCompare(textB);
+                            return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
+                        }
+
+                        // Default: sort by file path, then by line number
+                        if (a.filePath !== b.filePath) {
+                            return a.filePath.localeCompare(b.filePath);
+                        }
+                        return a.lineNumber - b.lineNumber;
+                    });
+
+                    // Use pagination for performance
+                    this.renderTasksWithPagination(sortedTasks, searchTerm);
+                } else {
+                    // Render grouped tasks (pass allTasks for progress calculation)
+                    this.renderGroupedTasks(filteredTasks, searchTerm, allTasks);
+                }
+            }
+
+            // Restore scroll position after DOM rebuild
+            this.restoreScrollPosition();
+
+            // Apply flash animation to recently moved task
+            if (this.recentlyMovedTaskId) {
+                this.applyTaskFlashAnimation(this.recentlyMovedTaskId);
+                this.recentlyMovedTaskId = null;
+            }
+        } finally {
+            // Always reset the guard flag, even if an error occurs
+            this.isRenderingTasks = false;
+        }
+    }
+
+    /**
+     * Apply a brief flash animation to a task that was just moved
+     */
+    private applyTaskFlashAnimation(taskId: string) {
+        // Wait for next frame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            const taskElement = this.listContainerEl.querySelector(`[data-task-id="${taskId}"]`) as HTMLElement;
+            if (taskElement) {
+                taskElement.addClass('task-flash');
+                // Remove class after animation completes
+                setTimeout(() => {
+                    taskElement.removeClass('task-flash');
+                }, 600); // Match CSS animation duration
+            }
+        });
     }
 
     private renderGroupedTasks(tasks: Task[], searchTerm?: string, allTasks?: Task[]) {
@@ -1705,8 +1740,8 @@ export class HighlightsSidebarView extends ItemView {
                         onFileNameClick: (filePath, event) => {
                             this.plugin.app.workspace.openLinkText(filePath, '');
                         },
-                        onFlagToggle: async (task) => {
-                            await this.handleFlagToggle(task);
+                        onFlagToggle: async (task, event) => {
+                            await this.handleFlagToggle(task, event);
                         },
                         onCalendarToggle: async (task) => {
                             await this.handleCalendarToggle(task);
@@ -2319,14 +2354,168 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
-    private async handleFlagToggle(task: Task) {
-        try {
-            await this.taskManager.toggleTaskFlag(task);
-            new Notice('Flag toggled');
-            // Don't call renderTasksView() - file modification will trigger automatic refresh
-        } catch (error) {
-            new Notice(`Failed to toggle flag: ${error.message}`);
+    private async handleFlagToggle(task: Task, event?: MouseEvent) {
+        const menu = new Menu();
+
+        // Priority 1 - Red/High
+        menu.addItem((item) =>
+            item
+                .setTitle('Priority 1 (High)')
+                .setIcon('flag')
+                .onClick(async () => {
+                    try {
+                        // Optimistic UI update
+                        this.updateTaskPriorityInCache(task, 1);
+                        this.renderContent();
+
+                        // Then update the file
+                        await this.taskManager.setTaskPriority(task, 1);
+                        new Notice('Priority set to 1 (High)');
+                    } catch (error) {
+                        new Notice(`Failed to set priority: ${error.message}`);
+                        // Revert on error
+                        this.cachedAllTasks = null;
+                        this.renderContent();
+                    }
+                })
+        );
+
+        // Priority 2 - Yellow/Medium
+        menu.addItem((item) =>
+            item
+                .setTitle('Priority 2 (Medium)')
+                .setIcon('flag')
+                .onClick(async () => {
+                    try {
+                        // Optimistic UI update
+                        this.updateTaskPriorityInCache(task, 2);
+                        this.renderContent();
+
+                        // Then update the file
+                        await this.taskManager.setTaskPriority(task, 2);
+                        new Notice('Priority set to 2 (Medium)');
+                    } catch (error) {
+                        new Notice(`Failed to set priority: ${error.message}`);
+                        // Revert on error
+                        this.cachedAllTasks = null;
+                        this.renderContent();
+                    }
+                })
+        );
+
+        // Priority 3 - Blue/Low
+        menu.addItem((item) =>
+            item
+                .setTitle('Priority 3 (Low)')
+                .setIcon('flag')
+                .onClick(async () => {
+                    try {
+                        // Optimistic UI update
+                        this.updateTaskPriorityInCache(task, 3);
+                        this.renderContent();
+
+                        // Then update the file
+                        await this.taskManager.setTaskPriority(task, 3);
+                        new Notice('Priority set to 3 (Low)');
+                    } catch (error) {
+                        new Notice(`Failed to set priority: ${error.message}`);
+                        // Revert on error
+                        this.cachedAllTasks = null;
+                        this.renderContent();
+                    }
+                })
+        );
+
+        // Remove priority
+        if (task.priority) {
+            menu.addSeparator();
+            menu.addItem((item) =>
+                item
+                    .setTitle('Remove priority')
+                    .setIcon('flag-off')
+                    .onClick(async () => {
+                        try {
+                            // Optimistic UI update
+                            this.updateTaskPriorityInCache(task, null);
+                            this.renderContent();
+
+                            // Then update the file
+                            await this.taskManager.setTaskPriority(task, null);
+                            new Notice('Priority removed');
+                        } catch (error) {
+                            new Notice(`Failed to remove priority: ${error.message}`);
+                            // Revert on error
+                            this.cachedAllTasks = null;
+                            this.renderContent();
+                        }
+                    })
+            );
         }
+
+        if (event) {
+            menu.showAtMouseEvent(event);
+        } else {
+            menu.showAtPosition({ x: 0, y: 0 });
+        }
+    }
+
+    /**
+     * Update task priority in cache for optimistic UI updates
+     */
+    private updateTaskPriorityInCache(task: Task, priority: 1 | 2 | 3 | null) {
+        if (this.cachedAllTasks) {
+            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
+            if (cachedTask) {
+                cachedTask.priority = priority ?? undefined;
+                cachedTask.flagged = priority !== null;
+            }
+        }
+
+        // Also update the task object reference directly
+        task.priority = priority ?? undefined;
+        task.flagged = priority !== null;
+    }
+
+    /**
+     * Update task date in cache for optimistic UI updates
+     */
+    private updateTaskDateInCache(task: Task, newDate: string | null, dateText: string | null) {
+        if (this.cachedAllTasks) {
+            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
+            if (cachedTask) {
+                // Save old date text before updating
+                const oldDateText = cachedTask.dateText;
+
+                // Update task text to reflect the change
+                if (oldDateText && cachedTask.text.includes(oldDateText)) {
+                    // Remove old date from text
+                    cachedTask.text = cachedTask.text.replace(oldDateText, '').trim();
+                }
+                if (dateText && newDate) {
+                    // Add new date to beginning of text
+                    cachedTask.text = `${dateText} ${cachedTask.text}`.trim();
+                }
+
+                // Update date properties AFTER modifying text
+                cachedTask.date = newDate ?? undefined;
+                cachedTask.dateText = dateText ?? undefined;
+            }
+        }
+
+        // Also update the task object reference directly
+        const oldDateText = task.dateText;
+
+        // Update task text
+        if (oldDateText && task.text.includes(oldDateText)) {
+            task.text = task.text.replace(oldDateText, '').trim();
+        }
+        if (dateText && newDate) {
+            task.text = `${dateText} ${task.text}`.trim();
+        }
+
+        // Update date properties AFTER modifying text
+        task.date = newDate ?? undefined;
+        task.dateText = dateText ?? undefined;
     }
 
     private async handleCalendarToggle(task: Task) {
@@ -2340,12 +2529,29 @@ export class HighlightsSidebarView extends ItemView {
                 task.dateText || '',
                 async (newDate) => {
                     try {
+                        // Parse date to ISO format for optimistic update
+                        let isoDate: string | null = null;
+                        if (newDate) {
+                            const parsedDate = moment(newDate, dateFormat, true);
+                            if (parsedDate.isValid()) {
+                                isoDate = parsedDate.format('YYYY-MM-DD');
+                            }
+                        }
+
+                        // Optimistic UI update
+                        this.updateTaskDateInCache(task, isoDate, newDate);
+                        this.recentlyMovedTaskId = task.id; // Mark for flash animation
+                        this.renderContent();
+
+                        // Then update the file
                         await this.taskManager.updateTaskDate(task, newDate);
                         new Notice(newDate ? 'Date updated' : 'Date removed');
-                        // Invalidate cache - file modification will trigger automatic refresh
-                        this.cachedAllTasks = null;
                     } catch (error) {
                         new Notice(`Failed to update date: ${error.message}`);
+                        // Revert on error
+                        this.cachedAllTasks = null;
+                        this.recentlyMovedTaskId = null;
+                        this.renderContent();
                     }
                 }
             );
@@ -2359,12 +2565,27 @@ export class HighlightsSidebarView extends ItemView {
                 async (newDate) => {
                     if (newDate) {
                         try {
+                            // Parse date to ISO format for optimistic update
+                            const parsedDate = moment(newDate, dateFormat, true);
+                            let isoDate: string | null = null;
+                            if (parsedDate.isValid()) {
+                                isoDate = parsedDate.format('YYYY-MM-DD');
+                            }
+
+                            // Optimistic UI update
+                            this.updateTaskDateInCache(task, isoDate, newDate);
+                            this.recentlyMovedTaskId = task.id; // Mark for flash animation
+                            this.renderContent();
+
+                            // Then update the file
                             await this.taskManager.updateTaskDate(task, newDate);
                             new Notice('Date added');
-                            // Invalidate cache - file modification will trigger automatic refresh
-                            this.cachedAllTasks = null;
                         } catch (error) {
                             new Notice(`Failed to add date: ${error.message}`);
+                            // Revert on error
+                            this.cachedAllTasks = null;
+                            this.recentlyMovedTaskId = null;
+                            this.renderContent();
                         }
                     }
                 }
@@ -3227,6 +3448,184 @@ export class HighlightsSidebarView extends ItemView {
         this.plugin.saveSettings();
     }
 
+    /**
+     * Update Actions button visibility based on selected highlights
+     */
+    private updateActionsButtonVisibility() {
+        if (!this.actionsButton) return;
+
+        if (this.selectedHighlightIds.size > 0) {
+            this.actionsButton.style.display = '';
+        } else {
+            this.actionsButton.style.display = 'none';
+        }
+    }
+
+    /**
+     * Update visual selection state for a specific highlight
+     */
+    private updateHighlightSelectionVisual(highlightId: string) {
+        const highlightEl = this.containerEl.querySelector(`[data-highlight-id="${highlightId}"]`) as HTMLElement;
+        if (!highlightEl) return;
+
+        if (this.selectedHighlightIds.has(highlightId)) {
+            // Add selection styling
+            highlightEl.classList.add('selected', 'highlight-selected');
+            const highlight = this.getHighlightById(highlightId);
+            if (highlight) {
+                const highlightColor = highlight.color || this.plugin.settings.highlightColor;
+                if (!highlight.isNativeComment) {
+                    highlightEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                }
+            }
+        } else {
+            // Remove selection styling
+            highlightEl.classList.remove('selected', 'highlight-selected');
+            highlightEl.style.boxShadow = '';
+        }
+    }
+
+    /**
+     * Clear all selected highlights
+     */
+    private clearSelection() {
+        this.selectedHighlightIds.clear();
+
+        // Remove visual selection from all highlights
+        const selectedEls = this.containerEl.querySelectorAll('.highlight-selected');
+        selectedEls.forEach((el: HTMLElement) => {
+            el.classList.remove('selected', 'highlight-selected');
+            el.style.boxShadow = '';
+        });
+
+        this.updateActionsButtonVisibility();
+    }
+
+    /**
+     * Add all selected highlights to a collection
+     */
+    private addSelectedHighlightsToCollection(collectionId: string) {
+        this.selectedHighlightIds.forEach(highlightId => {
+            this.plugin.collectionsManager.addHighlightToCollection(collectionId, highlightId);
+        });
+        this.dropdownManager.closeActiveDropdown();
+        this.clearSelection();
+        this.renderContent();
+    }
+
+    /**
+     * Remove all selected highlights from a collection
+     */
+    private removeSelectedHighlightsFromCollection(collectionId: string) {
+        this.selectedHighlightIds.forEach(highlightId => {
+            this.plugin.collectionsManager.removeHighlightFromCollection(collectionId, highlightId);
+        });
+        this.dropdownManager.closeActiveDropdown();
+        this.clearSelection();
+        this.renderContent();
+    }
+
+    /**
+     * Show Actions menu for multi-selected highlights
+     */
+    private showActionsMenu(event: MouseEvent) {
+        if (this.selectedHighlightIds.size === 0) return;
+
+        const selectedCount = this.selectedHighlightIds.size;
+        const allCollections = this.plugin.collectionsManager.getAllCollections();
+
+        // Create menu items
+        const menuItems: DropdownItem[] = [];
+
+        // Add to Collection - shows collection picker (disabled if no collections)
+        menuItems.push({
+            text: t('actions.moveToCollection'),
+            icon: 'folder-plus',
+            className: allCollections.length === 0 ? 'highlights-dropdown-item disabled' : undefined,
+            onClick: () => {
+                // Don't execute if no collections
+                if (allCollections.length === 0) return;
+                // Close current dropdown first
+                this.dropdownManager.closeActiveDropdown();
+                // Show collection picker
+                this.showCollectionPickerForAdd(event);
+            }
+        });
+
+        // Remove from Collection - only show collections that contain at least one selected highlight
+        const collectionsWithSelected = allCollections.filter(collection => {
+            return Array.from(this.selectedHighlightIds).some(highlightId =>
+                collection.highlightIds.includes(highlightId)
+            );
+        });
+
+        if (collectionsWithSelected.length > 0) {
+            menuItems.push({
+                text: t('actions.removeFromCollection'),
+                icon: 'folder-minus',
+                onClick: () => {
+                    // Close current dropdown first
+                    this.dropdownManager.closeActiveDropdown();
+                    // Show collection picker for removal
+                    this.showCollectionPickerForRemove(event, collectionsWithSelected);
+                }
+            });
+        }
+
+        menuItems.push({
+            text: '',
+            separator: true
+        });
+
+        // Clear Selection
+        menuItems.push({
+            text: t('actions.clearSelection'),
+            icon: 'x',
+            onClick: () => {
+                this.clearSelection();
+                this.dropdownManager.closeActiveDropdown();
+            }
+        });
+
+        // Show dropdown
+        const targetEl = event.target as HTMLElement;
+        this.dropdownManager.showDropdown(targetEl, menuItems);
+    }
+
+    /**
+     * Show collection picker for adding selected highlights
+     */
+    private showCollectionPickerForAdd(event: MouseEvent) {
+        const allCollections = this.plugin.collectionsManager.getAllCollections();
+
+        const items: DropdownItem[] = allCollections.map(collection => ({
+            text: collection.name,
+            icon: 'folder',
+            onClick: () => {
+                this.addSelectedHighlightsToCollection(collection.id);
+            }
+        }));
+
+        const targetEl = event.target as HTMLElement;
+        this.dropdownManager.showDropdown(targetEl, items);
+    }
+
+    /**
+     * Show collection picker for removing selected highlights
+     */
+    private showCollectionPickerForRemove(event: MouseEvent, collections: Collection[]) {
+        const items: DropdownItem[] = collections.map(collection => ({
+            text: collection.name,
+            icon: 'folder',
+            onClick: () => {
+                this.removeSelectedHighlightsFromCollection(collection.id);
+            }
+        }));
+
+        const targetEl = event.target as HTMLElement;
+        this.dropdownManager.showDropdown(targetEl, items);
+    }
+
     private updateSortButtonState(button: HTMLElement) {
         // Check if date-based grouping is active (sorting doesn't apply)
         const isDateGrouping = this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc';
@@ -3316,7 +3715,22 @@ export class HighlightsSidebarView extends ItemView {
                 });
             },
             onHighlightClick: (highlight, event) => {
-                this.focusHighlightInEditor(highlight, event);
+                // Check if CMD/CTRL key is held for multi-select
+                if (event && (event.metaKey || event.ctrlKey)) {
+                    // Toggle selection
+                    if (this.selectedHighlightIds.has(highlight.id)) {
+                        this.selectedHighlightIds.delete(highlight.id);
+                    } else {
+                        this.selectedHighlightIds.add(highlight.id);
+                    }
+                    // Update visual selection state
+                    this.updateHighlightSelectionVisual(highlight.id);
+                    // Update Actions button visibility
+                    this.updateActionsButtonVisibility();
+                } else {
+                    // Normal click - focus in editor
+                    this.focusHighlightInEditor(highlight, event);
+                }
             },
             onAddComment: async (highlight) => {
                 
@@ -3351,6 +3765,7 @@ export class HighlightsSidebarView extends ItemView {
                 } else {
                     this.selectedTags.add(tag);
                 }
+                this.saveCurrentTabSettings(); // Save filter state
                 this.renderFilteredList();
                 this.showTagActive();
             },
@@ -4845,13 +5260,13 @@ export class HighlightsSidebarView extends ItemView {
         for (const [, fileHighlights] of this.plugin.highlights) {
             allHighlights.push(...fileHighlights);
         }
-        
+
         // Check if any comments are currently expanded globally
         const anyExpanded = this.areCommentsGloballyExpanded();
-        
+
         // If any are expanded, collapse all. If none are expanded, expand all.
         const newState = !anyExpanded;
-        
+
         allHighlights.forEach(highlight => {
             // Only toggle footnote comments for regular highlights, not native comments
             if (highlight.isNativeComment) return;
@@ -4860,6 +5275,10 @@ export class HighlightsSidebarView extends ItemView {
                 this.highlightCommentsVisible.set(highlight.id, newState);
             }
         });
+
+        // Update commentsExpanded state and save to settings
+        this.commentsExpanded = newState;
+        this.saveCurrentTabSettings();
     }
 
     private areCommentsGloballyExpanded(): boolean {
@@ -5137,6 +5556,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.selectedTags.clear();
                     this.selectedCollections.clear();
                     this.selectedSpecialFilters.clear();
+                    this.saveCurrentTabSettings(); // Save filter state
                     this.renderContent();
                     this.showTagActive();
 
@@ -5169,6 +5589,7 @@ export class HighlightsSidebarView extends ItemView {
                     } else {
                         this.selectedSpecialFilters.add(filter.id);
                     }
+                    this.saveCurrentTabSettings(); // Save filter state
                     this.renderContent();
                     this.showTagActive();
                 }
@@ -5401,9 +5822,8 @@ export class HighlightsSidebarView extends ItemView {
         });
 
         // Update collection nav button styling
-        const collectionNavButton = this.contentEl.querySelector('.highlights-search-container button:last-of-type') as HTMLElement;
-        if (collectionNavButton) {
-            this.updateCollectionNavButton(collectionNavButton);
+        if (this.collectionNavButton) {
+            this.updateCollectionNavButton(this.collectionNavButton);
         }
 
         // Update secondary group button state
@@ -5443,9 +5863,8 @@ export class HighlightsSidebarView extends ItemView {
         });
         
         // Update collection nav button styling
-        const collectionNavButton = this.contentEl.querySelector('.highlights-search-container button:last-of-type') as HTMLElement;
-        if (collectionNavButton) {
-            this.updateCollectionNavButton(collectionNavButton);
+        if (this.collectionNavButton) {
+            this.updateCollectionNavButton(this.collectionNavButton);
         }
     }
 

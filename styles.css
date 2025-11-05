@@ -603,11 +603,12 @@
 
 .highlight-quote {
     color: var(--text-normal);
-    padding: 10px 15px;
+    padding: 10px 48px 10px 15px; /* top right bottom left - right padding for copy button */
     margin-bottom: 0;
     border-radius: 0 6px 0 0;
     cursor: pointer;
     font-size: var(--sh-quote-font-size, inherit);
+    font-weight: var(--sh-highlight-font-weight, var(--font-light));
     line-height: var(--line-height-normal);
     transition: background-color 0.2s ease;
 }
@@ -1203,8 +1204,11 @@
 
 .highlight-quote-copy-button {
     position: absolute;
-    bottom: 4px;
-    right: 4px;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.2s ease;
@@ -1384,6 +1388,16 @@
     border-radius: var(--radius-m) !important;
 }
 
+.highlights-dropdown-menu .menu-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: var(--text-faint);
+}
+
+.highlights-dropdown-menu .menu-item.disabled:hover {
+    background-color: transparent;
+}
+
 /* Dropdown clear item styling */
 .highlights-dropdown-clear {
     padding: 8px 16px;
@@ -1413,6 +1427,16 @@
 
 .highlights-dropdown-item:hover {
     background-color: var(--background-modifier-hover);
+}
+
+.highlights-dropdown-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: var(--text-faint);
+}
+
+.highlights-dropdown-item.disabled:hover {
+    background-color: transparent;
 }
 
 /* Dropdown check styling */
@@ -1533,6 +1557,23 @@
     opacity: 0.6;
 }
 
+/* Flash animation for recently moved tasks */
+@keyframes task-flash {
+    0% {
+        background: var(--background-modifier-hover);
+    }
+    50% {
+        background: var(--background-modifier-hover);
+    }
+    100% {
+        background: transparent;
+    }
+}
+
+.task-item-card.task-flash {
+    animation: task-flash 0.6s ease-out;
+}
+
 /* Grouped tasks - merge into one card (disabled - each task now individual) */
 .task-group-container {
     background: transparent;
@@ -1574,6 +1615,7 @@
     border-radius: var(--radius-s);
     cursor: pointer;
     font-size: var(--sh-quote-font-size, inherit);
+    font-weight: var(--sh-task-font-weight, var(--font-light));
     position: relative;
     display: flex;
     align-items: center;
@@ -1628,6 +1670,40 @@
 
 .task-checkbox:hover {
     color: var(--text-normal);
+}
+
+/* Flagged task checkbox - yellow outline */
+.task-checkbox-flagged {
+    color: #fbbf24 !important; /* Yellow color for flagged tasks */
+}
+
+.task-checkbox-flagged:hover {
+    color: #f59e0b !important; /* Darker yellow on hover */
+}
+
+/* Priority checkbox colors */
+.task-checkbox-priority-1 {
+    color: #ef4444 !important; /* Red for Priority 1 (High) */
+}
+
+.task-checkbox-priority-1:hover {
+    color: #dc2626 !important; /* Darker red on hover */
+}
+
+.task-checkbox-priority-2 {
+    color: #f59e0b !important; /* Yellow for Priority 2 (Medium) */
+}
+
+.task-checkbox-priority-2:hover {
+    color: #d97706 !important; /* Darker yellow on hover */
+}
+
+.task-checkbox-priority-3 {
+    color: #3b82f6 !important; /* Blue for Priority 3 (Low) */
+}
+
+.task-checkbox-priority-3:hover {
+    color: #2563eb !important; /* Darker blue on hover */
 }
 
 .task-checkbox svg {
@@ -1690,10 +1766,11 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     overflow: visible;
+    font-weight: inherit; /* Inherit font-weight from parent .task-quote */
 }
 
 /* Make task text div display inline */
-.task-text-content > div:not(.task-context):not(.task-flag-icon):not(.task-date-badge):not(.task-filename-inline) {
+.task-text-content > div:not(.task-context):not(.task-date-badge):not(.task-filename-inline) {
     display: inline;
     vertical-align: middle;
 }
@@ -1975,6 +2052,16 @@
     margin-top: 10px;
 }
 
+/* Adjust spacing for highlight items after group headers */
+.highlight-group-header + .highlight-item-card {
+    margin-top: 10px;
+}
+
+/* Remove border-bottom from group headers in highlights view (not tasks) to avoid double divider */
+.highlights-list:not(.tasks-container):not(.collections-container) .highlight-group-header {
+    border-bottom: none;
+}
+
 /* Adjust spacing for group containers after section headers */
 .task-section-header + .task-group-container {
     margin-top: 10px;
@@ -1995,24 +2082,6 @@
     flex-shrink: 0;
     white-space: nowrap;
     vertical-align: middle;
-}
-
-/* Task flag icon (on left side in text) */
-.task-flag-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    margin-right: 6px;
-    color: #fbbf24;
-    flex-shrink: 0;
-    vertical-align: middle;
-}
-
-.task-flag-icon svg {
-    width: 20px;
-    height: 20px;
 }
 
 /* Task flag button (on right side, appears on hover) */

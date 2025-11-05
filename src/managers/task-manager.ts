@@ -152,9 +152,9 @@ export class TaskManager {
         const content = await this.vault.read(file);
         const lines = content.split('\n');
 
-        // Regex to match checkbox syntax: - [ ] or - [x] or - [!]
+        // Regex to match checkbox syntax: - [ ] or - [x] or - [!] or - [!1] or - [!2] or - [!3]
         // Captures leading whitespace, checkbox state, and task text
-        const checkboxRegex = /^(\s*)- \[([ xX!])\] (.+)$/;
+        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
 
         // Regex to match markdown headers: # Header
         const headerRegex = /^(#{1,6})\s+(.+)$/;
@@ -177,7 +177,17 @@ export class TaskManager {
             if (match) {
                 const [, indent, checkboxState, taskText] = match;
                 const isCompleted = checkboxState.toLowerCase() === 'x';
-                const isFlagged = checkboxState === '!';
+                const isFlagged = checkboxState.startsWith('!');
+
+                // Extract priority from checkbox state: [!1], [!2], [!3]
+                let priority: 1 | 2 | 3 | undefined = undefined;
+                if (checkboxState === '!1') {
+                    priority = 1;
+                } else if (checkboxState === '!2') {
+                    priority = 2;
+                } else if (checkboxState === '!3') {
+                    priority = 3;
+                }
 
                 // Calculate indent level (treat tab as 4 spaces)
                 const indentSpaces = indent.replace(/\t/g, '    ').length;
@@ -228,6 +238,7 @@ export class TaskManager {
                     text: taskText,
                     completed: isCompleted,
                     flagged: isFlagged,
+                    priority: priority,
                     filePath: file.path,
                     lineNumber: i,
                     context: contextLines,
@@ -266,8 +277,8 @@ export class TaskManager {
             throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
         }
 
-        // Toggle the checkbox state - also handle [!] for flagged tasks
-        const checkboxRegex = /^(\s*)- \[([ xX!])\] (.+)$/;
+        // Toggle the checkbox state - handle all checkbox types including priority markers
+        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -277,9 +288,8 @@ export class TaskManager {
         const [, indent, currentState, taskText] = match;
 
         // Toggle logic:
-        // [!] (flagged) -> [x] (completed, removes flag)
-        // [x] (completed) -> [ ] (uncompleted)
-        // [ ] (uncompleted) -> [x] (completed)
+        // [!], [!1], [!2], [!3], [ ] -> [x] (completing removes priority)
+        // [x] -> [ ] (uncompleting gives normal checkbox)
         const newState = currentState.toLowerCase() === 'x' ? ' ' : 'x';
         const newLine = `${indent}- [${newState}] ${taskText}`;
 
@@ -300,7 +310,7 @@ export class TaskManager {
     }
 
     /**
-     * Toggle a flag state on a task using [!] checkbox
+     * Toggle a flag state on a task using [!] checkbox (deprecated - use setTaskPriority instead)
      * @param task The task to toggle flag
      * @returns Updated task object
      */
@@ -320,8 +330,8 @@ export class TaskManager {
             throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
         }
 
-        // Parse the task line - now including [!] for flagged tasks
-        const checkboxRegex = /^(\s*)- \[([ xX!])\] (.+)$/;
+        // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
+        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -357,6 +367,69 @@ export class TaskManager {
     }
 
     /**
+     * Set priority on a task using [!1], [!2], [!3] markers
+     * @param task The task to set priority on
+     * @param priority Priority level (1=high/red, 2=medium/yellow, 3=low/blue) or null to remove
+     * @returns Updated task object
+     */
+    async setTaskPriority(task: Task, priority: 1 | 2 | 3 | null): Promise<Task> {
+        const file = this.vault.getAbstractFileByPath(task.filePath);
+
+        if (!(file instanceof TFile)) {
+            throw new Error(`File not found: ${task.filePath}`);
+        }
+
+        const content = await this.vault.read(file);
+        const lines = content.split('\n');
+
+        // Verify the line still contains the expected task
+        const currentLine = lines[task.lineNumber];
+        if (!currentLine) {
+            throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
+        }
+
+        // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
+        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const match = currentLine.match(checkboxRegex);
+
+        if (!match) {
+            throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
+        }
+
+        const [, indent, checkboxState, taskText] = match;
+
+        // Determine new checkbox state
+        let newCheckboxState: string;
+        if (priority === null) {
+            // Remove priority - check if task is completed
+            if (checkboxState.toLowerCase() === 'x') {
+                newCheckboxState = 'x';
+            } else {
+                newCheckboxState = ' ';
+            }
+        } else {
+            // Set priority marker
+            newCheckboxState = `!${priority}`;
+        }
+
+        const newLine = `${indent}- [${newCheckboxState}] ${taskText}`;
+
+        // Update the line
+        lines[task.lineNumber] = newLine;
+        const newContent = lines.join('\n');
+
+        // Write back to file
+        await this.vault.modify(file, newContent);
+
+        // Return updated task
+        return {
+            ...task,
+            priority: priority ?? undefined,
+            flagged: newCheckboxState.startsWith('!')
+        };
+    }
+
+    /**
      * Update or remove a date from a task
      * @param task The task to update
      * @param newDate New date string in the format configured in settings (or null to remove)
@@ -378,8 +451,8 @@ export class TaskManager {
             throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
         }
 
-        // Parse the task line
-        const checkboxRegex = /^(\s*)- \[([ xX!])\] (.+)$/;
+        // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
+        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -388,10 +461,12 @@ export class TaskManager {
 
         const [, indent, checkboxState, taskText] = match;
 
-        // Remove existing date if present
+        // Remove existing date if present by parsing it from the current file content
         let updatedTaskText = taskText;
-        if (task.dateText) {
-            updatedTaskText = taskText.replace(task.dateText, '').trim();
+        const existingDateInfo = this.parseDateFromText(taskText);
+        if (existingDateInfo && existingDateInfo.dateText) {
+            // Remove the old date from the text
+            updatedTaskText = taskText.replace(existingDateInfo.dateText, '').trim();
         }
 
         // Add new date if provided (prepend to task text)

@@ -7,7 +7,7 @@ export interface TaskRenderOptions {
     onTaskToggle?: (task: Task, checkboxEl: HTMLElement) => void;
     onTaskClick?: (task: Task, event?: MouseEvent) => void;
     onFileNameClick?: (filePath: string, event?: MouseEvent) => void;
-    onFlagToggle?: (task: Task) => void;
+    onFlagToggle?: (task: Task, event?: MouseEvent) => void;
     onCalendarToggle?: (task: Task) => void;
     hideFilename?: boolean; // Hide filename when grouped
     hideDateBadge?: boolean; // Hide date badge when grouped by date
@@ -70,6 +70,11 @@ export class TaskRenderer {
             setIcon(checkboxIcon, task.completed ? 'square-check' : 'square');
         }
 
+        // Add priority class to checkbox if priority is set
+        if (task.priority) {
+            checkboxIcon.classList.add(`task-checkbox-priority-${task.priority}`);
+        }
+
         checkboxIcon.addEventListener('click', (event) => {
             event.stopPropagation();
             options.onTaskToggle?.(task, checkboxIcon);
@@ -84,13 +89,6 @@ export class TaskRenderer {
             // Format as "MM-DD" (e.g., "07-23")
             const formattedDate = moment(task.date, 'YYYY-MM-DD').format('MM-DD');
             dateBadge.textContent = formattedDate;
-        }
-
-        // Check if task is flagged and render flag icon
-        if (task.flagged) {
-            // Add flag icon before text
-            const flagIcon = textContent.createDiv({ cls: 'task-flag-icon' });
-            setIcon(flagIcon, 'flag');
         }
 
         // Task text with date stripped out (if present)
@@ -140,19 +138,15 @@ export class TaskRenderer {
             });
         }
 
-        // Flag button (appears on hover, shows flag-off if task is flagged)
+        // Flag button (appears on hover)
         const flagButton = quoteEl.createDiv({ cls: 'task-flag-button' });
 
-        // Use flag-off icon if task is flagged, otherwise use flag icon
-        if (task.flagged) {
-            setIcon(flagButton, 'flag-off');
-        } else {
-            setIcon(flagButton, 'flag');
-        }
+        // Use flag icon
+        setIcon(flagButton, 'flag');
 
         flagButton.addEventListener('click', (event) => {
             event.stopPropagation();
-            options.onFlagToggle?.(task);
+            options.onFlagToggle?.(task, event);
         });
 
         // Calendar button (appears on hover, shows calendar-cog if task has a date)

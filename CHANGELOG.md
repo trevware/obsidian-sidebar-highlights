@@ -5,6 +5,52 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2025-11-05
+
+### Added
+- **Priority System**: Enhanced task prioritization with three priority levels
+  - Priority 1 (High/Red): `- [!1]` - Highest priority tasks
+  - Priority 2 (Medium/Yellow): `- [!2]` - Medium priority tasks
+  - Priority 3 (Low/Blue): `- [!3]` - Low priority tasks
+  - Priority markers color the checkbox for visual distinction
+  - Quick priority menu accessible via flag button on tasks
+- **Multi-Select Support**: Select multiple highlights with Cmd/Ctrl+Click for bulk operations
+  - Add selected highlights to collections
+- **Task Animation**: Added subtle flash animation when tasks move between groups
+  - Provides visual feedback when changing task dates or priorities
+  - Uses theme's hover color for consistency
+- **Optimistic UI Updates**: Date changes now update instantly before file write
+  - Immediate visual feedback when changing task dates
+  - Tasks move to new date groups instantly
+  - Automatically reverts if file update fails
+
+### Enhanced
+- **Date Grouping**: "End of This Week" now correctly picks Friday instead of Saturday
+  - More accurate weekly planning and organization
+- **Task Date Labels**: Changed terminology from "Task Date" to "Due Date"
+
+### Fixed
+- **Task Duplication**: Fixed visual duplication of tasks when grouping is enabled
+  - Added render guard to prevent concurrent task rendering
+  - Eliminated race condition causing duplicate DOM elements
+  - Tasks now render once reliably regardless of grouping mode
+- **Date Accumulation**: Fixed bug where changing task dates multiple times would sometimes accumulate date stamps
+  - Example: `- [ ] 2025-11-06 2025-11-12 2025-11-05` now correctly becomes `- [ ] 2025-11-05`
+  - Date parser now reads actual file content instead of modified task object
+  - Properly removes old date before adding new date
+- **Copy Button Alignment**: Fixed alignment of copy-to-clipboard button on highlight cards
+  - Button now properly aligned with other action buttons
+  - Consistent spacing and visual hierarchy
+- **Double Bottom Border**: Removed duplicate bottom border line on task cards
+  - Cleaner visual appearance in grouped task views
+  - Consistent border styling across all task cards
+- **Title Change Focus**: Fixed issue where changing file titles would break highlight focus navigation
+  - Highlight focus now works correctly after file renames
+  - Maintained proper reference tracking across title changes
+- **Debug Output**: Removed debugging console output for cleaner production experience
+  - Improved performance by removing unnecessary logging
+  - Cleaner console for users and developers
+
 ## [1.31.0] - 2025-11-03
 
 ### Added

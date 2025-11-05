@@ -37,7 +37,8 @@ export interface Task {
     id: string;
     text: string;
     completed: boolean;
-    flagged: boolean; // Task is flagged with [!]
+    flagged: boolean; // Task is flagged with [!] (deprecated - use priority instead)
+    priority?: 1 | 2 | 3; // Priority level: 1 (red/high), 2 (yellow/medium), 3 (blue/low)
     filePath: string;
     lineNumber: number;
     context: string[]; // Indented text lines below the task
@@ -76,6 +77,9 @@ export interface TabSettings {
     sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc';
     commentsExpanded: boolean;
     searchExpanded: boolean;
+    selectedTags?: string[]; // Selected tag filters for this tab
+    selectedCollections?: string[]; // Selected collection filters for this tab
+    selectedSpecialFilters?: string[]; // Selected special filters (Flagged, Upcoming, etc.) for this tab
 }
 
 export interface CommentPluginSettings {
@@ -102,6 +106,8 @@ export interface CommentPluginSettings {
     highlightFontSize: number; // Font size for highlight text
     detailsFontSize: number; // Font size for details (buttons, filename, etc.)
     commentFontSize: number; // Font size for comment text
+    highlightFontWeight: number; // Font weight for highlight text
+    taskFontWeight: number; // Font weight for task text
     detectHtmlComments: boolean; // Detect HTML comments (<!-- -->)
     detectAdjacentNativeComments: boolean; // Detect native comments (%% %%) adjacent to highlights as comments for those highlights
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
@@ -154,6 +160,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     highlightFontSize: 11, // Default highlight text font size
     detailsFontSize: 11, // Default details font size
     commentFontSize: 11, // Default comment text font size
+    highlightFontWeight: 400, // Default highlight text font weight (normal)
+    taskFontWeight: 400, // Default task text font weight (normal)
     detectHtmlComments: false, // Do not detect HTML comments by default
     detectAdjacentNativeComments: true, // Detect adjacent native comments by default (new behavior)
     customPatterns: [], // Empty array by default
@@ -407,6 +415,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         document.body.style.removeProperty('--sh-quote-font-size');
         document.body.style.removeProperty('--sh-details-font-size');
         document.body.style.removeProperty('--sh-comment-font-size');
+        document.body.style.removeProperty('--sh-highlight-font-weight');
+        document.body.style.removeProperty('--sh-task-font-weight');
     }
 
     private updateCustomColorStyles() {
@@ -424,6 +434,10 @@ export default class HighlightCommentsPlugin extends Plugin {
         document.body.style.setProperty('--sh-quote-font-size', `${this.settings.highlightFontSize}px`);
         document.body.style.setProperty('--sh-details-font-size', `${this.settings.detailsFontSize}px`);
         document.body.style.setProperty('--sh-comment-font-size', `${this.settings.commentFontSize}px`);
+
+        // Set font weight custom properties
+        document.body.style.setProperty('--sh-highlight-font-weight', `${this.settings.highlightFontWeight}`);
+        document.body.style.setProperty('--sh-task-font-weight', `${this.settings.taskFontWeight}`);
     }
 
     async activateView() {
@@ -690,10 +704,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                     console.error(`Failed to migrate backup file ${oldPath}:`, error);
                 }
             }
-
-            if (migratedCount > 0) {
-                console.log(`Migrated ${migratedCount} backup file(s) to backups folder`);
-            }
         } catch (error) {
             console.error('Failed to migrate backup files:', error);
         }
@@ -832,12 +842,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                     `Migration complete, but ${totalBrokenReferences} highlight reference(s) couldn't be restored:\n\n${issuesSummary}\n\nBroken references have been cleaned up. You may need to manually re-add some highlights to these collections.`,
                     8000 // Show notice for 8 seconds
                 );
-                
-                console.log('Collection validation results:', {
-                    totalBrokenReferences,
-                    collectionsWithIssues,
-                    message: 'Some highlight references were lost during migration, likely due to file changes. Automatic cleanup completed.'
-                });
                 
                 // Save the cleaned-up collections
                 await this.saveSettings();
@@ -1012,12 +1016,10 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
-        console.log('[DEBUG] debounceDetectMarkdownHighlights - keystroke detected, resetting timer');
         if (this.detectHighlightsTimeout) {
             window.clearTimeout(this.detectHighlightsTimeout);
         }
         this.detectHighlightsTimeout = window.setTimeout(() => {
-            console.log('[DEBUG] Debounce timer expired, calling detectMarkdownHighlights');
             this.detectMarkdownHighlights(editor, view);
         }, 1000); // 1 second
     }
@@ -1473,26 +1475,19 @@ export default class HighlightCommentsPlugin extends Plugin {
      * Smart sidebar update: use targeted updates when possible, full refresh only when necessary
      */
     private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
-        console.log('[DEBUG] smartUpdateSidebar called');
-
         if (!this.sidebarView) {
-            console.log('[DEBUG] No sidebarView, returning');
             return;
         }
 
         // Skip refresh if we're in a tab that doesn't display highlights
         // Tasks and Collections tabs don't show highlights, so no need to refresh UI
         const viewMode = this.sidebarView.getViewMode();
-        console.log('[DEBUG] Current viewMode:', viewMode);
 
         if (viewMode === 'tasks' || viewMode === 'collections') {
             // Data is still updated in storage, but UI doesn't refresh
             // This prevents unnecessary flashing when working in these tabs
-            console.log('[DEBUG] Skipping update - in tasks/collections tab');
             return;
         }
-
-        console.log('[DEBUG] Proceeding with update - in highlight tab');
 
         // Create maps for quick lookup
         const oldByID = new Map<string, Highlight>();
@@ -2314,6 +2309,40 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.plugin.updateStyles();
                         this.plugin.refreshSidebar();
                     }
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.typography.highlightTextWeight.name'))
+            .setDesc(t('settings.typography.highlightTextWeight.desc'))
+            .addDropdown(dropdown => dropdown
+                .addOption('300', t('settings.typography.fontWeight.light'))
+                .addOption('400', t('settings.typography.fontWeight.normal'))
+                .addOption('500', t('settings.typography.fontWeight.medium'))
+                .addOption('600', t('settings.typography.fontWeight.semiBold'))
+                .addOption('700', t('settings.typography.fontWeight.bold'))
+                .setValue(this.plugin.settings.highlightFontWeight.toString())
+                .onChange(async (value) => {
+                    this.plugin.settings.highlightFontWeight = parseInt(value);
+                    await this.plugin.saveSettings();
+                    this.plugin.updateStyles();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.typography.taskTextWeight.name'))
+            .setDesc(t('settings.typography.taskTextWeight.desc'))
+            .addDropdown(dropdown => dropdown
+                .addOption('300', t('settings.typography.fontWeight.light'))
+                .addOption('400', t('settings.typography.fontWeight.normal'))
+                .addOption('500', t('settings.typography.fontWeight.medium'))
+                .addOption('600', t('settings.typography.fontWeight.semiBold'))
+                .addOption('700', t('settings.typography.fontWeight.bold'))
+                .setValue(this.plugin.settings.taskFontWeight.toString())
+                .onChange(async (value) => {
+                    this.plugin.settings.taskFontWeight = parseInt(value);
+                    await this.plugin.saveSettings();
+                    this.plugin.updateStyles();
+                    this.plugin.refreshSidebar();
                 }));
 
         // STYLING SECTION

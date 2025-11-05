@@ -21,10 +21,18 @@ export class DateSuggest extends AbstractInputSuggest<DateSuggestion> {
         this.dateFormat = dateFormat;
 
         // Define date suggestions
+        // End of week: Friday (not Saturday)
+        const endOfWeek = moment().day(5); // This week's Friday
+        const currentDay = moment().day();
+        // If today is Saturday (6) or Sunday (0), move to next Friday
+        if (currentDay === 0 || currentDay === 6) {
+            endOfWeek.add(1, 'week');
+        }
+
         this.dateSuggestions = [
             { label: t('dateSuggestions.today'), date: moment() },
             { label: t('dateSuggestions.tomorrow'), date: moment().add(1, 'day') },
-            { label: t('dateSuggestions.endOfWeek'), date: moment().endOf('week') },
+            { label: t('dateSuggestions.endOfWeek'), date: endOfWeek },
             { label: t('dateSuggestions.inOneWeek'), date: moment().add(1, 'week') },
             { label: t('dateSuggestions.inTwoWeeks'), date: moment().add(2, 'weeks') },
         ];

@@ -93,6 +93,21 @@
         "name": "Comment text size",
         "desc": "Adjust comment text size (default 11).",
         "placeholder": "11"
+      },
+      "highlightTextWeight": {
+        "name": "Highlight text weight",
+        "desc": "Adjust font weight for sidebar highlights (default Normal)."
+      },
+      "taskTextWeight": {
+        "name": "Task text weight",
+        "desc": "Adjust font weight for sidebar tasks (default Normal)."
+      },
+      "fontWeight": {
+        "light": "Light (300)",
+        "normal": "Normal (400)",
+        "medium": "Medium (500)",
+        "semiBold": "Semi Bold (600)",
+        "bold": "Bold (700)"
       }
     },
     "styling": {
@@ -194,9 +209,15 @@
     "toggleHighlightComments": "Toggle highlight comments",
     "revertColors": "Revert highlight colors",
     "filter": "Filter",
+    "actions": "Actions",
     "backToCollections": "Back to Collections",
     "newCollection": "New collection",
     "closeSearch": "Close search"
+  },
+  "actions": {
+    "moveToCollection": "Move to...",
+    "removeFromCollection": "Remove from Collection",
+    "clearSelection": "Clear selection"
   },
   "grouping": {
     "none": "None",
@@ -325,7 +346,7 @@
       "removedNonExistent": "Removed {{count}} excluded {{paths}} that no longer exist"
     },
     "taskDate": {
-      "title": "Task Date"
+      "title": "Due Date"
     },
     "customPattern": {
       "editTitle": "Edit custom pattern",

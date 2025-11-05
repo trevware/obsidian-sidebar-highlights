@@ -194,9 +194,15 @@
     "toggleHighlightComments": "切换高亮注释",
     "revertColors": "还原高亮颜色",
     "filter": "过滤",
+    "actions": "操作",
     "backToCollections": "返回合集",
     "newCollection": "新建合集",
     "closeSearch": "关闭搜索"
+  },
+  "actions": {
+    "moveToCollection": "移动到...",
+    "removeFromCollection": "从合集中移除",
+    "clearSelection": "清除选择"
   },
   "grouping": {
     "none": "无",
@@ -325,7 +331,7 @@
       "removedNonExistent": "已删除 {{count}} 个不存在的排除{{paths}}"
     },
     "taskDate": {
-      "title": "任务日期"
+      "title": "截止日期"
     },
     "customPattern": {
       "editTitle": "编辑自定义模式",

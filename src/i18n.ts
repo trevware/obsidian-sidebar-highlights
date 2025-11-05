@@ -24,7 +24,6 @@ class I18n {
 		try {
 			// Detect locale from Obsidian's moment.js locale setting
 			this.locale = this.normalizeLocale(moment.locale());
-			console.log(`[i18n] Detected locale: ${moment.locale()} -> ${this.locale}`);
 
 			// Always load English as fallback
 			this.fallbackTranslations = this.loadTranslations('en');
@@ -42,8 +41,6 @@ class I18n {
 			} else {
 				this.translations = this.fallbackTranslations;
 			}
-
-			console.log(`[i18n] Initialization complete. Active locale: ${this.locale}`);
 		} catch (error) {
 			console.error('[i18n] Critical error during initialization:', error);
 			// Provide empty fallback to prevent plugin from crashing
