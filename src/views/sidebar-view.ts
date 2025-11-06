@@ -162,6 +162,13 @@ export class HighlightsSidebarView extends ItemView {
             this.selectedTags = new Set(tabSettings.selectedTags || []);
             this.selectedCollections = new Set(tabSettings.selectedCollections || []);
             this.selectedSpecialFilters = new Set(tabSettings.selectedSpecialFilters || []);
+
+            // Sync highlightCommentsVisible map with commentsExpanded state
+            if (this.commentsExpanded) {
+                this.expandAllCommentsInMap();
+            } else {
+                this.collapseAllCommentsInMap();
+            }
         } else {
             // Use defaults for this tab type
             const defaults = this.getDefaultTabSettings(viewMode);
@@ -174,6 +181,9 @@ export class HighlightsSidebarView extends ItemView {
             this.selectedTags.clear();
             this.selectedCollections.clear();
             this.selectedSpecialFilters.clear();
+
+            // Sync highlightCommentsVisible map with default state (always collapsed)
+            this.collapseAllCommentsInMap();
         }
 
         // Update UI button states if they exist
@@ -193,6 +203,8 @@ export class HighlightsSidebarView extends ItemView {
                 } else {
                     this.commentsToggleButton.classList.remove('active');
                 }
+                // Update the icon to match the restored state
+                this.updateCommentsToggleIcon(this.commentsToggleButton);
             }
 
             // Update search button and input container state
@@ -649,6 +661,14 @@ export class HighlightsSidebarView extends ItemView {
             this.commentsToggleButton.addEventListener('click', () => {
                 this.toggleAllComments();
                 this.updateCommentsToggleIcon(this.commentsToggleButton);
+
+                // Update active state to match commentsExpanded
+                if (this.commentsExpanded) {
+                    this.commentsToggleButton.classList.add('active');
+                } else {
+                    this.commentsToggleButton.classList.remove('active');
+                }
+
                 this.renderContent(); // Use renderContent instead of renderFilteredList
             });
 
@@ -5246,12 +5266,52 @@ export class HighlightsSidebarView extends ItemView {
 
     private updateCommentsToggleIcon(button: HTMLElement) {
         button.empty();
-        
+
         // Use global state to determine icon, not current view
         const anyExpanded = this.areCommentsGloballyExpanded();
-        
+
         const iconName = anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down';
         setIcon(button, iconName);
+    }
+
+    /**
+     * Expand all comments in the highlightCommentsVisible map
+     * Used when restoring commentsExpanded state from settings
+     */
+    private expandAllCommentsInMap() {
+        const allHighlights: Highlight[] = [];
+        for (const [, fileHighlights] of this.plugin.highlights) {
+            allHighlights.push(...fileHighlights);
+        }
+
+        allHighlights.forEach(highlight => {
+            // Only expand footnote comments for regular highlights, not native comments
+            if (highlight.isNativeComment) return;
+            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+            if (validFootnoteCount > 0) {
+                this.highlightCommentsVisible.set(highlight.id, true);
+            }
+        });
+    }
+
+    /**
+     * Collapse all comments in the highlightCommentsVisible map
+     * Used when restoring commentsExpanded state from settings
+     */
+    private collapseAllCommentsInMap() {
+        const allHighlights: Highlight[] = [];
+        for (const [, fileHighlights] of this.plugin.highlights) {
+            allHighlights.push(...fileHighlights);
+        }
+
+        allHighlights.forEach(highlight => {
+            // Only collapse footnote comments for regular highlights, not native comments
+            if (highlight.isNativeComment) return;
+            const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+            if (validFootnoteCount > 0) {
+                this.highlightCommentsVisible.set(highlight.id, false);
+            }
+        });
     }
 
     private toggleAllComments() {

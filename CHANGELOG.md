@@ -5,6 +5,21 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2025-11-06
+
+### Fixed
+- **Toggle Comments Persistence**: Fixed "Toggle highlight comments" button not maintaining its state across app restarts
+  - Button now correctly restores expanded/collapsed state when reopening Obsidian
+  - State is properly saved and restored per tab
+- **Toggle Button Active State**: Fixed active background styling not syncing with actual expansion state
+  - Background now only appears when comments are actually expanded
+  - Active state accurately reflects comment visibility
+- **Per-Tab Comment State**: Fixed comments staying open when switching between tabs with different expansion settings
+  - Each tab now maintains independent comment expansion state
+  - Switching from expanded tab to collapsed tab now properly collapses all comments
+- **Copy Button Spacing**: Added right padding to highlight cards to prevent copy button from overlapping with text on hover
+  - Consistent spacing matches task card padding
+
 ## [1.32.0] - 2025-11-05
 
 ### Added
