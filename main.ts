@@ -74,7 +74,7 @@ export interface DisplayMode {
 
 export interface TabSettings {
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc';
+    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc';
     commentsExpanded: boolean;
     searchExpanded: boolean;
     selectedTags?: string[]; // Selected tag filters for this tab
@@ -90,7 +90,7 @@ export interface CommentPluginSettings {
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
+    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
     tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
@@ -132,6 +132,8 @@ export interface CommentPluginSettings {
     showCompletedTasks: boolean; // Include completed tasks (- [x])
     showTaskContext: boolean; // Show indented text below tasks as context
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
+    showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
+    showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
 }
@@ -186,6 +188,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCompletedTasks: true, // Show completed tasks by default
     showTaskContext: true, // Show task context by default
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
+    showCurrentNoteTasksSection: true, // Show current note tasks section by default
+    showOnlyCurrentNoteTasks: false, // Show all tasks by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null // No active display mode by default
 }
@@ -2732,6 +2736,40 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
+
+        const currentNoteSectionSetting = new Setting(containerEl)
+            .setName(t('settings.tasks.showCurrentNoteSection.name'))
+            .setDesc(t('settings.tasks.showCurrentNoteSection.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCurrentNoteTasksSection)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCurrentNoteTasksSection = value;
+                    await this.plugin.saveSettings();
+                    // Update the disabled state and opacity of the "only current note" setting
+                    onlyCurrentNoteTasksSetting.setDisabled(!value);
+                    onlyCurrentNoteTasksSetting.settingEl.style.opacity = value ? '1' : '0.5';
+                    // If disabling current note section, also disable "only current note"
+                    if (!value && this.plugin.settings.showOnlyCurrentNoteTasks) {
+                        this.plugin.settings.showOnlyCurrentNoteTasks = false;
+                        await this.plugin.saveSettings();
+                    }
+                    this.plugin.refreshSidebar();
+                }));
+
+        const onlyCurrentNoteTasksSetting = new Setting(containerEl)
+            .setName(t('settings.tasks.showOnlyCurrentNoteTasks.name'))
+            .setDesc(t('settings.tasks.showOnlyCurrentNoteTasks.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showOnlyCurrentNoteTasks)
+                .setDisabled(!this.plugin.settings.showCurrentNoteTasksSection)
+                .onChange(async (value) => {
+                    this.plugin.settings.showOnlyCurrentNoteTasks = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        // Set initial opacity based on disabled state
+        onlyCurrentNoteTasksSetting.settingEl.style.opacity = this.plugin.settings.showCurrentNoteTasksSection ? '1' : '0.5';
 
         new Setting(containerEl)
             .setName(t('settings.tasks.taskDateFormat.name'))

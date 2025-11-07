@@ -162,6 +162,9 @@ export class TaskManager {
         // Track the current section header
         let currentSection: string | undefined = undefined;
 
+        // Track parent task for date inheritance
+        let parentTask: Task | undefined = undefined;
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
@@ -169,6 +172,7 @@ export class TaskManager {
             const headerMatch = line.match(headerRegex);
             if (headerMatch) {
                 currentSection = headerMatch[2].trim();
+                parentTask = undefined; // Reset parent when entering new section
                 continue;
             }
 
@@ -249,6 +253,28 @@ export class TaskManager {
                 };
 
                 tasks.push(task);
+
+                // Update parent task reference
+                // This task becomes the potential parent for subsequent indented tasks
+                if (indentLevel === 0) {
+                    // Top-level task - set as new parent
+                    parentTask = task;
+                } else if (parentTask && indentLevel <= parentTask.indentLevel) {
+                    // Same or lower indent than current parent - this is not a child
+                    // Reset parent to this task if it's at the same level
+                    if (indentLevel === 0) {
+                        parentTask = task;
+                    } else {
+                        // Keep looking for parent at this level, but this could be a new parent for deeper nesting
+                        parentTask = task;
+                    }
+                }
+                // If indentLevel > parentTask.indentLevel, keep current parent
+            } else {
+                // Non-task line - reset parent task if we encounter a non-empty line at indent 0
+                if (line.trim() !== '' && !line.match(/^[\s]/)) {
+                    parentTask = undefined;
+                }
             }
         }
 

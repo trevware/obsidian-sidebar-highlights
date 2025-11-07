@@ -7,18 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.33.0] - 2025-11-06
 
+### Added
+- **Task Sorting**: Added sorting options for tasks including Priority, A → Z, Z → A, Date (Earliest First), and Date (Latest First)
+  - Sort controls available in the Tasks tab toolbar
+  - Tasks without priority or dates appear at the end when sorting by those fields
+- **Current Note Tasks Section**: Added dedicated section showing tasks from the active note at the top of the Tasks tab
+  - Optional "Only display current note tasks" setting to focus exclusively on current note
+  - Section respects all filters and sorting options
+- **Sub-task Hierarchical Rendering**: Sub-tasks now render with their parent tasks
+  - Sub-tasks with their own dates appear both under their parent and in their respective date groups
+  - Standalone sub-tasks display parent task name with branch icon for context
+
+### Enhanced
+- **This Week Filter**: Renamed "Upcoming" filter to "This Week" for tasks due from Sunday to Saturday of the current week
+- **Task Update Responsiveness**: Improved real-time updates when adding task notes (reduced delay from 1 second to 300ms)
+- **Settings Clarity**: Updated "Show task context" to "Show task notes" and "Task date format" to "Due date format"
+- **Display Mode Setting**: Display mode setting now dims when disabled for better visual feedback
+
 ### Fixed
-- **Toggle Comments Persistence**: Fixed "Toggle highlight comments" button not maintaining its state across app restarts
-  - Button now correctly restores expanded/collapsed state when reopening Obsidian
-  - State is properly saved and restored per tab
-- **Toggle Button Active State**: Fixed active background styling not syncing with actual expansion state
-  - Background now only appears when comments are actually expanded
-  - Active state accurately reflects comment visibility
-- **Per-Tab Comment State**: Fixed comments staying open when switching between tabs with different expansion settings
-  - Each tab now maintains independent comment expansion state
-  - Switching from expanded tab to collapsed tab now properly collapses all comments
-- **Copy Button Spacing**: Added right padding to highlight cards to prevent copy button from overlapping with text on hover
-  - Consistent spacing matches task card padding
+- **Filter Button Persistence**: Fixed filter button active state to persist across tab switches and Obsidian restarts
+- **Task Context Updates**: Fixed issue where task context lines weren't updating immediately in the sidebar
 
 ## [1.32.0] - 2025-11-05
 

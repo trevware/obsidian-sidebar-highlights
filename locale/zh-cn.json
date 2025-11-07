@@ -167,16 +167,24 @@
     "tasks": {
       "heading": "任务",
       "showTaskContext": {
-        "name": "显示任务上下文",
-        "desc": "在侧边栏中将任务下方的缩进文本显示为上下文。"
+        "name": "显示任务笔记",
+        "desc": "包含项目符号文本的任务将在任务下方显示为笔记。"
       },
       "showCompletedTasks": {
         "name": "显示已完成的任务",
         "desc": "在【任务】标签页中包含已完成的任务 (- [x])。"
       },
+      "showCurrentNoteSection": {
+        "name": "显示当前笔记任务",
+        "desc": "在【任务】标签页顶部显示一个专门部分,显示当前活动笔记中的任务。"
+      },
+      "showOnlyCurrentNoteTasks": {
+        "name": "仅显示当前笔记任务",
+        "desc": "启用时，隐藏所有其他任务，仅显示当前笔记中的任务。"
+      },
       "taskDateFormat": {
-        "name": "任务日期格式",
-        "desc": "用于解析任务中日期的日期格式（例如：YYYY-MM-DD、MM/DD/YYYY）。匹配此格式的日期将显示为徽章。",
+        "name": "截止日期格式",
+        "desc": "用于解析任务中截止日期的日期格式（例如：YYYY-MM-DD、MM/DD/YYYY）。匹配此格式的截止日期将显示为徽章。",
         "placeholder": "YYYY-MM-DD"
       }
     }
@@ -222,7 +230,10 @@
   "sorting": {
     "none": "无",
     "aToZ": "A → Z",
-    "zToA": "Z → A"
+    "zToA": "Z → A",
+    "priority": "优先级",
+    "dateEarliestFirst": "日期（最早优先）",
+    "dateLatestFirst": "日期（最晚优先）"
   },
   "emptyStates": {
     "noComments": "无注释",
@@ -267,7 +278,7 @@
   "filterMenu": {
     "clear": "清除",
     "flagged": "已标记",
-    "upcoming": "即将到来",
+    "upcoming": "本周",
     "completed": "已完成",
     "incomplete": "未完成",
     "dueToday": "今天到期",
@@ -303,6 +314,9 @@
     "friday": "周五",
     "saturday": "周六",
     "sunday": "周日"
+  },
+  "tasks": {
+    "currentNote": "当前笔记"
   },
   "modals": {
     "collection": {

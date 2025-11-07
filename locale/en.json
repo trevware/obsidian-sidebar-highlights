@@ -182,16 +182,24 @@
     "tasks": {
       "heading": "Tasks",
       "showTaskContext": {
-        "name": "Show task context",
-        "desc": "Show indented text below tasks as context in the sidebar."
+        "name": "Show task notes",
+        "desc": "Tasks containing bulleted text will display as notes under the task."
       },
       "showCompletedTasks": {
         "name": "Show completed tasks",
         "desc": "Include completed tasks (- [x]) in the Tasks tab."
       },
+      "showCurrentNoteSection": {
+        "name": "Show current note tasks",
+        "desc": "Display a dedicated section at the top of the Tasks tab showing tasks from the currently active note."
+      },
+      "showOnlyCurrentNoteTasks": {
+        "name": "Only display current note tasks",
+        "desc": "When enabled, hide all other tasks and only show tasks from the current note."
+      },
       "taskDateFormat": {
-        "name": "Task date format",
-        "desc": "Date format for parsing dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Dates matching this format will be displayed as badges.",
+        "name": "Due date format",
+        "desc": "Date format for parsing due dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Due dates matching this format will be displayed as badges.",
         "placeholder": "YYYY-MM-DD"
       }
     }
@@ -237,7 +245,10 @@
   "sorting": {
     "none": "None",
     "aToZ": "A → Z",
-    "zToA": "Z → A"
+    "zToA": "Z → A",
+    "priority": "Priority",
+    "dateEarliestFirst": "Date (Earliest First)",
+    "dateLatestFirst": "Date (Latest First)"
   },
   "emptyStates": {
     "noComments": "No Comments",
@@ -282,7 +293,7 @@
   "filterMenu": {
     "clear": "Clear",
     "flagged": "Flagged",
-    "upcoming": "Upcoming",
+    "upcoming": "This Week",
     "completed": "Completed",
     "incomplete": "Incomplete",
     "dueToday": "Due Today",
@@ -318,6 +329,9 @@
     "friday": "Friday",
     "saturday": "Saturday",
     "sunday": "Sunday"
+  },
+  "tasks": {
+    "currentNote": "Current Note"
   },
   "modals": {
     "collection": {

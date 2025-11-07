@@ -11,6 +11,7 @@ export interface TaskRenderOptions {
     onCalendarToggle?: (task: Task) => void;
     hideFilename?: boolean; // Hide filename when grouped
     hideDateBadge?: boolean; // Hide date badge when grouped by date
+    parentTask?: Task; // Parent task info for sub-tasks rendered as standalone
 }
 
 export class TaskRenderer {
@@ -53,7 +54,8 @@ export class TaskRenderer {
 
         // Apply indentation for nested tasks
         // Subtask checkboxes align with parent task text (base padding 8px + checkbox 20px + gap 8px = 36px per level)
-        if (task.indentLevel > 0) {
+        // Don't indent if this has a parentTask (sub-task rendered as standalone)
+        if (task.indentLevel > 0 && !options.parentTask) {
             quoteEl.style.paddingLeft = `${8 + (task.indentLevel * 28)}px`;
         }
 
@@ -62,7 +64,8 @@ export class TaskRenderer {
         const checkboxIcon = checkboxContainer.createDiv({ cls: 'task-checkbox' });
 
         // Use different icons for top-level vs sub-tasks
-        if (task.indentLevel > 0) {
+        // Treat as top-level if has parentTask (sub-task rendered as standalone)
+        if (task.indentLevel > 0 && !options.parentTask) {
             // Sub-tasks: circle and circle-check
             setIcon(checkboxIcon, task.completed ? 'circle-check' : 'circle');
         } else {
@@ -116,8 +119,8 @@ export class TaskRenderer {
         }
 
         // Filename below context when hideFilename is false (date grouping)
-        // Only show for parent tasks (indentLevel === 0), not for subtasks
-        if (!options.hideFilename && task.indentLevel === 0) {
+        // Show for parent tasks (indentLevel === 0) OR tasks with parentTask (standalone sub-tasks)
+        if (!options.hideFilename && (task.indentLevel === 0 || options.parentTask)) {
             const fileName = task.filePath.split('/').pop()?.replace(/\.md$/, '') || task.filePath;
             const fileNameContainer = textContent.createDiv({ cls: 'task-filename-inline' });
 
@@ -131,6 +134,36 @@ export class TaskRenderer {
                 text: fileName,
                 attr: { title: task.filePath }
             });
+
+            // If this is a sub-task rendered as standalone, show parent task info
+            if (options.parentTask) {
+                // Add separator
+                fileNameContainer.createSpan({
+                    cls: 'task-parent-separator',
+                    text: ' › '
+                });
+
+                // Add parent task icon
+                const parentIcon = fileNameContainer.createSpan({ cls: 'task-parent-icon' });
+                setIcon(parentIcon, 'git-branch');
+
+                // Add parent task text (strip date and tags)
+                let parentText = options.parentTask.text;
+
+                // Remove date text if present
+                if (options.parentTask.dateText) {
+                    parentText = parentText.replace(options.parentTask.dateText, '').trim();
+                }
+
+                // Remove tags (anything starting with #)
+                parentText = parentText.replace(/#[a-zA-Z0-9_-]+/g, '').trim();
+
+                fileNameContainer.createSpan({
+                    cls: 'task-parent-text',
+                    text: parentText,
+                    attr: { title: `Parent task: ${parentText}` }
+                });
+            }
 
             fileNameContainer.addEventListener('click', (event) => {
                 event.stopPropagation();

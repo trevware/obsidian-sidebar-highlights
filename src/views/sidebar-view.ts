@@ -24,7 +24,7 @@ export class HighlightsSidebarView extends ItemView {
     private highlightCommentsVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
     private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
-    private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' = 'none';
+    private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc' = 'none';
     private commentsExpanded: boolean = false;
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
@@ -186,6 +186,13 @@ export class HighlightsSidebarView extends ItemView {
             this.collapseAllCommentsInMap();
         }
 
+        // Reset task-specific sort modes when switching to highlights views
+        const isTasksView = viewMode === 'tasks';
+        const isTaskSpecificSort = this.sortMode === 'priority' || this.sortMode === 'date-asc' || this.sortMode === 'date-desc';
+        if (!isTasksView && isTaskSpecificSort) {
+            this.sortMode = 'none';
+        }
+
         // Update UI button states if they exist
         if (this.contentEl) {
             const groupButton = this.contentEl.querySelector('.highlights-group-button') as HTMLElement;
@@ -206,6 +213,9 @@ export class HighlightsSidebarView extends ItemView {
                 // Update the icon to match the restored state
                 this.updateCommentsToggleIcon(this.commentsToggleButton);
             }
+
+            // Update filter button state based on restored filters
+            this.showTagActive();
 
             // Update search button and input container state
             const searchInputContainer = this.contentEl.querySelector('.highlights-search-input-container') as HTMLElement;
@@ -266,8 +276,8 @@ export class HighlightsSidebarView extends ItemView {
                 // Check if this is a context line (indented or starts with whitespace)
                 const trimmedLine = line.trim();
                 if (trimmedLine.length > 0 && (line.startsWith(' ') || line.startsWith('\t'))) {
-                    // This is context for the current task
-                    currentBlock.push(line.trim());
+                    // This is context for the current task - preserve indentation for proper comparison
+                    currentBlock.push(line);
                 } else if (trimmedLine.length === 0) {
                     // Empty line might still be part of context, but end block after it
                     inTaskBlock = false;
@@ -596,6 +606,7 @@ export class HighlightsSidebarView extends ItemView {
             this.updateSortButtonState(this.sortButton);
             this.sortButton.addEventListener('click', (event) => {
                 const menu = new Menu();
+                const isTasksView = this.viewMode === 'tasks';
 
                 menu.addItem((item) => {
                     item
@@ -637,6 +648,52 @@ export class HighlightsSidebarView extends ItemView {
                             this.renderContent();
                         });
                 });
+
+                // Tasks-specific sorting options
+                if (isTasksView) {
+                    menu.addSeparator();
+
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('sorting.priority'))
+                            .setIcon('flag')
+                            .setChecked(this.sortMode === 'priority')
+                            .onClick(() => {
+                                this.sortMode = 'priority';
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveSortModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+
+                    menu.addSeparator();
+
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('sorting.dateEarliestFirst'))
+                            .setIcon('calendar-arrow-up')
+                            .setChecked(this.sortMode === 'date-asc')
+                            .onClick(() => {
+                                this.sortMode = 'date-asc';
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveSortModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('sorting.dateLatestFirst'))
+                            .setIcon('calendar-arrow-down')
+                            .setChecked(this.sortMode === 'date-desc')
+                            .onClick(() => {
+                                this.sortMode = 'date-desc';
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveSortModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+                }
 
                 menu.showAtMouseEvent(event);
             });
@@ -872,48 +929,37 @@ export class HighlightsSidebarView extends ItemView {
         this.registerEvent(
             this.app.vault.on('modify', async (file) => {
                 if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Get current content
-                    const newContent = await this.app.vault.cachedRead(file);
-
-                    // Get previous content from cache (or read from file if not cached)
-                    const cachedTasks = this.fileTaskCache.get(file.path);
-                    const oldContent = cachedTasks ? cachedTasks.join('\n') : '';
-
-                    // Check if tasks have actually changed
-                    const tasksChanged = this.haveTasksChanged(oldContent, newContent);
-
-                    if (tasksChanged) {
-                        // Update cache with new task content
+                    // Debounce to avoid excessive re-renders while typing
+                    if (this.taskRefreshTimeout) {
+                        window.clearTimeout(this.taskRefreshTimeout);
+                    }
+                    this.taskRefreshTimeout = window.setTimeout(async () => {
+                        // Get current content and update cache for comparison
+                        const newContent = await this.app.vault.cachedRead(file);
                         this.fileTaskCache.set(file.path, this.extractTaskLines(newContent));
 
-                        // Debounce to avoid excessive re-renders
-                        if (this.taskRefreshTimeout) {
-                            window.clearTimeout(this.taskRefreshTimeout);
+                        // Only re-scan the modified file, not all files
+                        if (this.cachedAllTasks) {
+                            // Remove old tasks from this file
+                            this.cachedAllTasks = this.cachedAllTasks.filter(task => task.filePath !== file.path);
+
+                            // Re-scan just this file for new tasks
+                            const newFileTasks = await this.taskManager.scanFileForTasks(
+                                file,
+                                true, // Include completed tasks
+                                this.plugin.settings.showTaskContext
+                            );
+
+                            // Add the new tasks from this file
+                            this.cachedAllTasks.push(...newFileTasks);
+                        } else {
+                            // No cache yet, clear it to trigger full scan
+                            this.cachedAllTasks = null;
                         }
-                        this.taskRefreshTimeout = window.setTimeout(async () => {
-                            // Only re-scan the modified file, not all files
-                            if (this.cachedAllTasks) {
-                                // Remove old tasks from this file
-                                this.cachedAllTasks = this.cachedAllTasks.filter(task => task.filePath !== file.path);
 
-                                // Re-scan just this file for new tasks
-                                const newFileTasks = await this.taskManager.scanFileForTasks(
-                                    file,
-                                    true, // Include completed tasks
-                                    this.plugin.settings.showTaskContext
-                                );
-
-                                // Add the new tasks from this file
-                                this.cachedAllTasks.push(...newFileTasks);
-                            } else {
-                                // No cache yet, clear it to trigger full scan
-                                this.cachedAllTasks = null;
-                            }
-
-                            // Re-render with updated cache (no full rescan!)
-                            this.renderContent();
-                        }, 1000); // 1 second - consistent with highlight detection debounce
-                    }
+                        // Re-render with updated cache (no full rescan!)
+                        this.renderContent();
+                    }, 300); // 300ms - more responsive than 1 second
                 }
             })
         );
@@ -1381,6 +1427,193 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
+    /**
+     * Get tasks from the current active file
+     * @returns Array of tasks from the active file, or empty array if no active file
+     */
+    private getCurrentFileTasks(): Task[] {
+        const file = this.plugin.app.workspace.getActiveFile();
+        if (!file) return [];
+
+        // Filter cached tasks by current file path
+        let currentFileTasks = this.cachedAllTasks?.filter(t => t.filePath === file.path) || [];
+
+        // Filter by completion status if needed
+        if (!this.plugin.settings.showCompletedTasks) {
+            currentFileTasks = currentFileTasks.filter(task => !task.completed);
+        }
+
+        // Apply search filter if present
+        const searchTerm = this.getSearchTerm();
+        if (searchTerm && searchTerm.length > 0) {
+            currentFileTasks = currentFileTasks.filter(task =>
+                task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                task.filePath.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        // Apply tag filters if present
+        if (this.selectedTags.size > 0) {
+            currentFileTasks = currentFileTasks.filter(task => {
+                // Extract tags from task text using regex
+                const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+                const taskTags: string[] = [];
+                let match;
+                while ((match = tagRegex.exec(task.text)) !== null) {
+                    taskTags.push(match[1]);
+                }
+
+                // Check if any selected tag matches any task tag
+                return Array.from(this.selectedTags).some(selectedTag =>
+                    taskTags.includes(selectedTag)
+                );
+            });
+        }
+
+        // Apply special filters if present
+        if (this.selectedSpecialFilters.size > 0) {
+            currentFileTasks = currentFileTasks.filter(task => {
+                const today = moment().startOf('day');
+
+                // Check each selected special filter
+                return Array.from(this.selectedSpecialFilters).every(filterId => {
+                    switch (filterId) {
+                        case 'flagged':
+                            return task.flagged;
+
+                        case 'upcoming':
+                            if (!task.date) return false;
+                            const taskDate = moment(task.date, 'YYYY-MM-DD');
+                            const startOfWeek = moment().startOf('week'); // Sunday
+                            const endOfWeek = moment().endOf('week'); // Saturday
+                            return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
+
+                        case 'completed':
+                            return task.completed;
+
+                        case 'incomplete':
+                            return !task.completed;
+
+                        case 'due-today':
+                            if (!task.date) return false;
+                            const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
+                            return dueTodayDate.isSame(today, 'day');
+
+                        case 'overdue':
+                            if (!task.date) return false;
+                            const overdueDate = moment(task.date, 'YYYY-MM-DD');
+                            return overdueDate.isBefore(today) && !task.completed;
+
+                        case 'no-date':
+                            return !task.date;
+
+                        default:
+                            return true;
+                    }
+                });
+            });
+        }
+
+        return currentFileTasks;
+    }
+
+    /**
+     * Render the current note tasks section at the top of the Task tab
+     */
+    private async renderCurrentNoteTasksSection() {
+        const file = this.plugin.app.workspace.getActiveFile();
+        if (!file) return; // No active file, don't show section
+
+        const currentFileTasks = this.getCurrentFileTasks();
+        if (currentFileTasks.length === 0) return; // No tasks in current file, don't show section
+
+        // Create header (OUTSIDE the card)
+        const headerEl = this.contentAreaEl.createDiv({
+            cls: 'highlight-group-header current-note-group-header'
+        });
+
+        const headerContent = headerEl.createEl('span');
+
+        // Add icon and filename
+        const iconSpan = headerContent.createSpan({ cls: 'tree-item-icon' });
+        setIcon(iconSpan, 'file-pen-line');
+
+        headerContent.createSpan({
+            text: file.basename
+        });
+
+        // Add task count with same style as other counts
+        headerContent.createSpan({
+            cls: 'tree-item-flair',
+            text: currentFileTasks.length.toString()
+        });
+
+        // Create card container for tasks
+        const cardContainer = this.contentAreaEl.createDiv({
+            cls: 'current-note-tasks-card'
+        });
+
+        // Sort tasks based on current sort mode
+        const sortedTasks = currentFileTasks.sort((a, b) => {
+            // Apply alphabetical sorting if enabled
+            if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
+                const textA = a.text.toLowerCase();
+                const textB = b.text.toLowerCase();
+                const comparison = textA.localeCompare(textB);
+                return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
+            }
+
+            // Apply priority sorting
+            if (this.sortMode === 'priority') {
+                const priorityA = a.priority || 999; // Tasks without priority go last
+                const priorityB = b.priority || 999;
+                if (priorityA !== priorityB) {
+                    return priorityA - priorityB; // Lower number = higher priority
+                }
+                // Secondary sort by line number when priorities are equal
+                return a.lineNumber - b.lineNumber;
+            }
+
+            // Apply date sorting
+            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
+                const dateA = a.date || '9999-12-31'; // Tasks without date go last
+                const dateB = b.date || '9999-12-31';
+                const comparison = dateA.localeCompare(dateB);
+                if (comparison !== 0) {
+                    return this.sortMode === 'date-asc' ? comparison : -comparison;
+                }
+                // Secondary sort by line number when dates are equal
+                return a.lineNumber - b.lineNumber;
+            }
+
+            // Default: sort by line number (order of appearance in file)
+            return a.lineNumber - b.lineNumber;
+        });
+
+        // Render tasks (flat list, no grouping or filtering)
+        sortedTasks.forEach(task => {
+            this.taskRenderer.createTaskItem(cardContainer, task, {
+                hideFilename: true, // Hide filename since we're in a file-specific section
+                hideDateBadge: false, // Show date badges
+                onTaskToggle: async (task, checkboxEl) => {
+                    await this.handleTaskToggle(task, checkboxEl);
+                },
+                onTaskClick: (task, event) => {
+                    this.handleTaskClick(task, event);
+                },
+                onFileNameClick: (filePath, event) => {
+                    this.plugin.app.workspace.openLinkText(filePath, '');
+                },
+                onFlagToggle: async (task, event) => {
+                    await this.handleFlagToggle(task, event);
+                },
+                onCalendarToggle: async (task) => {
+                    await this.handleCalendarToggle(task);
+                }
+            });
+        });
+    }
+
     private async renderTasksView() {
         // Guard against concurrent renders (prevents task duplication when grouping is enabled)
         if (this.isRenderingTasks) {
@@ -1397,19 +1630,15 @@ export class HighlightsSidebarView extends ItemView {
 
             this.contentAreaEl.empty();
 
-            // Create the standard list container
-            this.listContainerEl = this.contentAreaEl.createDiv({
-                cls: 'highlights-list tasks-container'
-            });
-
             let allTasks: Task[];
 
-            // Use cached tasks if available, otherwise scan
+            // Load/cache tasks FIRST before rendering any UI
+            // This ensures cachedAllTasks is available for current note section
             if (this.cachedAllTasks !== null) {
                 allTasks = this.cachedAllTasks;
             } else {
-                // Show loading state only when actually scanning
-                const loadingEl = this.listContainerEl.createDiv({ cls: 'task-loading' });
+                // Show loading state in contentAreaEl temporarily
+                const loadingEl = this.contentAreaEl.createDiv({ cls: 'task-loading' });
                 loadingEl.textContent = t('emptyStates.loadingTasks');
 
                 // Scan all tasks (always include completed for accurate progress calculation)
@@ -1438,6 +1667,24 @@ export class HighlightsSidebarView extends ItemView {
                 // Remove loading state
                 loadingEl.remove();
             }
+
+            // Render current note tasks section FIRST (pinned at top)
+            if (this.plugin.settings.showCurrentNoteTasksSection) {
+                await this.renderCurrentNoteTasksSection();
+            }
+
+            // If "only current note tasks" is enabled, skip rendering the main task list
+            if (this.plugin.settings.showOnlyCurrentNoteTasks && this.plugin.settings.showCurrentNoteTasksSection) {
+                // Restore scroll position and exit early
+                this.restoreScrollPosition();
+                return;
+            }
+
+            // Create the standard list container AFTER current note section
+            // This ensures it appears below the current note section
+            this.listContainerEl = this.contentAreaEl.createDiv({
+                cls: 'highlights-list tasks-container'
+            });
 
             // Filter by completion status if needed
             let tasks = allTasks;
@@ -1489,8 +1736,10 @@ export class HighlightsSidebarView extends ItemView {
 
                             case 'upcoming':
                                 if (!task.date) return false;
-                                const upcomingDate = moment(task.date, 'YYYY-MM-DD');
-                                return upcomingDate.isAfter(today);
+                                const taskDate = moment(task.date, 'YYYY-MM-DD');
+                                const startOfWeek = moment().startOf('week'); // Sunday
+                                const endOfWeek = moment().endOf('week'); // Saturday
+                                return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
 
                             case 'completed':
                                 return task.completed;
@@ -1537,6 +1786,29 @@ export class HighlightsSidebarView extends ItemView {
                             return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
                         }
 
+                        // Apply priority sorting
+                        if (this.sortMode === 'priority') {
+                            const priorityA = a.priority || 999; // Tasks without priority go last
+                            const priorityB = b.priority || 999;
+                            if (priorityA !== priorityB) {
+                                return priorityA - priorityB; // Lower number = higher priority
+                            }
+                            // Secondary sort by line number when priorities are equal
+                            return a.lineNumber - b.lineNumber;
+                        }
+
+                        // Apply date sorting
+                        if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
+                            const dateA = a.date || '9999-12-31'; // Tasks without date go last
+                            const dateB = b.date || '9999-12-31';
+                            const comparison = dateA.localeCompare(dateB);
+                            if (comparison !== 0) {
+                                return this.sortMode === 'date-asc' ? comparison : -comparison;
+                            }
+                            // Secondary sort by line number when dates are equal
+                            return a.lineNumber - b.lineNumber;
+                        }
+
                         // Default: sort by file path, then by line number
                         if (a.filePath !== b.filePath) {
                             return a.filePath.localeCompare(b.filePath);
@@ -1554,6 +1826,9 @@ export class HighlightsSidebarView extends ItemView {
 
             // Restore scroll position after DOM rebuild
             this.restoreScrollPosition();
+
+            // Update filter button state
+            this.showTagActive();
 
             // Apply flash animation to recently moved task
             if (this.recentlyMovedTaskId) {
@@ -1735,6 +2010,29 @@ export class HighlightsSidebarView extends ItemView {
                         return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
                     }
 
+                    // Apply priority sorting
+                    if (this.sortMode === 'priority') {
+                        const priorityA = a.priority || 999; // Tasks without priority go last
+                        const priorityB = b.priority || 999;
+                        if (priorityA !== priorityB) {
+                            return priorityA - priorityB; // Lower number = higher priority
+                        }
+                        // Secondary sort by line number when priorities are equal
+                        return a.lineNumber - b.lineNumber;
+                    }
+
+                    // Apply date sorting
+                    if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
+                        const dateA = a.date || '9999-12-31'; // Tasks without date go last
+                        const dateB = b.date || '9999-12-31';
+                        const comparison = dateA.localeCompare(dateB);
+                        if (comparison !== 0) {
+                            return this.sortMode === 'date-asc' ? comparison : -comparison;
+                        }
+                        // Secondary sort by line number when dates are equal
+                        return a.lineNumber - b.lineNumber;
+                    }
+
                     // Default: sort by line number within same file
                     return a.lineNumber - b.lineNumber;
                 });
@@ -1747,10 +2045,32 @@ export class HighlightsSidebarView extends ItemView {
                 const isIndividualDayGroup = /^\d{4}-\d{2}-\d{2}$/.test(groupName) || groupName === 'OVERDUE';
 
                 sortedTasks.forEach(task => {
+                    // Only render top-level tasks (indent level 0)
+                    // Sub-tasks will be rendered with their parents
+                    let parentTask: Task | undefined = undefined;
+
+                    if (task.indentLevel > 0) {
+                        // Check if this sub-task has its own date - if so, render it as a standalone task
+                        if (!task.date) {
+                            return; // Skip - will be rendered with parent
+                        }
+
+                        // Find the parent task for this sub-task
+                        if (this.cachedAllTasks) {
+                            parentTask = this.cachedAllTasks.find(t =>
+                                t.filePath === task.filePath &&
+                                t.lineNumber < task.lineNumber &&
+                                t.indentLevel < task.indentLevel
+                            );
+                        }
+                    }
+
+                    // Render the main task
                     this.taskRenderer.createTaskItem(groupTasksContainer, task, {
                         searchTerm,
                         hideFilename: false, // Show filename when grouping by date
                         hideDateBadge: isIndividualDayGroup, // Only hide for Today/Tomorrow/named days
+                        parentTask, // Pass parent task if this is a sub-task with own date
                         onTaskToggle: async (task, checkboxEl) => {
                             await this.handleTaskToggle(task, checkboxEl);
                         },
@@ -1767,6 +2087,52 @@ export class HighlightsSidebarView extends ItemView {
                             await this.handleCalendarToggle(task);
                         }
                     });
+
+                    // Find and render child tasks (if any) immediately after parent
+                    if (task.indentLevel === 0 && this.cachedAllTasks) {
+                        const children = this.cachedAllTasks.filter(t =>
+                            t.filePath === task.filePath &&
+                            t.lineNumber > task.lineNumber &&
+                            t.indentLevel > task.indentLevel &&
+                            !t.date // Only include children without their own dates
+                        );
+
+                        // Find the next sibling or parent to determine where children end
+                        const nextSibling = this.cachedAllTasks.find(t =>
+                            t.filePath === task.filePath &&
+                            t.lineNumber > task.lineNumber &&
+                            t.indentLevel <= task.indentLevel
+                        );
+
+                        // Filter children to only include those before the next sibling
+                        const immediateChildren = nextSibling
+                            ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
+                            : children;
+
+                        // Render each child
+                        immediateChildren.forEach(childTask => {
+                            this.taskRenderer.createTaskItem(groupTasksContainer, childTask, {
+                                searchTerm,
+                                hideFilename: false,
+                                hideDateBadge: isIndividualDayGroup,
+                                onTaskToggle: async (task, checkboxEl) => {
+                                    await this.handleTaskToggle(task, checkboxEl);
+                                },
+                                onTaskClick: (task, event) => {
+                                    this.handleTaskClick(task, event);
+                                },
+                                onFileNameClick: (filePath, event) => {
+                                    this.plugin.app.workspace.openLinkText(filePath, '');
+                                },
+                                onFlagToggle: async (task, event) => {
+                                    await this.handleFlagToggle(task, event);
+                                },
+                                onCalendarToggle: async (task) => {
+                                    await this.handleCalendarToggle(task);
+                                }
+                            });
+                        });
+                    }
                 });
             } else {
                 // First, group by section (markdown headers)
@@ -1883,6 +2249,29 @@ export class HighlightsSidebarView extends ItemView {
                                 return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
                             }
 
+                            // Apply priority sorting
+                            if (this.sortMode === 'priority') {
+                                const priorityA = a.priority || 999; // Tasks without priority go last
+                                const priorityB = b.priority || 999;
+                                if (priorityA !== priorityB) {
+                                    return priorityA - priorityB; // Lower number = higher priority
+                                }
+                                // Secondary sort by line number when priorities are equal
+                                return a.lineNumber - b.lineNumber;
+                            }
+
+                            // Apply date sorting
+                            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
+                                const dateA = a.date || '9999-12-31'; // Tasks without date go last
+                                const dateB = b.date || '9999-12-31';
+                                const comparison = dateA.localeCompare(dateB);
+                                if (comparison !== 0) {
+                                    return this.sortMode === 'date-asc' ? comparison : -comparison;
+                                }
+                                // Secondary sort by line number when dates are equal
+                                return a.lineNumber - b.lineNumber;
+                            }
+
                             // Default: sort by line number within same file
                             return a.lineNumber - b.lineNumber;
                         });
@@ -1972,10 +2361,29 @@ export class HighlightsSidebarView extends ItemView {
 
                     // Render tasks in this section (show filenames for date grouping, hide for others)
                     sortedTasks.forEach(task => {
+                        // Only render top-level tasks or sub-tasks with their own dates
+                        let parentTask: Task | undefined = undefined;
+
+                        if (task.indentLevel > 0) {
+                            if (!task.date) {
+                                return; // Skip - will be rendered with parent
+                            }
+
+                            // Find parent task for sub-task with own date
+                            if (this.cachedAllTasks) {
+                                parentTask = this.cachedAllTasks.find(t =>
+                                    t.filePath === task.filePath &&
+                                    t.lineNumber < task.lineNumber &&
+                                    t.indentLevel < task.indentLevel
+                                );
+                            }
+                        }
+
                         this.taskRenderer.createTaskItem(groupTasksContainer, task, {
                             searchTerm,
                             hideFilename: !(this.groupingMode === 'date-asc'), // Show filename when grouping by due date
                             hideDateBadge: this.groupingMode === 'date-asc', // Hide date badge when grouping by due date
+                            parentTask,
                             onTaskToggle: async (task, checkboxEl) => {
                                 await this.handleTaskToggle(task, checkboxEl);
                             },
@@ -1992,6 +2400,49 @@ export class HighlightsSidebarView extends ItemView {
                                 await this.handleCalendarToggle(task);
                             }
                         });
+
+                        // Find and render child tasks immediately after parent
+                        if (task.indentLevel === 0 && this.cachedAllTasks) {
+                            const children = this.cachedAllTasks.filter(t =>
+                                t.filePath === task.filePath &&
+                                t.lineNumber > task.lineNumber &&
+                                t.indentLevel > task.indentLevel &&
+                                !t.date // Only children without dates
+                            );
+
+                            const nextSibling = this.cachedAllTasks.find(t =>
+                                t.filePath === task.filePath &&
+                                t.lineNumber > task.lineNumber &&
+                                t.indentLevel <= task.indentLevel
+                            );
+
+                            const immediateChildren = nextSibling
+                                ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
+                                : children;
+
+                            immediateChildren.forEach(childTask => {
+                                this.taskRenderer.createTaskItem(groupTasksContainer, childTask, {
+                                    searchTerm,
+                                    hideFilename: !(this.groupingMode === 'date-asc'),
+                                    hideDateBadge: this.groupingMode === 'date-asc',
+                                    onTaskToggle: async (task, checkboxEl) => {
+                                        await this.handleTaskToggle(task, checkboxEl);
+                                    },
+                                    onTaskClick: (task, event) => {
+                                        this.handleTaskClick(task, event);
+                                    },
+                                    onFileNameClick: (filePath, event) => {
+                                        this.plugin.app.workspace.openLinkText(filePath, '');
+                                    },
+                                    onFlagToggle: async (task) => {
+                                        await this.handleFlagToggle(task);
+                                    },
+                                    onCalendarToggle: async (task) => {
+                                        await this.handleCalendarToggle(task);
+                                    }
+                                });
+                            });
+                        }
                     });
                 // }
             });
@@ -2654,8 +3105,28 @@ export class HighlightsSidebarView extends ItemView {
 
         // Render current page items first
         pageTasks.forEach(task => {
+            // Only render top-level tasks or sub-tasks with their own dates
+            let parentTask: Task | undefined = undefined;
+
+            if (task.indentLevel > 0) {
+                if (!task.date) {
+                    return; // Skip - will be rendered with parent
+                }
+
+                // Find parent task for sub-task with own date
+                if (this.cachedAllTasks) {
+                    parentTask = this.cachedAllTasks.find(t =>
+                        t.filePath === task.filePath &&
+                        t.lineNumber < task.lineNumber &&
+                        t.indentLevel < task.indentLevel
+                    );
+                }
+            }
+
+            // Render the main task
             this.taskRenderer.createTaskItem(this.listContainerEl, task, {
                 searchTerm,
+                parentTask,
                 onTaskToggle: async (task, checkboxEl) => {
                     await this.handleTaskToggle(task, checkboxEl);
                 },
@@ -2672,6 +3143,50 @@ export class HighlightsSidebarView extends ItemView {
                     await this.handleCalendarToggle(task);
                 }
             });
+
+            // Find and render child tasks (if any) immediately after parent
+            if (task.indentLevel === 0 && this.cachedAllTasks) {
+                const children = this.cachedAllTasks.filter(t =>
+                    t.filePath === task.filePath &&
+                    t.lineNumber > task.lineNumber &&
+                    t.indentLevel > task.indentLevel &&
+                    !t.date // Only include children without their own dates
+                );
+
+                // Find the next sibling or parent to determine where children end
+                const nextSibling = this.cachedAllTasks.find(t =>
+                    t.filePath === task.filePath &&
+                    t.lineNumber > task.lineNumber &&
+                    t.indentLevel <= task.indentLevel
+                );
+
+                // Filter children to only include those before the next sibling
+                const immediateChildren = nextSibling
+                    ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
+                    : children;
+
+                // Render each child
+                immediateChildren.forEach(childTask => {
+                    this.taskRenderer.createTaskItem(this.listContainerEl, childTask, {
+                        searchTerm,
+                        onTaskToggle: async (task, checkboxEl) => {
+                            await this.handleTaskToggle(task, checkboxEl);
+                        },
+                        onTaskClick: (task, event) => {
+                            this.handleTaskClick(task, event);
+                        },
+                        onFileNameClick: (filePath, event) => {
+                            this.plugin.app.workspace.openLinkText(filePath, '');
+                        },
+                        onFlagToggle: async (task) => {
+                            await this.handleFlagToggle(task);
+                        },
+                        onCalendarToggle: async (task) => {
+                            await this.handleCalendarToggle(task);
+                        }
+                    });
+                });
+            }
         });
     }
 
@@ -2799,7 +3314,10 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             this.renderCollectionHighlights(highlights);
         }
-        
+
+        // Update filter button state
+        this.showTagActive();
+
         // Restore scroll position after DOM rebuild
         this.restoreScrollPosition();
     }
@@ -3647,23 +4165,47 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private updateSortButtonState(button: HTMLElement) {
-        // Check if date-based grouping is active (sorting doesn't apply)
+        const isTasksView = this.viewMode === 'tasks';
+        // Check if date-based grouping is active (sorting doesn't apply for highlights)
         const isDateGrouping = this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc';
 
-        if (isDateGrouping) {
-            // Disable button when sorting doesn't apply
+        // Keep icon consistent
+        setIcon(button, 'arrow-up-down');
+
+        // Only disable for highlights with date-based grouping, not for tasks
+        if (!isTasksView && isDateGrouping) {
+            // Disable button when sorting doesn't apply (highlights only)
             (button as HTMLButtonElement).disabled = true;
             button.classList.remove('active');
             setTooltip(button, t('toolbar.sort'));
         } else {
-            // Normal sorting state
+            // Normal sorting state (tasks always enabled)
             (button as HTMLButtonElement).disabled = false;
             if (this.sortMode === 'none') {
                 button.classList.remove('active');
                 setTooltip(button, t('toolbar.sort'));
             } else {
                 button.classList.add('active');
-                setTooltip(button, t('toolbar.sort'));
+                // Set tooltip based on current sort mode
+                switch (this.sortMode) {
+                    case 'alphabetical-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.aToZ')}`);
+                        break;
+                    case 'alphabetical-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.zToA')}`);
+                        break;
+                    case 'priority':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.priority')}`);
+                        break;
+                    case 'date-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.dateEarliestFirst')}`);
+                        break;
+                    case 'date-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.dateLatestFirst')}`);
+                        break;
+                    default:
+                        setTooltip(button, t('toolbar.sort'));
+                }
             }
         }
     }
@@ -5865,9 +6407,10 @@ export class HighlightsSidebarView extends ItemView {
         const toolbarButtons = this.contentEl.querySelectorAll('.highlights-search-container button');
         toolbarButtons.forEach((button, index) => {
             const isCollectionNavButton = index === toolbarButtons.length - 1; // Last button
-            const isNativeCommentsToggle = index === 2; // Native comments toggle is the 3rd button (index 2)
-            const isCommentsToggle = index === 3; // Comments toggle is the 4th button (index 3)
-            const isResetColors = index === 4; // Reset colors is the 5th button (index 4)
+            // Button order: 0=search, 1=group, 2=sort, 3=native comments, 4=comments, 5=reset colors
+            const isNativeCommentsToggle = index === 3; // Native comments toggle is the 4th button (index 3)
+            const isCommentsToggle = index === 4; // Comments toggle is the 5th button (index 4)
+            const isResetColors = index === 5; // Reset colors is the 6th button (index 5)
 
             if (this.viewMode === 'collections' && !this.currentCollectionId && !isCollectionNavButton && !isNativeCommentsToggle) {
                 // In collections overview, disable all buttons except collection nav and native comments toggle

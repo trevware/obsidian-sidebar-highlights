@@ -427,6 +427,22 @@
     margin-top: 0;
 }
 
+/* Current note tasks section styles */
+.current-note-group-header {
+    margin-bottom: 8px !important;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+}
+
+.current-note-tasks-card {
+    background-color: var(--background-modifier-active-hover);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    padding: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    margin-bottom: 24px;
+}
+
 .group-color-square {
     width: 12px;
     height: 12px;
@@ -1827,6 +1843,37 @@
     font-size: var(--font-ui-smaller);
 }
 
+/* Parent task info for sub-tasks rendered as standalone */
+.task-parent-separator {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+}
+
+.task-parent-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0.6;
+    width: 14px;
+    height: 14px;
+}
+
+.task-parent-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.task-parent-text {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-style: italic;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Task actions - hidden for individual task style */
 .task-actions {
     display: none;
@@ -2077,8 +2124,8 @@
     font-size: var(--font-ui-smaller);
     font-weight: var(--font-weight-semibold);
     border-radius: 4px;
-    background-color: var(--background-modifier-border);
-    color: var(--text-muted);
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
     flex-shrink: 0;
     white-space: nowrap;
     vertical-align: middle;
