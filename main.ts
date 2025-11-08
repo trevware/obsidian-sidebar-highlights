@@ -772,47 +772,403 @@ export default class HighlightCommentsPlugin extends Plugin {
         return null;
     }
 
-    async restoreFromBackup(backupPath: string): Promise<{ success: boolean; orphanedCount?: number }> {
-        try {
-            const content = await this.app.vault.adapter.read(backupPath);
-            const backupData = JSON.parse(content);
+    async restoreFromBackup(backupPath: string): Promise<{ success: boolean; orphanedCount?: number; recoveredCount?: number }> {
+        const log: string[] = [];
+        const logLine = (msg: string) => {
+            log.push(`[${new Date().toISOString()}] ${msg}`);
+        };
 
-            // Restore critical data
+        const startTime = Date.now();
+
+        try {
+            logLine(`=== BACKUP RESTORATION STARTED ===`);
+            logLine(`Start time: ${new Date().toISOString()}`);
+
+            // Log environment information
+            logLine(`\n--- ENVIRONMENT ---`);
+            logLine(`Plugin version: ${this.manifest.version}`);
+            logLine(`Obsidian version: ${(this.app as any).appVersion || 'unknown'}`);
+            logLine(`Platform: ${(this.app as any).isMobile ? 'mobile' : 'desktop'}`);
+
+            // Extract just the filename from the path for privacy
+            const backupFileName = backupPath.split('/').pop() || 'unknown';
+            logLine(`\n--- BACKUP FILE ---`);
+            logLine(`Backup file: ${backupFileName}`);
+
+            const content = await this.app.vault.adapter.read(backupPath);
+            logLine(`Backup file size: ${content.length} bytes`);
+
+            const backupData = JSON.parse(content);
+            logLine(`✓ Backup file read and parsed successfully`);
+
+            // Log backup metadata
+            logLine(`Backup version: ${backupData.settingsVersion || 'unknown'}`);
+            logLine(`Backup reason: ${backupData.backupReason || 'unknown'}`);
+            logLine(`Backup timestamp: ${backupData.originalTimestamp || backupData.backupCreatedAt || 'unknown'}`);
+
+            // Log current state before restoration
+            logLine(`\n--- CURRENT STATE BEFORE RESTORATION ---`);
+            const currentHighlightsCount = Array.from(this.highlights.values()).reduce((sum, arr) => sum + arr.length, 0);
+            const currentCollectionsCount = this.collections.size;
+            logLine(`Current highlights in memory: ${currentHighlightsCount}`);
+            logLine(`Current collections in memory: ${currentCollectionsCount}`);
+            logLine(`Current files with highlights: ${this.highlights.size}`);
+
+            // Restore collections
+            logLine(`\n--- RESTORING COLLECTIONS ---`);
+            const collectionsCount = backupData.collections ? Object.keys(backupData.collections).length : 0;
+            logLine(`Collections in backup: ${collectionsCount}`);
             if (backupData.collections) {
                 this.settings.collections = backupData.collections;
                 this.collections = new Map(Object.entries(backupData.collections));
+
+                // Log collection details (redacted names for privacy)
+                let collectionIndex = 0;
+                for (const [collectionId, collection] of this.collections) {
+                    collectionIndex++;
+                    logLine(`  Collection #${collectionIndex} (ID: ${collectionId}): ${collection.highlightIds.length} highlight IDs`);
+                }
+                logLine(`✓ Collections restored`);
             }
+
             if (backupData.customColorNames) {
                 this.settings.customColorNames = backupData.customColorNames;
+                logLine(`✓ Custom color names restored`);
             }
 
-            // Don't restore highlights from backup - rescan files instead to get current state
-            // This ensures we only reference highlights that actually exist in markdown files
-            // Note: scanAllFilesForHighlights() will automatically clean up orphaned references
-            await this.scanAllFilesForHighlights();
-
-            // Count how many orphaned references were cleaned up AFTER scanning
-            // We do this by comparing the restored collections to what's left after cleanup
-            let orphanedCount = 0;
+            // Collect all highlight IDs that are referenced in collections
+            const collectionHighlightIds = new Set<string>();
             if (backupData.collections) {
                 for (const collectionId in backupData.collections) {
-                    const originalHighlightIds = backupData.collections[collectionId].highlightIds || [];
-                    const currentHighlightIds = this.settings.collections[collectionId]?.highlightIds || [];
-                    orphanedCount += originalHighlightIds.length - currentHighlightIds.length;
+                    const collection = backupData.collections[collectionId];
+                    for (const highlightId of collection.highlightIds) {
+                        collectionHighlightIds.add(highlightId);
+                    }
                 }
+            }
+            logLine(`\nHighlight IDs referenced in collections: ${collectionHighlightIds.size}`);
+            logLine(`Collection highlight IDs: ${Array.from(collectionHighlightIds).join(', ')}`);
+
+            // Restore highlights from backup by validating them against current markdown
+            // ONLY restore highlights that are referenced in collections
+            logLine(`\n--- RESTORING HIGHLIGHTS ---`);
+            logLine(`NOTE: File filtering is bypassed for collection restoration`);
+            logLine(`Collections are restored regardless of excluded files settings`);
+
+            let recoveredCount = 0;
+            let orphanedCount = 0;
+            const filesInBackup = backupData.highlights ? Object.keys(backupData.highlights).length : 0;
+            const totalHighlightsInBackup = backupData.highlights
+                ? Object.values(backupData.highlights).reduce((sum: number, arr: any[]) => sum + arr.length, 0)
+                : 0;
+            logLine(`Files with highlights in backup: ${filesInBackup}`);
+            logLine(`Total highlights in backup: ${totalHighlightsInBackup}`);
+            logLine(`Collection highlights to restore: ${collectionHighlightIds.size}`);
+
+            if (backupData.highlights && collectionHighlightIds.size > 0) {
+                const restoredHighlights = new Map<string, Highlight[]>();
+
+                let fileIndex = 0;
+                for (const filePath in backupData.highlights) {
+                    const fileStartTime = Date.now();
+                    fileIndex++;
+                    const fileHighlights = backupData.highlights[filePath];
+
+                    // Filter to only highlights that are in collections
+                    const collectionHighlightsInFile = fileHighlights.filter((h: Highlight) => collectionHighlightIds.has(h.id));
+
+                    if (collectionHighlightsInFile.length === 0) {
+                        logLine(`\n--- Skipping file #${fileIndex}: [REDACTED] ---`);
+                        logLine(`  No collection highlights in this file (${fileHighlights.length} total highlights skipped)`);
+                        continue;
+                    }
+                    logLine(`\n--- Processing file #${fileIndex}: [REDACTED] ---`);
+                    logLine(`  Collection highlights in this file: ${collectionHighlightsInFile.length} (${fileHighlights.length} total in backup)`);
+
+                    // IMPORTANT: Collections restoration bypasses file filtering
+                    // We restore collection highlights regardless of excluded files settings
+                    // This ensures users don't lose collection data due to filter configurations
+
+                    // Check if file still exists
+                    const file = this.app.vault.getAbstractFileByPath(filePath);
+                    if (!file || !(file instanceof TFile)) {
+                        // File no longer exists - all highlights are orphaned
+                        logLine(`  ✗ File does not exist - marking ${collectionHighlightsInFile.length} collection highlights as orphaned`);
+                        orphanedCount += collectionHighlightsInFile.length;
+                        continue;
+                    }
+                    logLine(`  ✓ File exists`);
+
+                    // Check if file would normally be filtered (for logging purposes only)
+                    const wouldBeFiltered = !this.shouldProcessFile(file);
+                    if (wouldBeFiltered) {
+                        logLine(`  ℹ File would normally be filtered, but processing anyway for collection restoration`);
+                    }
+
+                    // Read current file content
+                    let fileContent: string;
+                    try {
+                        fileContent = await this.app.vault.read(file);
+                        logLine(`  ✓ File content read (${fileContent.length} characters)`);
+                    } catch (error) {
+                        logLine(`  ✗ Failed to read file: ${error}`);
+                        console.error(`Failed to read file #${fileIndex}:`, error);
+                        orphanedCount += collectionHighlightsInFile.length;
+                        continue;
+                    }
+
+                    const validHighlights: Highlight[] = [];
+
+                    for (const backupHighlight of collectionHighlightsInFile) {
+                        logLine(`\n  Validating highlight ID: ${backupHighlight.id}`);
+                        logLine(`    Text length: ${backupHighlight.text.length} characters`);
+                        logLine(`    Text preview: [REDACTED]`);
+                        logLine(`    Type: ${backupHighlight.type || 'highlight'}`);
+                        logLine(`    Native comment: ${backupHighlight.isNativeComment || false}`);
+                        logLine(`    Line number: ${backupHighlight.line}`);
+                        logLine(`    Start offset: ${backupHighlight.startOffset}`);
+                        logLine(`    End offset: ${backupHighlight.endOffset}`);
+
+                        // Log text characteristics
+                        const hasNewlines = backupHighlight.text.includes('\n');
+                        const newlineCount = (backupHighlight.text.match(/\n/g) || []).length;
+                        const startsWithWhitespace = /^\s/.test(backupHighlight.text);
+                        const endsWithWhitespace = /\s$/.test(backupHighlight.text);
+                        logLine(`    Contains newlines: ${hasNewlines} (${newlineCount} newline(s))`);
+                        logLine(`    Starts with whitespace: ${startsWithWhitespace}`);
+                        logLine(`    Ends with whitespace: ${endsWithWhitespace}`);
+
+                        // Log if there are special characters that might affect regex
+                        const hasSpecialChars = /[.*+?^${}()|[\]\\]/.test(backupHighlight.text);
+                        logLine(`    Contains regex special chars: ${hasSpecialChars}`);
+
+                        // Check if text exists in file
+                        const textExists = fileContent.includes(backupHighlight.text);
+                        logLine(`    Text exists in file: ${textExists}`);
+
+                        if (!textExists) {
+                            orphanedCount++;
+                            logLine(`    ✗ ORPHANED - Exact text not found in file`);
+                            logLine(`    Reason: The highlight text does not appear anywhere in the current file content`);
+                            logLine(`    Possible causes: Text was edited, deleted, or moved to another file`);
+                            continue;
+                        }
+
+                        // Check pattern matching
+                        let patternFound = false;
+                        let searchPattern = '';
+
+                        if (backupHighlight.isNativeComment) {
+                            searchPattern = `%%\\s*${this.escapeRegex(backupHighlight.text)}\\s*%%`;
+                            const commentPattern = new RegExp(searchPattern);
+                            patternFound = commentPattern.test(fileContent);
+                            logLine(`    Checking native comment pattern: ${patternFound}`);
+                            logLine(`    Pattern: ${searchPattern}`);
+                        } else {
+                            searchPattern = `==\\s*${this.escapeRegex(backupHighlight.text)}\\s*==`;
+                            const highlightPattern = new RegExp(searchPattern);
+                            patternFound = highlightPattern.test(fileContent);
+                            logLine(`    Checking highlight pattern: ${patternFound}`);
+                            logLine(`    Pattern: ${searchPattern}`);
+                        }
+
+                        if (patternFound) {
+                            validHighlights.push(backupHighlight);
+                            recoveredCount++;
+                            logLine(`    ✓ RECOVERED - Highlight pattern matched successfully`);
+                        } else {
+                            orphanedCount++;
+                            logLine(`    ✗ ORPHANED - Text exists but pattern not matched`);
+                            logLine(`    Reason: Text found in file but not wrapped with expected delimiters`);
+                            if (backupHighlight.isNativeComment) {
+                                logLine(`    Expected: Text wrapped with %% %% (native comment)`);
+                            } else {
+                                logLine(`    Expected: Text wrapped with == == (highlight)`);
+                            }
+                            logLine(`    Possible causes: User removed highlight markers, or whitespace/newline differences`);
+                        }
+                    }
+
+                    if (validHighlights.length > 0) {
+                        restoredHighlights.set(filePath, validHighlights);
+                        logLine(`  Summary: ${validHighlights.length}/${collectionHighlightsInFile.length} collection highlights restored from this file`);
+                    } else {
+                        logLine(`  Summary: 0/${collectionHighlightsInFile.length} collection highlights restored from this file`);
+                    }
+
+                    const fileElapsedTime = Date.now() - fileStartTime;
+                    logLine(`  Processing time: ${fileElapsedTime}ms`);
+                }
+
+                // Set the restored highlights
+                this.highlights = restoredHighlights;
+                this.settings.highlights = Object.fromEntries(restoredHighlights);
+                logLine(`\n✓ Highlight restoration complete`);
+                logLine(`  Total recovered: ${recoveredCount}`);
+                logLine(`  Total orphaned: ${orphanedCount}`);
+            }
+
+            // Now clean up collection references to orphaned highlights
+            if (backupData.collections) {
+                logLine(`\n--- Cleaning up collection references ---`);
+                const validHighlightIds = new Set<string>();
+                for (const highlights of this.highlights.values()) {
+                    for (const highlight of highlights) {
+                        validHighlightIds.add(highlight.id);
+                    }
+                }
+                logLine(`Valid highlight IDs after restoration: ${validHighlightIds.size}`);
+
+                let cleanupCollectionIndex = 0;
+                for (const [collectionId, collection] of this.collections) {
+                    cleanupCollectionIndex++;
+                    const originalCount = collection.highlightIds.length;
+                    collection.highlightIds = collection.highlightIds.filter(id => {
+                        const isValid = validHighlightIds.has(id);
+                        if (!isValid) {
+                            logLine(`  Removing orphaned highlight ID "${id}" from collection #${cleanupCollectionIndex}`);
+                        }
+                        return isValid;
+                    });
+                    const finalCount = collection.highlightIds.length;
+                    this.collections.set(collectionId, collection);
+                    logLine(`  Collection #${cleanupCollectionIndex}: ${originalCount} → ${finalCount} highlights`);
+                }
+
+                this.settings.collections = Object.fromEntries(this.collections);
+                logLine(`✓ Collection cleanup complete`);
             }
 
             // Save restored settings
             await this.saveSettings();
+            logLine(`✓ Settings saved`);
 
             // Refresh the sidebar to show restored data
             this.refreshSidebar();
+            logLine(`✓ Sidebar refreshed`);
 
-            return { success: true, orphanedCount };
+            // Calculate and log final statistics
+            const totalElapsedTime = Date.now() - startTime;
+            const finalHighlightsCount = Array.from(this.highlights.values()).reduce((sum, arr) => sum + arr.length, 0);
+            const finalCollectionsCount = this.collections.size;
+            const finalFilesWithHighlights = this.highlights.size;
+
+            logLine(`\n=== BACKUP RESTORATION COMPLETED SUCCESSFULLY ===`);
+            logLine(`Total elapsed time: ${totalElapsedTime}ms (${(totalElapsedTime / 1000).toFixed(2)}s)`);
+            logLine(`\n--- FINAL STATISTICS ---`);
+            logLine(`Collections restored: ${collectionsCount}`);
+            logLine(`Highlights attempted: ${collectionHighlightIds.size}`);
+            logLine(`Highlights recovered: ${recoveredCount}`);
+            logLine(`Highlights orphaned: ${orphanedCount}`);
+            logLine(`Success rate: ${collectionHighlightIds.size > 0 ? ((recoveredCount / collectionHighlightIds.size) * 100).toFixed(1) : 0}%`);
+            logLine(`\n--- FINAL STATE ---`);
+            logLine(`Total highlights in memory: ${finalHighlightsCount}`);
+            logLine(`Total collections: ${finalCollectionsCount}`);
+            logLine(`Files with highlights: ${finalFilesWithHighlights}`);
+
+            // Validation checks
+            logLine(`\n--- VALIDATION CHECKS ---`);
+            const emptyCollections = Array.from(this.collections.values()).filter(c => c.highlightIds.length === 0);
+            logLine(`Empty collections: ${emptyCollections.length}`);
+
+            // Check for ID consistency
+            const allHighlightIds = new Set<string>();
+            for (const highlights of this.highlights.values()) {
+                for (const highlight of highlights) {
+                    allHighlightIds.add(highlight.id);
+                }
+            }
+
+            let brokenReferences = 0;
+            for (const collection of this.collections.values()) {
+                for (const highlightId of collection.highlightIds) {
+                    if (!allHighlightIds.has(highlightId)) {
+                        brokenReferences++;
+                        logLine(`WARNING: Collection contains invalid highlight ID: ${highlightId}`);
+                    }
+                }
+            }
+            logLine(`Broken collection references: ${brokenReferences}`);
+            logLine(`Validation status: ${brokenReferences === 0 ? '✓ PASSED' : '✗ FAILED'}`);
+
+            // Write log to file
+            await this.writeRestoreLog(log.join('\n'));
+
+            return { success: true, orphanedCount, recoveredCount };
         } catch (error) {
+            const totalElapsedTime = Date.now() - startTime;
+            logLine(`\n✗✗✗ RESTORATION FAILED ✗✗✗`);
+            logLine(`Failed at: ${new Date().toISOString()}`);
+            logLine(`Time before failure: ${totalElapsedTime}ms`);
+            logLine(`Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+            logLine(`Error message: ${error}`);
+            if (error instanceof Error) {
+                logLine(`Error name: ${error.name}`);
+                logLine(`Stack trace:\n${error.stack}`);
+            }
+
+            // Log partial restoration state if available
+            try {
+                const partialHighlightsCount = Array.from(this.highlights.values()).reduce((sum, arr) => sum + arr.length, 0);
+                logLine(`\n--- PARTIAL STATE AT FAILURE ---`);
+                logLine(`Highlights in memory: ${partialHighlightsCount}`);
+                logLine(`Collections in memory: ${this.collections.size}`);
+            } catch (stateError) {
+                logLine(`Could not retrieve partial state: ${stateError}`);
+            }
+
             console.error('Failed to restore from backup:', error);
+
+            // Write log to file even on failure
+            await this.writeRestoreLog(log.join('\n'));
+
             return { success: false };
         }
+    }
+
+    async writeRestoreLog(logContent: string): Promise<void> {
+        try {
+            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            await this.app.vault.adapter.write(logPath, logContent);
+        } catch (error) {
+            console.error('Failed to write restore log:', error);
+        }
+    }
+
+    async getRestoreLog(): Promise<string | null> {
+        try {
+            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            const exists = await this.app.vault.adapter.exists(logPath);
+            if (!exists) {
+                return null;
+            }
+            return await this.app.vault.adapter.read(logPath);
+        } catch (error) {
+            console.error('Failed to read restore log:', error);
+            return null;
+        }
+    }
+
+    validateHighlightInFile(highlight: Highlight, fileContent: string): boolean {
+        // Check if the exact text still exists in the file
+        const textExists = fileContent.includes(highlight.text);
+        if (!textExists) {
+            return false;
+        }
+
+        // For native comments, check if it's in a comment block
+        if (highlight.isNativeComment) {
+            const commentPattern = new RegExp(`%%\\s*${this.escapeRegex(highlight.text)}\\s*%%`);
+            return commentPattern.test(fileContent);
+        }
+
+        // For regular highlights, check if it's still highlighted
+        const highlightPattern = new RegExp(`==\\s*${this.escapeRegex(highlight.text)}\\s*==`);
+        return highlightPattern.test(fileContent);
+    }
+
+    escapeRegex(str: string): string {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     countOrphanedReferences(): number {
@@ -1301,22 +1657,41 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         try {
             const markdownFiles = this.app.vault.getMarkdownFiles();
-            // Filter files based on shouldProcessFile logic
-            const processableFiles = markdownFiles.filter(file => this.shouldProcessFile(file));
-            const existingFilePaths = new Set(processableFiles.map(file => file.path));
+
+            // TWO-TIER SCANNING LOGIC:
+            // 1. Scan all non-filtered files (normal behavior)
+            const normallyProcessableFiles = markdownFiles.filter(file => this.shouldProcessFile(file));
+
+            // 2. Additionally scan filtered files that contain collection highlights
+            // This ensures collection highlights are always up-to-date regardless of filtering
+            const filesWithCollections = this.getFilesWithCollectionHighlights();
+            const filteredFilesWithCollections = markdownFiles.filter(file =>
+                !this.shouldProcessFile(file) && // File is filtered
+                filesWithCollections.has(file.path) // But contains collection highlights
+            );
+
+            // Combine both sets: normal files + filtered files with collections
+            const allFilesToProcess = [...normallyProcessableFiles, ...filteredFilesWithCollections];
+            const existingFilePaths = new Set(allFilesToProcess.map(file => file.path));
             let hasChanges = false;
-        
-        // First, clean up highlights for files that no longer exist
+
+        // First, clean up highlights for files that no longer exist OR no longer have collections
         for (const filePath of this.highlights.keys()) {
             if (!existingFilePaths.has(filePath)) {
-                this.highlights.delete(filePath);
-                hasChanges = true;
+                // Only delete if file doesn't exist OR (file is filtered AND has no collection highlights)
+                const file = this.app.vault.getAbstractFileByPath(filePath);
+                const shouldDelete = !file || !filesWithCollections.has(filePath);
+
+                if (shouldDelete) {
+                    this.highlights.delete(filePath);
+                    hasChanges = true;
+                }
             }
         }
 
         // Scan existing files for highlights FIRST, then clean up orphaned references
         // This ensures we clean based on the current state of highlights in markdown files
-        for (const file of processableFiles) {
+        for (const file of allFilesToProcess) {
             try {
                 // Check if this is an Excalidraw file (deeper check)
                 if (await this.isExcalidrawFile(file)) {
@@ -1923,7 +2298,42 @@ export default class HighlightCommentsPlugin extends Plugin {
         return Math.random().toString(36).substr(2, 9);
     }
 
-    private shouldProcessFile(file: TFile): boolean {
+    /**
+     * Get set of file paths that contain highlights referenced in collections
+     * These files need to be scanned even if they're filtered
+     */
+    private getFilesWithCollectionHighlights(): Set<string> {
+        const filesWithCollectionHighlights = new Set<string>();
+
+        // Get all highlight IDs that are in collections
+        for (const collection of this.collections.values()) {
+            for (const highlightId of collection.highlightIds) {
+                // Find which file contains this highlight
+                for (const [filePath, fileHighlights] of this.highlights) {
+                    if (fileHighlights.some(h => h.id === highlightId)) {
+                        filesWithCollectionHighlights.add(filePath);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return filesWithCollectionHighlights;
+    }
+
+    /**
+     * Check if a highlight ID is referenced in any collection
+     */
+    private isHighlightInCollection(highlightId: string): boolean {
+        for (const collection of this.collections.values()) {
+            if (collection.highlightIds.includes(highlightId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    shouldProcessFile(file: TFile): boolean {
         if (file.extension !== 'md') {
             return false;
         }
@@ -3173,13 +3583,17 @@ class HighlightSettingTab extends PluginSettingTab {
         const performRestore = async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
             const result = await this.plugin.restoreFromBackup(backupPath);
             if (result.success) {
+                const recoveredCount = result.recoveredCount || 0;
+                const orphanedCount = result.orphanedCount || 0;
+
                 let message = t('settings.backupRestore.restoreSuccess', {
                     collections: collectionsCount.toString(),
-                    highlights: highlightsCount.toString()
+                    highlights: recoveredCount.toString()
                 });
-                if (result.orphanedCount && result.orphanedCount > 0) {
+
+                if (orphanedCount > 0) {
                     message += ` ${t('settings.backupRestore.orphanedCleaned', {
-                        count: result.orphanedCount.toString()
+                        count: orphanedCount.toString()
                     })}`;
                 }
                 new Notice(message);
@@ -3314,6 +3728,21 @@ class HighlightSettingTab extends PluginSettingTab {
                 .onClick(async () => {
                     await this.plugin.createBackup('manual');
                     new Notice(t('settings.backupRestore.manualBackupCreated'));
+                }));
+
+        new Setting(containerEl)
+            .setName('Activity log')
+            .setDesc('Copy recent restore activity for debugging.')
+            .addButton(button => button
+                .setButtonText('Copy')
+                .onClick(async () => {
+                    const log = await this.plugin.getRestoreLog();
+                    if (!log) {
+                        new Notice('No restore log found. Perform a backup restoration first.');
+                        return;
+                    }
+                    await navigator.clipboard.writeText(log);
+                    new Notice('Restore log copied to clipboard!');
                 }));
     }
 

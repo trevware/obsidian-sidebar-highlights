@@ -5,6 +5,21 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.2] - 2025-11-08
+
+### Fixed
+- **Collections and File Filtering Independence**: Collections now completely independent of file filtering
+  - **View-level filtering**: File filters only affect Current Note and All Notes tabs
+  - **Collections always visible**: Highlights in collections are ALWAYS visible regardless of source file filtering
+
+### Added
+- **Restoration Debug Logging**: Added comprehensive debug logging for backup restoration
+  - Logs every step of the restoration process including file validation, highlight matching, and collection cleanup
+  - Automatically writes detailed log file (`restore-log.txt`) on every restoration attempt
+  - New "Activity log" setting with "Copy" button allows users to copy log to clipboard for troubleshooting
+  - Privacy protections: text content, file paths, and collection names are redacted in logs
+  - Helps diagnose restoration issues by showing exactly why highlights were recovered or orphaned
+
 ## [1.35.1] - 2025-11-07
 
 ### Fixed

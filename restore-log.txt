@@ -1,0 +1,117 @@
+[2025-11-08T16:32:53.725Z] === BACKUP RESTORATION STARTED ===
+[2025-11-08T16:32:53.725Z] Start time: 2025-11-08T16:32:53.725Z
+[2025-11-08T16:32:53.725Z] 
+--- ENVIRONMENT ---
+[2025-11-08T16:32:53.725Z] Plugin version: 1.35.2
+[2025-11-08T16:32:53.725Z] Obsidian version: unknown
+[2025-11-08T16:32:53.725Z] Platform: desktop
+[2025-11-08T16:32:53.725Z] 
+--- BACKUP FILE ---
+[2025-11-08T16:32:53.725Z] Backup file: data-backup-external-sync-2025-11-08T16-28-25-021Z.json
+[2025-11-08T16:32:53.726Z] Backup file size: 10839 bytes
+[2025-11-08T16:32:53.726Z] ✓ Backup file read and parsed successfully
+[2025-11-08T16:32:53.726Z] Backup version: 1.14.0
+[2025-11-08T16:32:53.726Z] Backup reason: external-sync
+[2025-11-08T16:32:53.726Z] Backup timestamp: 2025-11-08T16-28-25-021Z
+[2025-11-08T16:32:53.726Z] 
+--- CURRENT STATE BEFORE RESTORATION ---
+[2025-11-08T16:32:53.726Z] Current highlights in memory: 24
+[2025-11-08T16:32:53.726Z] Current collections in memory: 2
+[2025-11-08T16:32:53.726Z] Current files with highlights: 4
+[2025-11-08T16:32:53.726Z] 
+--- RESTORING COLLECTIONS ---
+[2025-11-08T16:32:53.726Z] Collections in backup: 2
+[2025-11-08T16:32:53.726Z]   Collection #1 (ID: ixjn5lw5i): 1 highlight IDs
+[2025-11-08T16:32:53.726Z]   Collection #2 (ID: 9f51tztik): 1 highlight IDs
+[2025-11-08T16:32:53.726Z] ✓ Collections restored
+[2025-11-08T16:32:53.726Z] ✓ Custom color names restored
+[2025-11-08T16:32:53.726Z] 
+Highlight IDs referenced in collections: 2
+[2025-11-08T16:32:53.726Z] Collection highlight IDs: mygdanfq5, 6agn7vem1
+[2025-11-08T16:32:53.726Z] 
+--- RESTORING HIGHLIGHTS ---
+[2025-11-08T16:32:53.726Z] Files with highlights in backup: 4
+[2025-11-08T16:32:53.726Z] Total highlights in backup: 24
+[2025-11-08T16:32:53.726Z] Collection highlights to restore: 2
+[2025-11-08T16:32:53.726Z] 
+--- Processing file #1: [REDACTED] ---
+[2025-11-08T16:32:53.726Z]   Collection highlights in this file: 2 (21 total in backup)
+[2025-11-08T16:32:53.726Z]   ✓ File exists
+[2025-11-08T16:32:53.726Z]   ✓ File content read (1487 characters)
+[2025-11-08T16:32:53.726Z] 
+  Validating highlight ID: 6agn7vem1
+[2025-11-08T16:32:53.726Z]     Text length: 30 characters
+[2025-11-08T16:32:53.726Z]     Text preview: [REDACTED]
+[2025-11-08T16:32:53.726Z]     Type: highlight
+[2025-11-08T16:32:53.726Z]     Native comment: false
+[2025-11-08T16:32:53.726Z]     Line number: 24
+[2025-11-08T16:32:53.726Z]     Start offset: 503
+[2025-11-08T16:32:53.726Z]     End offset: 537
+[2025-11-08T16:32:53.726Z]     Contains newlines: false (0 newline(s))
+[2025-11-08T16:32:53.726Z]     Starts with whitespace: false
+[2025-11-08T16:32:53.726Z]     Ends with whitespace: false
+[2025-11-08T16:32:53.726Z]     Contains regex special chars: false
+[2025-11-08T16:32:53.726Z]     Text exists in file: true
+[2025-11-08T16:32:53.726Z]     Checking highlight pattern: true
+[2025-11-08T16:32:53.726Z]     Pattern: ==\s*Highlight with inline footnote\s*==
+[2025-11-08T16:32:53.726Z]     ✓ RECOVERED - Highlight pattern matched successfully
+[2025-11-08T16:32:53.726Z] 
+  Validating highlight ID: mygdanfq5
+[2025-11-08T16:32:53.726Z]     Text length: 70 characters
+[2025-11-08T16:32:53.726Z]     Text preview: [REDACTED]
+[2025-11-08T16:32:53.726Z]     Type: comment
+[2025-11-08T16:32:53.726Z]     Native comment: true
+[2025-11-08T16:32:53.726Z]     Line number: 38
+[2025-11-08T16:32:53.726Z]     Start offset: 883
+[2025-11-08T16:32:53.726Z]     End offset: 957
+[2025-11-08T16:32:53.726Z]     Contains newlines: false (0 newline(s))
+[2025-11-08T16:32:53.726Z]     Starts with whitespace: true
+[2025-11-08T16:32:53.726Z]     Ends with whitespace: true
+[2025-11-08T16:32:53.726Z]     Contains regex special chars: false
+[2025-11-08T16:32:53.726Z]     Text exists in file: true
+[2025-11-08T16:32:53.726Z]     Checking native comment pattern: true
+[2025-11-08T16:32:53.726Z]     Pattern: %%\s* This comment has a blank line before it and should appear separately \s*%%
+[2025-11-08T16:32:53.726Z]     ✓ RECOVERED - Highlight pattern matched successfully
+[2025-11-08T16:32:53.726Z]   Summary: 2/2 collection highlights restored from this file
+[2025-11-08T16:32:53.726Z]   Processing time: 0ms
+[2025-11-08T16:32:53.726Z] 
+--- Skipping file #2: [REDACTED] ---
+[2025-11-08T16:32:53.726Z]   No collection highlights in this file (1 total highlights skipped)
+[2025-11-08T16:32:53.726Z] 
+--- Skipping file #3: [REDACTED] ---
+[2025-11-08T16:32:53.726Z]   No collection highlights in this file (1 total highlights skipped)
+[2025-11-08T16:32:53.726Z] 
+--- Skipping file #4: [REDACTED] ---
+[2025-11-08T16:32:53.726Z]   No collection highlights in this file (1 total highlights skipped)
+[2025-11-08T16:32:53.726Z] 
+✓ Highlight restoration complete
+[2025-11-08T16:32:53.726Z]   Total recovered: 2
+[2025-11-08T16:32:53.726Z]   Total orphaned: 0
+[2025-11-08T16:32:53.726Z] 
+--- Cleaning up collection references ---
+[2025-11-08T16:32:53.726Z] Valid highlight IDs after restoration: 2
+[2025-11-08T16:32:53.726Z]   Collection #1: 1 → 1 highlights
+[2025-11-08T16:32:53.726Z]   Collection #2: 1 → 1 highlights
+[2025-11-08T16:32:53.726Z] ✓ Collection cleanup complete
+[2025-11-08T16:32:53.728Z] ✓ Settings saved
+[2025-11-08T16:32:53.733Z] ✓ Sidebar refreshed
+[2025-11-08T16:32:53.733Z] 
+=== BACKUP RESTORATION COMPLETED SUCCESSFULLY ===
+[2025-11-08T16:32:53.733Z] Total elapsed time: 8ms (0.01s)
+[2025-11-08T16:32:53.733Z] 
+--- FINAL STATISTICS ---
+[2025-11-08T16:32:53.733Z] Collections restored: 2
+[2025-11-08T16:32:53.733Z] Highlights attempted: 2
+[2025-11-08T16:32:53.733Z] Highlights recovered: 2
+[2025-11-08T16:32:53.733Z] Highlights orphaned: 0
+[2025-11-08T16:32:53.733Z] Success rate: 100.0%
+[2025-11-08T16:32:53.733Z] 
+--- FINAL STATE ---
+[2025-11-08T16:32:53.733Z] Total highlights in memory: 2
+[2025-11-08T16:32:53.733Z] Total collections: 2
+[2025-11-08T16:32:53.733Z] Files with highlights: 1
+[2025-11-08T16:32:53.733Z] 
+--- VALIDATION CHECKS ---
+[2025-11-08T16:32:53.733Z] Empty collections: 0
+[2025-11-08T16:32:53.733Z] Broken collection references: 0
+[2025-11-08T16:32:53.733Z] Validation status: ✓ PASSED

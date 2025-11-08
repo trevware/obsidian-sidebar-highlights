@@ -3429,7 +3429,7 @@ export class HighlightsSidebarView extends ItemView {
         this.listContainerEl.empty();
 
         let allHighlights: Highlight[];
-        
+
         if (this.viewMode === 'current') {
             const file = this.plugin.app.workspace.getActiveFile();
             if (!file) {
@@ -3449,6 +3449,18 @@ export class HighlightsSidebarView extends ItemView {
             // Collections view is handled elsewhere
             return;
         }
+
+        // VIEW-LEVEL FILTERING: Filter out highlights from excluded files
+        // This only applies to 'current' and 'all' views, NOT collections
+        // Collections should show ALL highlights regardless of file filtering
+        allHighlights = allHighlights.filter(highlight => {
+            const file = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
+            if (!file || !(file instanceof TFile)) {
+                return false; // File doesn't exist
+            }
+            // Check if file should be processed (not filtered)
+            return this.plugin.shouldProcessFile(file);
+        });
 
         let filteredHighlights = this.applyAllFilters(allHighlights);
 
