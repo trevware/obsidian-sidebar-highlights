@@ -5,6 +5,20 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2025-11-07
+
+### Added
+- **Backup Selector Modal**: Choose which backup to restore from a list of all available backups
+  - Click to select a backup, then click "Restore" button
+- **Backup Restore Options**: Includes "Restore latest" and "Choose" buttons
+  - "Restore latest" - Quickly restore from the most recent backup
+  - "Choose" button - Opens backup selector modal to choose from all backups
+
+### Enhanced
+- **Manual Backup Protection**: Manual backups are permanently preserved
+  - Automatic backups are subject to 20-backup retention limit
+  - Manual backups are never automatically removed
+
 ## [1.34.0] - 2025-11-07
 
 ### Added

@@ -202,6 +202,33 @@
         "desc": "Date format for parsing due dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Due dates matching this format will be displayed as badges.",
         "placeholder": "YYYY-MM-DD"
       }
+    },
+    "backupRestore": {
+      "heading": "Backup and restore",
+      "restoreLatest": {
+        "name": "Restore from backup",
+        "desc": "Restore collections that contain highlights from a backup. Sidebar Highlights automatically creates periodic backups. Highlights in Collections that no longer exist in your vault will not be restored.",
+        "button": "Restore latest"
+      },
+      "choose": {
+        "button": "Choose"
+      },
+      "createManual": {
+        "name": "Create backup",
+        "desc": "Create a backup of your collections.",
+        "button": "Create"
+      },
+      "noBackups": "No backups found. Backups are created automatically when settings are migrated or when external changes are detected.",
+      "emptyBackup": "The latest backup does not contain any collections.",
+      "unknownDate": "Unknown date",
+      "confirmTitle": "Confirm Restore",
+      "confirmRestore": "Restore {{collections}} collection(s) (containing {{highlights}} highlight(s)) from backup created at {{date}}?\n\nThis will replace your current collections.",
+      "cancel": "Cancel",
+      "restore": "Restore",
+      "restoreSuccess": "Successfully restored {{collections}} collection(s) (containing {{highlights}} highlight(s)).",
+      "orphanedCleaned": "Removed {{count}} reference(s) to deleted highlights.",
+      "restoreFailed": "Failed to restore from backup. Please check the console for details.",
+      "manualBackupCreated": "Manual backup created successfully"
     }
   },
   "sidebar": {
@@ -402,6 +429,14 @@
       "cancel": "Cancel",
       "save": "Save",
       "nameRequired": "Please enter a name for the display mode"
+    },
+    "backupSelector": {
+      "title": "Choose Backup",
+      "manual": "Manual",
+      "automatic": "Automatic",
+      "stats": "{{collections}} Collections • {{highlights}} Collection Highlights",
+      "restore": "Restore",
+      "close": "Close"
     }
   },
   "notices": {

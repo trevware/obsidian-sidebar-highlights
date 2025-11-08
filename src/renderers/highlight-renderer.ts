@@ -272,7 +272,11 @@ export class HighlightRenderer {
 
     private createCopyButtonInQuote(quoteEl: HTMLElement, highlight: Highlight): HTMLElement {
         const copyButton = quoteEl.createDiv({ cls: 'highlight-quote-copy-button' });
-        copyButton.setAttribute('title', 'Copy highlight');
+
+        // Update tooltip based on whether highlight has comments
+        const hasComments = !highlight.isNativeComment && highlight.footnoteContents && highlight.footnoteContents.length > 0;
+        const tooltipText = hasComments ? 'Copy highlight with comments' : 'Copy highlight';
+        copyButton.setAttribute('title', tooltipText);
 
         const icon = copyButton.createDiv({ cls: 'copy-icon' });
         setIcon(icon, 'copy');
@@ -285,6 +289,7 @@ export class HighlightRenderer {
 
             if (highlight.isNativeComment) {
                 // Native comment: %%text%%
+                // For native comments, the text itself IS the comment, so don't add footnotes
                 textToCopy = `%%${highlight.text}%%`;
             } else if (highlight.type === 'html') {
                 // HTML highlights - just copy the text content (can't reconstruct exact HTML)
@@ -292,6 +297,14 @@ export class HighlightRenderer {
             } else {
                 // Regular markdown highlight: ==text==
                 textToCopy = `==${highlight.text}==`;
+            }
+
+            // Add footnotes/comments if they exist (but not for native comments)
+            if (!highlight.isNativeComment && highlight.footnoteContents && highlight.footnoteContents.length > 0) {
+                // Add each footnote as an inline footnote for easy copying
+                highlight.footnoteContents.forEach(content => {
+                    textToCopy += `^[${content}]`;
+                });
             }
 
             // Copy to clipboard

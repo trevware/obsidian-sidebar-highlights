@@ -1387,6 +1387,34 @@
     margin: 4px 8px;
 }
 
+.highlights-dropdown-heading {
+    padding: 4px 12px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: default;
+    user-select: none;
+}
+
+/* Expandable dropdown items */
+.dropdown-expandable-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Secondary panel styling */
+.highlights-dropdown-secondary {
+    position: fixed;
+    top: var(--dropdown-top);
+    left: var(--dropdown-left);
+    z-index: 9999;
+    min-width: 200px;
+    transition: top 0.15s ease-out, left 0.15s ease-out;
+}
+
 /* Corner radius for dropdown items - need !important to override existing rule */
 .highlights-dropdown-menu .menu-item {
     border-radius: 0 !important;

@@ -29,3 +29,4 @@ CHECKLIST.md
 # Testing and backups
 TESTING.md
 backups/
+test-*.js

@@ -8,6 +8,10 @@ export interface DropdownItem {
     checked?: boolean;
     className?: string;
     separator?: boolean;
+    heading?: boolean;
+    expandable?: boolean;
+    expanded?: boolean;
+    children?: DropdownItem[];
     onClick?: () => void;
 }
 
@@ -18,11 +22,14 @@ export interface DropdownOptions {
 
 export class DropdownManager {
     private activeDropdown: HTMLElement | null = null;
+    private secondaryPanel: HTMLElement | null = null;
     private documentClickHandlers: Array<(e: MouseEvent) => void> = [];
     private keydownHandlers: Array<(e: KeyboardEvent) => void> = [];
     private isOpen: boolean = false;
     private checkboxElements: Map<string, { element: HTMLElement, checkDiv: HTMLElement }> = new Map();
     private activeItems: DropdownItem[] = [];
+    private expandedItemId: string | null = null;
+    private triggerElement: HTMLElement | null = null;
 
     isDropdownOpen(): boolean {
         return this.isOpen;
@@ -37,10 +44,16 @@ export class DropdownManager {
             this.activeDropdown.style.removeProperty('--dropdown-left');
             this.activeDropdown.parentNode.removeChild(this.activeDropdown);
         }
+        if (this.secondaryPanel && this.secondaryPanel.parentNode) {
+            this.secondaryPanel.parentNode.removeChild(this.secondaryPanel);
+        }
         this.activeDropdown = null;
+        this.secondaryPanel = null;
+        this.triggerElement = null;
         this.isOpen = false;
         this.checkboxElements.clear();
         this.activeItems = [];
+        this.expandedItemId = null;
         
         // Clean up event listeners
         this.documentClickHandlers.forEach(handler => {
@@ -55,8 +68,8 @@ export class DropdownManager {
     }
 
     showDropdown(
-        triggerElement: HTMLElement, 
-        items: DropdownItem[], 
+        triggerElement: HTMLElement,
+        items: DropdownItem[],
         options: DropdownOptions = { position: 'below' }
     ): void {
         // Close existing dropdown if open
@@ -65,102 +78,21 @@ export class DropdownManager {
             return;
         }
 
+        this.triggerElement = triggerElement;
         const buttonRect = triggerElement.getBoundingClientRect();
 
         // Create dropdown
         const dropdown = document.createElement('div');
         dropdown.className = `menu highlights-dropdown-menu ${options.className || ''}`;
         dropdown.classList.add('dropdown-positioned');
-        
+
         this.activeDropdown = dropdown;
         this.isOpen = true;
         this.activeItems = [...items]; // Store copy of items
+        this.expandedItemId = null; // Reset expanded state
 
-        // Find first and last non-separator items for corner radius styling
-        const nonSeparatorItems = items.filter(item => !item.separator);
-        const firstNonSeparatorIndex = items.findIndex(item => !item.separator);
-        const lastNonSeparatorIndex = items.length - 1 - [...items].reverse().findIndex(item => !item.separator);
-
-        // Add items
-        items.forEach((item, index) => {
-            const element = document.createElement('div');
-            
-            if (item.separator) {
-                // Create separator
-                element.className = 'menu-separator';
-                dropdown.appendChild(element);
-                return;
-            }
-            
-            element.className = `menu-item ${item.className || 'highlights-dropdown-item'}`;
-            
-            // Add corner radius classes
-            if (index === firstNonSeparatorIndex) {
-                element.classList.add('first-menu-item');
-            }
-            if (index === lastNonSeparatorIndex) {
-                element.classList.add('last-menu-item');
-            }
-            if (nonSeparatorItems.length === 1 && index === firstNonSeparatorIndex) {
-                element.classList.add('only-menu-item');
-            }
-            
-            if (item.checked !== undefined) {
-                // Add checkbox for checkable items
-                const checkDiv = document.createElement('div');
-                checkDiv.className = 'highlights-dropdown-check';
-                
-                if (item.checked) {
-                    setIcon(checkDiv, 'check');
-                    element.classList.add('is-checked');
-                } else if (item.uncheckedIcon) {
-                    // Show unchecked icon when item is not checked
-                    setIcon(checkDiv, item.uncheckedIcon);
-                }
-                element.appendChild(checkDiv);
-                
-                // Store reference for updates - use index if no ID
-                const itemKey = item.id || `item-${index}`;
-                this.checkboxElements.set(itemKey, { element, checkDiv });
-            } else if (item.icon) {
-                // Add icon for non-checkable items
-                const iconDiv = document.createElement('div');
-                iconDiv.className = 'menu-item-icon';
-                setIcon(iconDiv, item.icon);
-                element.appendChild(iconDiv);
-            }
-            
-            const label = document.createElement('span');
-            label.textContent = item.text;
-            element.appendChild(label);
-            
-            element.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                // Call the original onClick if it exists
-                if (item.onClick) {
-                    item.onClick();
-                }
-                
-                // Update checkbox state if this is a checkable item
-                if (item.checked !== undefined) {
-                    const itemKey = item.id || `item-${index}`;
-                    const newCheckedState = !item.checked;
-                    
-                    // Update the stored item state
-                    this.activeItems[index].checked = newCheckedState;
-                    
-                    // Update visual state
-                    this.updateCheckboxState(itemKey, newCheckedState);
-                    
-                    // Check if we should close the dropdown
-                    this.checkShouldAutoClose();
-                }
-            });
-            
-            dropdown.appendChild(element);
-        });
+        // Render all items
+        this.renderItems(dropdown, items, false);
 
         // Add to document temporarily to measure
         document.body.appendChild(dropdown);
@@ -220,7 +152,11 @@ export class DropdownManager {
         
         // Set up click outside handler
         const closeHandler = (e: MouseEvent) => {
-            if (!dropdown.contains(e.target as Node) && !triggerElement.contains(e.target as Node)) {
+            const isInsideDropdown = dropdown.contains(e.target as Node);
+            const isInsideTrigger = triggerElement.contains(e.target as Node);
+            const isInsideSecondary = this.secondaryPanel && this.secondaryPanel.contains(e.target as Node);
+
+            if (!isInsideDropdown && !isInsideTrigger && !isInsideSecondary) {
                 this.closeActiveDropdown();
             }
         };
@@ -236,35 +172,245 @@ export class DropdownManager {
                 this.closeActiveDropdown();
             }
         };
-        
+
         this.keydownHandlers.push(escHandler);
         document.addEventListener('keydown', escHandler);
+
+        // Add mouseleave handler to close secondary panel
+        dropdown.addEventListener('mouseleave', (e: MouseEvent) => {
+            // Give a delay to check if entering secondary panel
+            setTimeout(() => {
+                const relatedTarget = e.relatedTarget as Node;
+                const isEnteringSecondary = this.secondaryPanel && this.secondaryPanel.contains(relatedTarget);
+                if (!isEnteringSecondary) {
+                    this.closeSecondaryPanel();
+                }
+            }, 100);
+        });
+    }
+
+    private renderItems(container: HTMLElement, items: DropdownItem[], renderChildren: boolean, depth: number = 0, isSecondaryPanel: boolean = false): void {
+        items.forEach((item, index) => {
+            if (item.separator) {
+                const element = document.createElement('div');
+                element.className = 'menu-separator';
+                container.appendChild(element);
+                return;
+            }
+
+            if (item.heading) {
+                const element = document.createElement('div');
+                element.className = 'highlights-dropdown-heading';
+                element.textContent = item.text;
+                container.appendChild(element);
+                return;
+            }
+
+            this.renderItem(container, item, index, depth, isSecondaryPanel);
+
+            // Only render children inline if renderChildren is true (for secondary panel)
+            if (renderChildren && item.children) {
+                item.children.forEach((child, childIndex) => {
+                    this.renderItem(container, child, childIndex, depth + 1, isSecondaryPanel);
+                });
+            }
+        });
+    }
+
+    private renderItem(container: HTMLElement, item: DropdownItem, index: number, depth: number, isSecondaryPanel: boolean = false): void {
+        const element = document.createElement('div');
+        element.className = `menu-item ${item.className || 'highlights-dropdown-item'}`;
+
+        if (depth > 0) {
+            element.classList.add('dropdown-child-item');
+        }
+
+        // Handle expandable items
+        if (item.expandable) {
+            element.classList.add('dropdown-expandable-item');
+
+            // Add item icon if provided
+            if (item.icon) {
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'menu-item-icon';
+                setIcon(iconDiv, item.icon);
+                element.appendChild(iconDiv);
+            }
+
+            // Add label
+            const label = document.createElement('span');
+            label.textContent = item.text;
+            element.appendChild(label);
+
+            // Hover handlers for expandable items
+            element.addEventListener('mouseenter', (e) => {
+                if (item.children) {
+                    this.showSecondaryPanel(item.children, element);
+                    this.expandedItemId = item.id!;
+                }
+            });
+        } else {
+            // Regular item (non-expandable)
+            if (item.checked !== undefined) {
+                // Add checkbox for checkable items
+                const checkDiv = document.createElement('div');
+                checkDiv.className = 'highlights-dropdown-check';
+
+                if (item.checked) {
+                    setIcon(checkDiv, 'check');
+                    element.classList.add('is-checked');
+                } else if (item.uncheckedIcon) {
+                    setIcon(checkDiv, item.uncheckedIcon);
+                }
+                element.appendChild(checkDiv);
+
+                const itemKey = item.id || `item-${index}`;
+                this.checkboxElements.set(itemKey, { element, checkDiv });
+            } else if (item.icon) {
+                const iconDiv = document.createElement('div');
+                iconDiv.className = 'menu-item-icon';
+                setIcon(iconDiv, item.icon);
+                element.appendChild(iconDiv);
+            }
+
+            const label = document.createElement('span');
+            label.textContent = item.text;
+            element.appendChild(label);
+
+            // Click handler for regular items
+            element.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (item.onClick) {
+                    item.onClick();
+                }
+
+                if (item.checked !== undefined) {
+                    const itemKey = item.id || `item-${index}`;
+                    const newCheckedState = !item.checked;
+                    item.checked = newCheckedState;
+                    this.updateCheckboxState(itemKey, newCheckedState);
+
+                    // Only auto-close if NOT in secondary panel
+                    if (!isSecondaryPanel) {
+                        this.checkShouldAutoClose();
+                    }
+                }
+            });
+        }
+
+        container.appendChild(element);
+    }
+
+
+    private findItem(items: DropdownItem[], itemId: string): DropdownItem | null {
+        for (const item of items) {
+            if (item.id === itemId) {
+                return item;
+            }
+            if (item.children) {
+                const found = this.findItem(item.children, itemId);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    private closeSecondaryPanel(): void {
+        if (this.secondaryPanel && this.secondaryPanel.parentNode) {
+            this.secondaryPanel.parentNode.removeChild(this.secondaryPanel);
+        }
+        this.secondaryPanel = null;
+    }
+
+    private showSecondaryPanel(children: DropdownItem[], hoveredElement: HTMLElement): void {
+        if (!this.activeDropdown) return;
+
+        // Create secondary panel if it doesn't exist
+        if (!this.secondaryPanel) {
+            const panel = document.createElement('div');
+            panel.className = 'menu highlights-dropdown-menu highlights-dropdown-secondary';
+            this.secondaryPanel = panel;
+            document.body.appendChild(panel);
+
+            // Add mouseenter/mouseleave handlers to keep panel open
+            panel.addEventListener('mouseenter', () => {
+                // Keep the panel open when hovering over it
+            });
+
+            panel.addEventListener('mouseleave', () => {
+                // Close panel when mouse leaves
+                this.closeSecondaryPanel();
+            });
+        }
+
+        // Clear and re-render children
+        this.secondaryPanel.empty();
+        this.renderItems(this.secondaryPanel, children, true, 0, true);
+
+        // Position the panel next to the main dropdown, aligned with hovered item
+        const dropdownRect = this.activeDropdown.getBoundingClientRect();
+        const hoveredRect = hoveredElement.getBoundingClientRect();
+
+        // Determine if sidebar is on left or right
+        const viewportWidth = window.innerWidth;
+        const isOnLeft = dropdownRect.left < viewportWidth / 2;
+
+        // Get panel dimensions after rendering
+        const panelRect = this.secondaryPanel.getBoundingClientRect();
+
+        let left: number;
+        if (isOnLeft) {
+            // Position to the right, slightly overlapping the main dropdown
+            left = dropdownRect.right - 2;
+        } else {
+            // Position to the left, slightly overlapping the main dropdown
+            left = dropdownRect.left - panelRect.width + 2;
+        }
+
+        // Position slightly above the hovered element (4px offset for visual hierarchy)
+        const top = hoveredRect.top - 4;
+
+        this.secondaryPanel.style.setProperty('--dropdown-top', `${top}px`);
+        this.secondaryPanel.style.setProperty('--dropdown-left', `${left}px`);
     }
 
     private updateCheckboxState(itemKey: string, checked: boolean): void {
         const checkboxInfo = this.checkboxElements.get(itemKey);
         if (!checkboxInfo) return;
-        
+
         const { element, checkDiv } = checkboxInfo;
-        
-        // Find the corresponding item to get its uncheckedIcon
-        const item = this.activeItems.find(item => {
-            const itemId = item.id || `item-${this.activeItems.indexOf(item)}`;
-            return itemId === itemKey;
-        });
-        
+
+        // Find the corresponding item to get its uncheckedIcon (search recursively)
+        const item = this.findItemRecursive(this.activeItems, itemKey);
+
         if (checked) {
             setIcon(checkDiv, 'check');
             element.classList.add('is-checked');
         } else {
             checkDiv.empty(); // Clear the check icon
             element.classList.remove('is-checked');
-            
+
             // Show unchecked icon if available
             if (item && item.uncheckedIcon) {
                 setIcon(checkDiv, item.uncheckedIcon);
             }
         }
+    }
+
+    private findItemRecursive(items: DropdownItem[], itemKey: string): DropdownItem | null {
+        for (const item of items) {
+            const itemId = item.id || `item-${items.indexOf(item)}`;
+            if (itemId === itemKey) {
+                return item;
+            }
+            if (item.children) {
+                const found = this.findItemRecursive(item.children, itemKey);
+                if (found) return found;
+            }
+        }
+        return null;
     }
 
     private checkShouldAutoClose(): void {

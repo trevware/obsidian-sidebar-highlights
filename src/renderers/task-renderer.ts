@@ -155,8 +155,8 @@ export class TaskRenderer {
                     parentText = parentText.replace(options.parentTask.dateText, '').trim();
                 }
 
-                // Remove tags (anything starting with #)
-                parentText = parentText.replace(/#[a-zA-Z0-9_-]+/g, '').trim();
+                // Remove tags (anything starting with #, including nested tags with /)
+                parentText = parentText.replace(/#[a-zA-Z0-9_/-]+/g, '').trim();
 
                 fileNameContainer.createSpan({
                     cls: 'task-parent-text',
@@ -300,7 +300,7 @@ export class TaskRenderer {
      * Render text with hashtags as badges (helper for markdown segments)
      */
     private renderTextWithTags(element: HTMLElement, text: string, searchTerm?: string): void {
-        const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+        const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
         let lastIndex = 0;
         let match;
         let hasMatches = false;

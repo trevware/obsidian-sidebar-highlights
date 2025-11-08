@@ -3,6 +3,7 @@ import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Set
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
+import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { i18n, t } from './src/i18n';
@@ -386,8 +387,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Only migrate if we have an explicit older version
             await this.migrateSettings(loadedData);
         } else {
-            // Normal load - add settingsVersion if missing but preserve all data
-            this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+            // Safe merge - only use defaults for truly missing optional fields
+            // Preserve existing collections/highlights even if other fields are missing
+            this.settings = this.safeMergeSettings(loadedData);
             if (!this.settings.settingsVersion) {
                 this.settings.settingsVersion = DEFAULT_SETTINGS.settingsVersion;
                 await this.saveSettings(); // Save the version for future use
@@ -405,6 +407,32 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.settings.excludedFiles = []; // Clear old format
             await this.saveSettings();
         }
+    }
+
+    safeMergeSettings(loadedData: any): CommentPluginSettings {
+        // Start with defaults
+        const merged = { ...DEFAULT_SETTINGS };
+
+        if (!loadedData) {
+            return merged;
+        }
+
+        // Merge all loaded data, but ensure critical data is preserved
+        Object.assign(merged, loadedData);
+
+        // Explicitly preserve critical data structures even if they appear in defaults
+        // This prevents the Object.assign vulnerability where undefined fields get default empty objects
+        if (loadedData.collections !== undefined) {
+            merged.collections = loadedData.collections;
+        }
+        if (loadedData.highlights !== undefined) {
+            merged.highlights = loadedData.highlights;
+        }
+        if (loadedData.customColorNames !== undefined) {
+            merged.customColorNames = loadedData.customColorNames;
+        }
+
+        return merged;
     }
 
     async saveSettings() {
@@ -661,7 +689,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                 highlights: this.settings.highlights,
                 backupReason: reason,
                 originalTimestamp: timestamp,
-                backupCreatedAt: Date.now()
+                backupCreatedAt: Date.now(),
+                retentionManaged: true // Mark new backups as subject to retention policy
             };
 
             // Ensure backups folder exists
@@ -682,11 +711,203 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (reason === 'migration' || reason === 'manual') {
                 new Notice(`Settings backup created: ${filename}`);
             }
+
+            // Clean up old backups (only retention-managed ones)
+            await this.cleanupOldBackups();
         } catch (error) {
             console.error('Failed to create backup:', error);
             new Notice('Warning: Could not create settings backup');
         }
     }
+
+    async listBackups(): Promise<Array<{ path: string; filename: string; data: any }>> {
+        try {
+            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            const files = await this.app.vault.adapter.list(backupsDir);
+
+            const backups: Array<{ path: string; filename: string; data: any }> = [];
+
+            for (const file of files.files) {
+                if (file.endsWith('.json') && file.includes('data-backup-')) {
+                    try {
+                        const content = await this.app.vault.adapter.read(file);
+                        const data = JSON.parse(content);
+                        backups.push({
+                            path: file,
+                            filename: file.split('/').pop() || file,
+                            data
+                        });
+                    } catch (e) {
+                        console.error(`Failed to read backup ${file}:`, e);
+                    }
+                }
+            }
+
+            // Sort by creation time, newest first
+            backups.sort((a, b) => {
+                const timeA = a.data.backupCreatedAt || 0;
+                const timeB = b.data.backupCreatedAt || 0;
+                return timeB - timeA;
+            });
+
+            return backups;
+        } catch (error) {
+            console.error('Failed to list backups:', error);
+            return [];
+        }
+    }
+
+    async findBackupWithCollections(): Promise<{ path: string; filename: string; data: any } | null> {
+        const backups = await this.listBackups();
+
+        for (const backup of backups) {
+            if (backup.data.collections &&
+                typeof backup.data.collections === 'object' &&
+                Object.keys(backup.data.collections).length > 0) {
+                return backup;
+            }
+        }
+
+        return null;
+    }
+
+    async restoreFromBackup(backupPath: string): Promise<{ success: boolean; orphanedCount?: number }> {
+        try {
+            const content = await this.app.vault.adapter.read(backupPath);
+            const backupData = JSON.parse(content);
+
+            // Restore critical data
+            if (backupData.collections) {
+                this.settings.collections = backupData.collections;
+                this.collections = new Map(Object.entries(backupData.collections));
+            }
+            if (backupData.customColorNames) {
+                this.settings.customColorNames = backupData.customColorNames;
+            }
+
+            // Count how many orphaned references exist BEFORE scanning
+            // (scanAllFilesForHighlights will clean them up automatically)
+            const orphanedCount = this.countOrphanedReferences();
+
+            // Don't restore highlights from backup - rescan files instead to get current state
+            // This ensures we only reference highlights that actually exist in markdown files
+            // Note: scanAllFilesForHighlights() will automatically clean up orphaned references
+            await this.scanAllFilesForHighlights();
+
+            // Save restored settings
+            await this.saveSettings();
+
+            // Refresh the sidebar to show restored data
+            this.refreshSidebar();
+
+            return { success: true, orphanedCount };
+        } catch (error) {
+            console.error('Failed to restore from backup:', error);
+            return { success: false };
+        }
+    }
+
+    countOrphanedReferences(): number {
+        // Build a set of all valid highlight IDs that exist in markdown files
+        const validHighlightIds = new Set<string>();
+        for (const [filePath, highlights] of this.highlights) {
+            for (const highlight of highlights) {
+                validHighlightIds.add(highlight.id);
+            }
+        }
+
+        let orphanedCount = 0;
+
+        // Count orphaned references in each collection
+        for (const [collectionId, collection] of this.collections) {
+            for (const id of collection.highlightIds) {
+                const isValid = validHighlightIds.has(id);
+                if (!isValid) {
+                    orphanedCount++;
+                }
+            }
+        }
+
+        return orphanedCount;
+    }
+
+    cleanupOrphanedReferences(): number {
+        // Build a set of all valid highlight IDs that exist in markdown files
+        const validHighlightIds = new Set<string>();
+        for (const [filePath, highlights] of this.highlights) {
+            for (const highlight of highlights) {
+                validHighlightIds.add(highlight.id);
+            }
+        }
+
+        let orphanedCount = 0;
+
+        // Clean up each collection
+        for (const [collectionId, collection] of this.collections) {
+            // Filter out highlight IDs that don't exist anymore
+            collection.highlightIds = collection.highlightIds.filter(id => {
+                const isValid = validHighlightIds.has(id);
+                if (!isValid) {
+                    orphanedCount++;
+                }
+                return isValid;
+            });
+
+            // Update the collection in the map
+            this.collections.set(collectionId, collection);
+        }
+
+        return orphanedCount;
+    }
+
+    countHighlightsInCollections(collections: { [id: string]: Collection }): number {
+        // Count unique highlight IDs across all collections
+        const uniqueHighlightIds = new Set<string>();
+
+        for (const collectionId in collections) {
+            const collection = collections[collectionId];
+            if (collection.highlightIds) {
+                for (const highlightId of collection.highlightIds) {
+                    uniqueHighlightIds.add(highlightId);
+                }
+            }
+        }
+
+        return uniqueHighlightIds.size;
+    }
+
+    async cleanupOldBackups(): Promise<void> {
+        try {
+            const backups = await this.listBackups();
+
+            // Separate backups: only automatic backups are subject to retention
+            const automaticBackups = backups.filter(b =>
+                b.data.retentionManaged === true &&
+                b.data.backupReason !== 'manual'
+            );
+
+            // Only delete automatic backups if we have more than 20
+            if (automaticBackups.length > 20) {
+                // Keep the 20 most recent, delete the rest
+                const toDelete = automaticBackups.slice(20);
+
+                for (const backup of toDelete) {
+                    try {
+                        await this.app.vault.adapter.remove(backup.path);
+                        console.log(`Deleted old backup: ${backup.filename}`);
+                    } catch (e) {
+                        console.error(`Failed to delete backup ${backup.filename}:`, e);
+                    }
+                }
+            }
+
+            // Never delete manual backups or legacy backups
+            // This protects all manual backups and existing backups created before this update
+        } catch (error) {
+            console.error('Failed to cleanup old backups:', error);
+        }
+    }
+
 
     async migrateBackupFilesToFolder() {
         try {
@@ -2915,6 +3136,161 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.taskDateFormat = value || 'YYYY-MM-DD';
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                }));
+
+        // BACKUP & RESTORE SECTION
+        new Setting(containerEl).setHeading().setName(t('settings.backupRestore.heading'));
+
+        // Restore from backup setting with two buttons
+        const restoreSetting = new Setting(containerEl)
+            .setName(t('settings.backupRestore.restoreLatest.name'))
+            .setDesc(t('settings.backupRestore.restoreLatest.desc'));
+
+        // Helper function to restore from backup
+        const performRestore = async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
+            const result = await this.plugin.restoreFromBackup(backupPath);
+            if (result.success) {
+                let message = t('settings.backupRestore.restoreSuccess', {
+                    collections: collectionsCount.toString(),
+                    highlights: highlightsCount.toString()
+                });
+                if (result.orphanedCount && result.orphanedCount > 0) {
+                    message += ` ${t('settings.backupRestore.orphanedCleaned', {
+                        count: result.orphanedCount.toString()
+                    })}`;
+                }
+                new Notice(message);
+                // Refresh settings display to show restored data
+                this.display();
+            } else {
+                new Notice(t('settings.backupRestore.restoreFailed'));
+            }
+        };
+
+        // "Restore latest" button (CTA)
+        restoreSetting.addButton(button => button
+            .setButtonText(t('settings.backupRestore.restoreLatest.button'))
+            .setCta()
+            .onClick(async () => {
+                const backups = await this.plugin.listBackups();
+                if (backups.length === 0) {
+                    new Notice(t('settings.backupRestore.noBackups'));
+                    return;
+                }
+
+                const latestBackup = backups[0];
+                const collectionsCount = Object.keys(latestBackup.data.collections || {}).length;
+                const highlightsCount = this.plugin.countHighlightsInCollections(latestBackup.data.collections || {});
+
+                if (collectionsCount === 0 && highlightsCount === 0) {
+                    new Notice(t('settings.backupRestore.emptyBackup'));
+                    return;
+                }
+
+                // Show confirmation with backup info
+                const date = latestBackup.data.backupCreatedAt
+                    ? new Date(latestBackup.data.backupCreatedAt).toLocaleString()
+                    : t('settings.backupRestore.unknownDate');
+
+                const message = t('settings.backupRestore.confirmRestore', {
+                    collections: collectionsCount.toString(),
+                    highlights: highlightsCount.toString(),
+                    date
+                });
+
+                // Create a simple confirmation modal
+                const modal = new Modal(this.app);
+                modal.titleEl.setText(t('settings.backupRestore.confirmTitle'));
+                modal.contentEl.createEl('p', { text: message });
+
+                const buttonContainer = modal.contentEl.createDiv({ cls: 'modal-button-container' });
+                buttonContainer.style.marginTop = '20px';
+                buttonContainer.style.display = 'flex';
+                buttonContainer.style.justifyContent = 'flex-end';
+                buttonContainer.style.gap = '10px';
+
+                const cancelBtn = buttonContainer.createEl('button', { text: t('settings.backupRestore.cancel') });
+                cancelBtn.addEventListener('click', () => modal.close());
+
+                const restoreBtn = buttonContainer.createEl('button', {
+                    text: t('settings.backupRestore.restore'),
+                    cls: 'mod-cta'
+                });
+                restoreBtn.addEventListener('click', async () => {
+                    modal.close();
+                    await performRestore(latestBackup.path, collectionsCount, highlightsCount);
+                });
+
+                modal.open();
+            }));
+
+        // "Choose" button
+        restoreSetting.addButton(button => button
+            .setButtonText(t('settings.backupRestore.choose.button'))
+            .onClick(async () => {
+                const backups = await this.plugin.listBackups();
+                if (backups.length === 0) {
+                    new Notice(t('settings.backupRestore.noBackups'));
+                    return;
+                }
+
+                const modal = new BackupSelectorModal(
+                    this.app,
+                    backups,
+                    this.plugin.countHighlightsInCollections.bind(this.plugin),
+                    async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
+                        // Show confirmation before restoring
+                        const backupToRestore = backups.find(b => b.path === backupPath);
+                        if (!backupToRestore) return;
+
+                        const date = backupToRestore.data.backupCreatedAt
+                            ? new Date(backupToRestore.data.backupCreatedAt).toLocaleString()
+                            : t('settings.backupRestore.unknownDate');
+
+                        const message = t('settings.backupRestore.confirmRestore', {
+                            collections: collectionsCount.toString(),
+                            highlights: highlightsCount.toString(),
+                            date
+                        });
+
+                        // Create confirmation modal
+                        const confirmModal = new Modal(this.app);
+                        confirmModal.titleEl.setText(t('settings.backupRestore.confirmTitle'));
+                        confirmModal.contentEl.createEl('p', { text: message });
+
+                        const buttonContainer = confirmModal.contentEl.createDiv({ cls: 'modal-button-container' });
+                        buttonContainer.style.marginTop = '20px';
+                        buttonContainer.style.display = 'flex';
+                        buttonContainer.style.justifyContent = 'flex-end';
+                        buttonContainer.style.gap = '10px';
+
+                        const cancelBtn = buttonContainer.createEl('button', { text: t('settings.backupRestore.cancel') });
+                        cancelBtn.addEventListener('click', () => confirmModal.close());
+
+                        const restoreBtn = buttonContainer.createEl('button', {
+                            text: t('settings.backupRestore.restore'),
+                            cls: 'mod-cta'
+                        });
+                        restoreBtn.addEventListener('click', async () => {
+                            confirmModal.close();
+                            await performRestore(backupPath, collectionsCount, highlightsCount);
+                        });
+
+                        confirmModal.open();
+                    }
+                );
+
+                modal.open();
+            }));
+
+        new Setting(containerEl)
+            .setName(t('settings.backupRestore.createManual.name'))
+            .setDesc(t('settings.backupRestore.createManual.desc'))
+            .addButton(button => button
+                .setButtonText(t('settings.backupRestore.createManual.button'))
+                .onClick(async () => {
+                    await this.plugin.createBackup('manual');
+                    new Notice(t('settings.backupRestore.manualBackupCreated'));
                 }));
     }
 

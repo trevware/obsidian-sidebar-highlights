@@ -1455,8 +1455,8 @@ export class HighlightsSidebarView extends ItemView {
         // Apply tag filters if present
         if (this.selectedTags.size > 0) {
             currentFileTasks = currentFileTasks.filter(task => {
-                // Extract tags from task text using regex
-                const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+                // Extract tags from task text using regex (supports nested tags with /)
+                const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
                 const taskTags: string[] = [];
                 let match;
                 while ((match = tagRegex.exec(task.text)) !== null) {
@@ -1506,6 +1506,30 @@ export class HighlightsSidebarView extends ItemView {
 
                         case 'no-date':
                             return !task.date;
+
+                        case 'created-last-7-days': {
+                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                            if (!file || !(file instanceof TFile)) return false;
+                            const fileCreationDate = moment(file.stat.ctime);
+                            const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
+                            return fileCreationDate.isSameOrAfter(sevenDaysAgo);
+                        }
+
+                        case 'created-last-30-days': {
+                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                            if (!file || !(file instanceof TFile)) return false;
+                            const fileCreationDate = moment(file.stat.ctime);
+                            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
+                            return fileCreationDate.isSameOrAfter(thirtyDaysAgo);
+                        }
+
+                        case 'created-last-year': {
+                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                            if (!file || !(file instanceof TFile)) return false;
+                            const fileCreationDate = moment(file.stat.ctime);
+                            const oneYearAgo = moment().subtract(1, 'year').startOf('day');
+                            return fileCreationDate.isSameOrAfter(oneYearAgo);
+                        }
 
                         default:
                             return true;
@@ -1708,8 +1732,8 @@ export class HighlightsSidebarView extends ItemView {
             // Filter tasks by selected tags if present
             if (this.selectedTags.size > 0) {
                 filteredTasks = filteredTasks.filter(task => {
-                    // Extract tags from task text using regex
-                    const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+                    // Extract tags from task text using regex (supports nested tags with /)
+                    const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
                     const taskTags: string[] = [];
                     let match;
                     while ((match = tagRegex.exec(task.text)) !== null) {
@@ -1759,6 +1783,30 @@ export class HighlightsSidebarView extends ItemView {
 
                             case 'no-date':
                                 return !task.date;
+
+                            case 'created-last-7-days': {
+                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                                if (!file || !(file instanceof TFile)) return false;
+                                const fileCreationDate = moment(file.stat.ctime);
+                                const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
+                                return fileCreationDate.isSameOrAfter(sevenDaysAgo);
+                            }
+
+                            case 'created-last-30-days': {
+                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                                if (!file || !(file instanceof TFile)) return false;
+                                const fileCreationDate = moment(file.stat.ctime);
+                                const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
+                                return fileCreationDate.isSameOrAfter(thirtyDaysAgo);
+                            }
+
+                            case 'created-last-year': {
+                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+                                if (!file || !(file instanceof TFile)) return false;
+                                const fileCreationDate = moment(file.stat.ctime);
+                                const oneYearAgo = moment().subtract(1, 'year').startOf('day');
+                                return fileCreationDate.isSameOrAfter(oneYearAgo);
+                            }
 
                             default:
                                 return true;
@@ -2719,8 +2767,8 @@ export class HighlightsSidebarView extends ItemView {
      */
     private getSecondaryGroupKey(task: Task): string {
         if (this.taskSecondaryGroupingMode === 'tag') {
-            // Extract tags from task text
-            const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+            // Extract tags from task text (supports nested tags with /)
+            const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
             const tags: string[] = [];
             let match;
             while ((match = tagRegex.exec(task.text)) !== null) {
@@ -6015,8 +6063,8 @@ export class HighlightsSidebarView extends ItemView {
                 tags.forEach(tag => allTags.add(tag));
             });
         } else if (this.viewMode === 'tasks') {
-            // Get tags from task text using regex
-            const tagRegex = /#([a-zA-Z0-9_-]+)/g;
+            // Get tags from task text using regex (supports nested tags with /)
+            const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
 
             // We need to scan all tasks to get tags
             // Use the current tasks if available
@@ -6134,12 +6182,22 @@ export class HighlightsSidebarView extends ItemView {
         return filters;
     }
 
+    private getNoteDateFilters(): Array<{ id: string, label: string, icon: string }> {
+        // Note creation date filters - always available
+        return [
+            { id: 'created-last-7-days', label: t('filterMenu.last7Days'), icon: 'calendar-days' },
+            { id: 'created-last-30-days', label: t('filterMenu.last30Days'), icon: 'calendar-range' },
+            { id: 'created-last-year', label: t('filterMenu.lastYear'), icon: 'calendar-clock' }
+        ];
+    }
+
     private showTagFilterMenu(event: MouseEvent) {
         const availableTags = this.getAllTagsInFile();
         const availableCollections = this.getAllCollectionsInCurrentScope();
         const availableSpecialFilters = this.getAvailableSpecialFilters();
+        const noteDateFilters = this.viewMode === 'tasks' ? this.getNoteDateFilters() : [];
 
-        if (availableTags.length === 0 && availableCollections.length === 0 && availableSpecialFilters.length === 0) {
+        if (availableTags.length === 0 && availableCollections.length === 0 && availableSpecialFilters.length === 0 && noteDateFilters.length === 0) {
             new Notice(t('emptyStates.noTagsOrFilters'));
             return;
         }
@@ -6158,98 +6216,154 @@ export class HighlightsSidebarView extends ItemView {
                     this.selectedTags.clear();
                     this.selectedCollections.clear();
                     this.selectedSpecialFilters.clear();
-                    this.saveCurrentTabSettings(); // Save filter state
+                    this.saveCurrentTabSettings();
                     this.renderContent();
                     this.showTagActive();
-
-                    // Update all checkbox states to unchecked
-                    const newStates: { [key: string]: boolean } = {};
-                    availableTags.forEach(tag => {
-                        newStates[`tag-${tag}`] = false;
-                    });
-                    sortedCollections.forEach(collection => {
-                        newStates[`collection-${collection.id}`] = false;
-                    });
-                    availableSpecialFilters.forEach(filter => {
-                        newStates[`special-${filter.id}`] = false;
-                    });
-                    this.dropdownManager.updateAllCheckboxStates(newStates);
                 }
             }
         ];
 
-        // Add special filters at the top (for tasks mode)
-        if (availableSpecialFilters.length > 0) {
-            items.push(...availableSpecialFilters.map(filter => ({
-                id: `special-${filter.id}`,
-                text: filter.label,
-                uncheckedIcon: filter.icon,
-                checked: this.selectedSpecialFilters.has(filter.id),
-                onClick: () => {
-                    if (this.selectedSpecialFilters.has(filter.id)) {
-                        this.selectedSpecialFilters.delete(filter.id);
-                    } else {
-                        this.selectedSpecialFilters.add(filter.id);
-                    }
-                    this.saveCurrentTabSettings(); // Save filter state
-                    this.renderContent();
-                    this.showTagActive();
-                }
-            })));
+        // Group status filters (Flagged, Completed, Incomplete)
+        const statusFilters = availableSpecialFilters.filter(f =>
+            f.id === 'flagged' || f.id === 'completed' || f.id === 'incomplete'
+        );
 
-            // Add separator after special filters if there are tags or collections
-            if (availableTags.length > 0 || sortedCollections.length > 0) {
-                items.push({
-                    text: '',
-                    separator: true
-                });
-            }
-        }
+        // Group due date filters (Overdue, Due Today, This Week, No Date)
+        const dueDateFilters = availableSpecialFilters.filter(f =>
+            f.id === 'overdue' || f.id === 'due-today' || f.id === 'upcoming' || f.id === 'no-date'
+        );
 
-        // Add tags if any exist
-        if (availableTags.length > 0) {
-            items.push(...availableTags.map(tag => ({
-                id: `tag-${tag}`,
-                text: `#${tag}`,
-                uncheckedIcon: 'tag',
-                checked: this.selectedTags.has(tag),
-                onClick: () => {
-                    if (this.selectedTags.has(tag)) {
-                        this.selectedTags.delete(tag);
-                    } else {
-                        this.selectedTags.add(tag);
-                    }
-                    this.renderContent();
-                    this.showTagActive();
-                }
-            })));
-        }
-
-        // Add separator if both tags and collections exist
-        if (availableTags.length > 0 && sortedCollections.length > 0) {
+        // Add Status category (if filters exist)
+        if (statusFilters.length > 0) {
             items.push({
-                text: '',
-                separator: true
+                id: 'category-status',
+                text: 'Status',
+                icon: 'list-checks',
+                expandable: true,
+                expanded: false,
+                children: statusFilters.map(filter => ({
+                    id: `special-${filter.id}`,
+                    text: filter.label,
+                    uncheckedIcon: filter.icon,
+                    checked: this.selectedSpecialFilters.has(filter.id),
+                    onClick: () => {
+                        if (this.selectedSpecialFilters.has(filter.id)) {
+                            this.selectedSpecialFilters.delete(filter.id);
+                        } else {
+                            this.selectedSpecialFilters.add(filter.id);
+                        }
+                        this.saveCurrentTabSettings();
+                        this.renderContent();
+                        this.showTagActive();
+                    }
+                }))
             });
         }
 
-        // Add collections if any exist
-        if (sortedCollections.length > 0) {
-            items.push(...sortedCollections.map(collection => ({
-                id: `collection-${collection.id}`,
-                text: collection.name,
-                uncheckedIcon: 'folder-open',
-                checked: this.selectedCollections.has(collection.name),
-                onClick: () => {
-                    if (this.selectedCollections.has(collection.name)) {
-                        this.selectedCollections.delete(collection.name);
-                    } else {
-                        this.selectedCollections.add(collection.name);
+        // Add Due Date category (if filters exist)
+        if (dueDateFilters.length > 0) {
+            items.push({
+                id: 'category-due-date',
+                text: 'Due Date',
+                icon: 'calendar',
+                expandable: true,
+                expanded: false,
+                children: dueDateFilters.map(filter => ({
+                    id: `special-${filter.id}`,
+                    text: filter.label,
+                    uncheckedIcon: filter.icon,
+                    checked: this.selectedSpecialFilters.has(filter.id),
+                    onClick: () => {
+                        if (this.selectedSpecialFilters.has(filter.id)) {
+                            this.selectedSpecialFilters.delete(filter.id);
+                        } else {
+                            this.selectedSpecialFilters.add(filter.id);
+                        }
+                        this.saveCurrentTabSettings();
+                        this.renderContent();
+                        this.showTagActive();
                     }
-                    this.renderContent();
-                    this.showTagActive();
-                }
-            })));
+                }))
+            });
+        }
+
+        // Add Note Created category (if filters exist)
+        if (noteDateFilters.length > 0) {
+            items.push({
+                id: 'category-note-created',
+                text: t('filterMenu.noteCreated'),
+                icon: 'file-clock',
+                expandable: true,
+                expanded: false,
+                children: noteDateFilters.map(filter => ({
+                    id: `special-${filter.id}`,
+                    text: filter.label,
+                    uncheckedIcon: filter.icon,
+                    checked: this.selectedSpecialFilters.has(filter.id),
+                    onClick: () => {
+                        if (this.selectedSpecialFilters.has(filter.id)) {
+                            this.selectedSpecialFilters.delete(filter.id);
+                        } else {
+                            this.selectedSpecialFilters.add(filter.id);
+                        }
+                        this.saveCurrentTabSettings();
+                        this.renderContent();
+                        this.showTagActive();
+                    }
+                }))
+            });
+        }
+
+        // Add Tags category (if tags exist)
+        if (availableTags.length > 0) {
+            items.push({
+                id: 'category-tags',
+                text: 'Tags',
+                icon: 'tag',
+                expandable: true,
+                expanded: false,
+                children: availableTags.map(tag => ({
+                    id: `tag-${tag}`,
+                    text: `#${tag}`,
+                    uncheckedIcon: 'tag',
+                    checked: this.selectedTags.has(tag),
+                    onClick: () => {
+                        if (this.selectedTags.has(tag)) {
+                            this.selectedTags.delete(tag);
+                        } else {
+                            this.selectedTags.add(tag);
+                        }
+                        this.renderContent();
+                        this.showTagActive();
+                    }
+                }))
+            });
+        }
+
+        // Add Collections category (if collections exist)
+        if (sortedCollections.length > 0) {
+            items.push({
+                id: 'category-collections',
+                text: 'Collections',
+                icon: 'folder-open',
+                expandable: true,
+                expanded: false,
+                children: sortedCollections.map(collection => ({
+                    id: `collection-${collection.id}`,
+                    text: collection.name,
+                    uncheckedIcon: 'folder-open',
+                    checked: this.selectedCollections.has(collection.name),
+                    onClick: () => {
+                        if (this.selectedCollections.has(collection.name)) {
+                            this.selectedCollections.delete(collection.name);
+                        } else {
+                            this.selectedCollections.add(collection.name);
+                        }
+                        this.renderContent();
+                        this.showTagActive();
+                    }
+                }))
+            });
         }
 
         this.dropdownManager.showDropdown(
