@@ -33,6 +33,11 @@ export interface Collection {
     createdAt: number;
 }
 
+export interface FileFilter {
+    path: string;
+    mode: 'exclude' | 'include';
+}
+
 export interface Task {
     id: string;
     text: string;
@@ -100,7 +105,9 @@ export interface CommentPluginSettings {
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
     selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
-    excludedFiles: string[]; // Array of file/folder paths to exclude from highlight detection
+    excludedFiles: string[]; // Legacy: Array of file/folder paths (kept for backward compatibility)
+    fileFilters: FileFilter[]; // New: Array of file/folder filters with individual modes
+    fileFilterMode: 'exclude' | 'include'; // Mode for adding new file filters in the modal
     dateFormat: string; // Moment.js format string for timestamp display
     minimumCharacterCount: number; // Minimum character count to display highlights and native comments in sidebar
     highlightFontSize: number; // Font size for highlight text
@@ -156,7 +163,9 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     useInlineFootnotes: false, // Use standard footnotes by default
     selectTextOnCommentClick: false, // Position to highlight by default
     excludeExcalidraw: true, // Exclude .excalidraw files by default
-    excludedFiles: [], // Empty array by default
+    excludedFiles: [], // Legacy: Empty array by default
+    fileFilters: [], // New: Empty array by default
+    fileFilterMode: 'exclude', // Default to exclude mode (backwards compatible)
     dateFormat: 'YYYY-MM-DD HH:mm', // Default date format
     minimumCharacterCount: 0, // Default minimum character count (0 = show all)
     highlightFontSize: 11, // Default highlight text font size
@@ -203,6 +212,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     collectionsManager: CollectionsManager;
     inlineFootnoteManager: InlineFootnoteManager;
     private sidebarView: HighlightsSidebarView | null = null;
+    private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
     public collectionCommands: Set<string> = new Set(); // Track registered collection commands
@@ -242,7 +252,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         );
 
-        this.addRibbonIcon('highlighter', 'Open highlights', () => {
+        this.ribbonIconEl = this.addRibbonIcon('highlighter', 'Open highlights', () => {
             this.activateView();
         });
 
@@ -313,9 +323,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.app.workspace.onLayoutReady(async () => {
             // Fix any duplicate timestamps from previous versions
             await this.fixDuplicateTimestamps();
-            
+
             this.scanAllFilesForHighlights();
-            
+
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
 
@@ -347,13 +357,17 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     onunload() {
+        // Remove ribbon icon
+        if (this.ribbonIconEl) {
+            this.ribbonIconEl.remove();
+            this.ribbonIconEl = null;
+        }
+
         // Cleanup is mostly automatic due to using registerEvent() and addCommand()
-        // But we can explicitly clean up the sidebar view if needed
-        
         // The sidebar view's onClose() method will handle its own cleanup
         // Obsidian automatically handles:
         // - Registered events (this.registerEvent)
-        // - Registered commands (this.addCommand) 
+        // - Registered commands (this.addCommand)
         // - Settings tab removal
         // - View unregistration
         
@@ -363,11 +377,11 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async loadSettings() {
         const loadedData = await this.loadData();
-        
+
         // For safety, only migrate if we detect a genuine old version
         // If data exists but has no settingsVersion, assume it's 1.14.0 (current) to prevent data loss
-        if (loadedData && 
-            loadedData.settingsVersion && 
+        if (loadedData &&
+            loadedData.settingsVersion &&
             loadedData.settingsVersion !== DEFAULT_SETTINGS.settingsVersion) {
             // Only migrate if we have an explicit older version
             await this.migrateSettings(loadedData);
@@ -378,6 +392,18 @@ export default class HighlightCommentsPlugin extends Plugin {
                 this.settings.settingsVersion = DEFAULT_SETTINGS.settingsVersion;
                 await this.saveSettings(); // Save the version for future use
             }
+        }
+
+        // Migrate old excludedFiles format to new fileFilters format
+        if (this.settings.excludedFiles && this.settings.excludedFiles.length > 0 &&
+            (!this.settings.fileFilters || this.settings.fileFilters.length === 0)) {
+            // Convert old string[] to FileFilter[]
+            this.settings.fileFilters = this.settings.excludedFiles.map(path => ({
+                path,
+                mode: 'exclude' as const
+            }));
+            this.settings.excludedFiles = []; // Clear old format
+            await this.saveSettings();
         }
     }
 
@@ -1173,32 +1199,46 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Find all highlight matches
         let match;
         while ((match = markdownHighlightRegex.exec(content)) !== null) {
-            // Skip if match is inside a code block or markdown link
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
-                !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
-                // Skip if this highlight is surrounded by additional equals signs (e.g., =====text===== )
-                const beforeMatch = content.charAt(match.index - 1);
-                const afterMatch = content.charAt(match.index + match[0].length);
-                if (beforeMatch === '=' || afterMatch === '=') {
-                    continue;
-                }
-                allMatches.push({match, type: 'highlight'});
+            // Skip if match is inside a code block
+            if (this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                continue;
             }
+
+            // Skip if highlight delimiters are inside a markdown link URL
+            if (this.isHighlightDelimiterInLink(match.index, match.index + match[0].length, content, markdownLinkRanges)) {
+                continue;
+            }
+
+            // Skip if this highlight is surrounded by additional equals signs (e.g., =====text===== )
+            const beforeMatch = content.charAt(match.index - 1);
+            const afterMatch = content.charAt(match.index + match[0].length);
+            if (beforeMatch === '=' || afterMatch === '=') {
+                continue;
+            }
+
+            allMatches.push({match, type: 'highlight'});
         }
         
         // Find all comment matches
         while ((match = commentHighlightRegex.exec(content)) !== null) {
-            // Skip if match is inside a code block or markdown link
-            if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
-                !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
-                // Skip if this comment is surrounded by additional percent signs (e.g., %%%%%text%%%%% )
-                const beforeMatch = content.charAt(match.index - 1);
-                const afterMatch = content.charAt(match.index + match[0].length);
-                if (beforeMatch === '%' || afterMatch === '%') {
-                    continue;
-                }
-                allMatches.push({match, type: 'comment'});
+            // Skip if match is inside a code block
+            if (this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                continue;
             }
+
+            // Skip if comment delimiters are inside a markdown link URL
+            if (this.isHighlightDelimiterInLink(match.index, match.index + match[0].length, content, markdownLinkRanges)) {
+                continue;
+            }
+
+            // Skip if this comment is surrounded by additional percent signs (e.g., %%%%%text%%%%% )
+            const beforeMatch = content.charAt(match.index - 1);
+            const afterMatch = content.charAt(match.index + match[0].length);
+            if (beforeMatch === '%' || afterMatch === '%') {
+                continue;
+            }
+
+            allMatches.push({match, type: 'comment'});
         }
 
         // Find HTML comments if enabled and track their ranges
@@ -1206,16 +1246,22 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (this.settings.detectHtmlComments) {
             const htmlCommentRegex = /<!--([^]*?)-->/g;
             while ((match = htmlCommentRegex.exec(content)) !== null) {
-                // Skip if match is inside a code block or markdown link
-                if (!this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges) &&
-                    !this.isInsideCodeBlock(match.index, match.index + match[0].length, markdownLinkRanges)) {
-                    allMatches.push({match, type: 'comment'});
-                    // Track HTML comment range to exclude from custom pattern detection
-                    htmlCommentRanges.push({
-                        start: match.index,
-                        end: match.index + match[0].length
-                    });
+                // Skip if match is inside a code block
+                if (this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
+                    continue;
                 }
+
+                // Skip if comment delimiters are inside a markdown link URL
+                if (this.isHighlightDelimiterInLink(match.index, match.index + match[0].length, content, markdownLinkRanges)) {
+                    continue;
+                }
+
+                allMatches.push({match, type: 'comment'});
+                // Track HTML comment range to exclude from custom pattern detection
+                htmlCommentRanges.push({
+                    start: match.index,
+                    end: match.index + match[0].length
+                });
             }
         }
 
@@ -1654,26 +1700,57 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private isFileExcluded(filePath: string): boolean {
-        if (!this.settings.excludedFiles || this.settings.excludedFiles.length === 0) {
-            return false;
+        const filters = this.settings.fileFilters;
+
+        if (!filters || filters.length === 0) {
+            return false; // No filters = process all files
         }
 
         const normalizedFilePath = filePath.replace(/\\/g, '/');
-        
-        for (const excludedPath of this.settings.excludedFiles) {
-            const normalizedExcludedPath = excludedPath.replace(/\\/g, '/');
-            
-            // Exact file match
-            if (normalizedFilePath === normalizedExcludedPath) {
-                return true;
+
+        // Check each filter - each has its own mode
+        let hasIncludeFilters = false;
+        let matchesIncludeFilter = false;
+        let matchesExcludeFilter = false;
+
+        for (const filter of filters) {
+            const normalizedFilterPath = filter.path.replace(/\\/g, '/');
+
+            // Check if file matches this filter
+            const matches =
+                normalizedFilePath === normalizedFilterPath ||
+                normalizedFilePath.startsWith(normalizedFilterPath + '/');
+
+            if (matches) {
+                if (filter.mode === 'include') {
+                    matchesIncludeFilter = true;
+                } else {
+                    matchesExcludeFilter = true;
+                }
             }
-            
-            // Folder match - check if file is inside excluded folder
-            if (normalizedFilePath.startsWith(normalizedExcludedPath + '/')) {
-                return true;
+
+            if (filter.mode === 'include') {
+                hasIncludeFilters = true;
             }
         }
-        
+
+        // KEY FIX: If file matches an include filter, it should NOT be excluded
+        // (even if it also matches an exclude filter)
+        // This allows more specific include filters to override broader exclude filters
+        if (matchesIncludeFilter) {
+            return false;
+        }
+
+        // If there are any include filters, file must match at least one to be processed
+        if (hasIncludeFilters && !matchesIncludeFilter) {
+            return true; // Excluded because not in any include filter
+        }
+
+        // If file matches an exclude filter, it's excluded
+        if (matchesExcludeFilter) {
+            return true;
+        }
+
         return false;
     }
 
@@ -1855,6 +1932,37 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Check for any overlap: ranges overlap if start < range.end AND end > range.start
             return start < range.end && end > range.start;
         });
+    }
+
+    /**
+     * Check if a highlight's delimiters (== or %%) are inside a markdown link
+     * This prevents matching highlights whose markers are in URLs, but allows highlights that contain links
+     * Returns true only if the START or END delimiters are inside a link's URL portion
+     */
+    private isHighlightDelimiterInLink(highlightStart: number, highlightEnd: number, content: string, linkRanges: Array<{start: number, end: number}>): boolean {
+        // Check if the opening delimiter (first 2 chars) or closing delimiter (last 2 chars)
+        // are inside a markdown link's URL portion
+        for (const linkRange of linkRanges) {
+            // Get the link text to find where the URL starts: [text](url)
+            const linkText = content.substring(linkRange.start, linkRange.end);
+            const urlStartOffset = linkText.indexOf('](') + 2; // +2 to skip "]("
+            const urlStart = linkRange.start + urlStartOffset;
+            const urlEnd = linkRange.end - 1; // -1 to exclude the closing ")"
+
+            // Check if opening delimiter is in URL
+            const openDelimEnd = highlightStart + 2;
+            if (highlightStart >= urlStart && openDelimEnd <= urlEnd) {
+                return true;
+            }
+
+            // Check if closing delimiter is in URL
+            const closeDelimStart = highlightEnd - 2;
+            if (closeDelimStart >= urlStart && highlightEnd <= urlEnd) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -2356,19 +2464,23 @@ class HighlightSettingTab extends PluginSettingTab {
         new Setting(containerEl).setName(t('settings.colors.heading')).setHeading();
 
         let yellowNameSetting: Setting;
+        let yellowColorPicker: any; // Store reference to color picker
 
         const yellowSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
             .setDesc(t('settings.colors.customizeFirst'))
-            .addColorPicker(colorPicker => colorPicker
-                .setValue(this.plugin.settings.customColors.yellow)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColors.yellow = value;
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    yellowSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                    yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                }))
+            .addColorPicker(colorPicker => {
+                yellowColorPicker = colorPicker; // Store reference
+                return colorPicker
+                    .setValue(this.plugin.settings.customColors.yellow)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customColors.yellow = value;
+                        await this.plugin.saveSettings();
+                        this.updateColorMappings();
+                        yellowSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                        yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                    });
+            })
             .addButton(button => button
                 .setButtonText(t('settings.colors.reset'))
                 .setTooltip(t('settings.colors.resetToYellow'))
@@ -2377,23 +2489,28 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     yellowSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
-                    this.display(); // Refresh settings display
+                    yellowColorPicker?.setValue('#ffd700'); // Update color picker value
+                    yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
                 }));
 
         let redNameSetting: Setting;
+        let redColorPicker: any; // Store reference to color picker
 
         const redSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
             .setDesc(t('settings.colors.customizeSecond'))
-            .addColorPicker(colorPicker => colorPicker
-                .setValue(this.plugin.settings.customColors.red)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColors.red = value;
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    redSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                    redNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                }))
+            .addColorPicker(colorPicker => {
+                redColorPicker = colorPicker; // Store reference
+                return colorPicker
+                    .setValue(this.plugin.settings.customColors.red)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customColors.red = value;
+                        await this.plugin.saveSettings();
+                        this.updateColorMappings();
+                        redSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                        redNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                    });
+            })
             .addButton(button => button
                 .setButtonText(t('settings.colors.reset'))
                 .setTooltip(t('settings.colors.resetToRed'))
@@ -2402,23 +2519,28 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     redSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
-                    this.display(); // Refresh settings display
+                    redColorPicker?.setValue('#ff6b6b'); // Update color picker value
+                    redNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
                 }));
 
         let tealNameSetting: Setting;
+        let tealColorPicker: any; // Store reference to color picker
 
         const tealSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
             .setDesc(t('settings.colors.customizeThird'))
-            .addColorPicker(colorPicker => colorPicker
-                .setValue(this.plugin.settings.customColors.teal)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColors.teal = value;
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    tealSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                    tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                }))
+            .addColorPicker(colorPicker => {
+                tealColorPicker = colorPicker; // Store reference
+                return colorPicker
+                    .setValue(this.plugin.settings.customColors.teal)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customColors.teal = value;
+                        await this.plugin.saveSettings();
+                        this.updateColorMappings();
+                        tealSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                        tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                    });
+            })
             .addButton(button => button
                 .setButtonText(t('settings.colors.reset'))
                 .setTooltip(t('settings.colors.resetToTeal'))
@@ -2427,23 +2549,28 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     tealSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
-                    this.display(); // Refresh settings display
+                    tealColorPicker?.setValue('#4ecdc4'); // Update color picker value
+                    tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
                 }));
 
         let blueNameSetting: Setting;
+        let blueColorPicker: any; // Store reference to color picker
 
         const blueSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
             .setDesc(t('settings.colors.customizeFourth'))
-            .addColorPicker(colorPicker => colorPicker
-                .setValue(this.plugin.settings.customColors.blue)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColors.blue = value;
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    blueSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                    blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                }))
+            .addColorPicker(colorPicker => {
+                blueColorPicker = colorPicker; // Store reference
+                return colorPicker
+                    .setValue(this.plugin.settings.customColors.blue)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customColors.blue = value;
+                        await this.plugin.saveSettings();
+                        this.updateColorMappings();
+                        blueSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                        blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                    });
+            })
             .addButton(button => button
                 .setButtonText(t('settings.colors.reset'))
                 .setTooltip(t('settings.colors.resetToBlue'))
@@ -2452,23 +2579,28 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     blueSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
-                    this.display(); // Refresh settings display
+                    blueColorPicker?.setValue('#45b7d1'); // Update color picker value
+                    blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
                 }));
 
         let greenNameSetting: Setting;
+        let greenColorPicker: any; // Store reference to color picker
 
         const greenSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }))
             .setDesc(t('settings.colors.customizeFifth'))
-            .addColorPicker(colorPicker => colorPicker
-                .setValue(this.plugin.settings.customColors.green)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColors.green = value;
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    greenSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                    greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                }))
+            .addColorPicker(colorPicker => {
+                greenColorPicker = colorPicker; // Store reference
+                return colorPicker
+                    .setValue(this.plugin.settings.customColors.green)
+                    .onChange(async (value) => {
+                        this.plugin.settings.customColors.green = value;
+                        await this.plugin.saveSettings();
+                        this.updateColorMappings();
+                        greenSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
+                        greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                    });
+            })
             .addButton(button => button
                 .setButtonText(t('settings.colors.reset'))
                 .setTooltip(t('settings.colors.resetToGreen'))
@@ -2477,7 +2609,8 @@ class HighlightSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                     this.updateColorMappings();
                     greenSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
-                    this.display(); // Refresh settings display
+                    greenColorPicker?.setValue('#96ceb4'); // Update color picker value
+                    greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
                 }));
 
         // Color names subsection
@@ -2696,9 +2829,10 @@ class HighlightSettingTab extends PluginSettingTab {
                     .onClick(() => {
                         const modal = new ExcludedFilesModal(
                             this.app,
-                            this.plugin.settings.excludedFiles,
-                            async (excludedFiles) => {
-                                this.plugin.settings.excludedFiles = excludedFiles;
+                            this.plugin.settings.fileFilters,
+                            this.plugin.settings.fileFilterMode,
+                            async (fileFilters) => {
+                                this.plugin.settings.fileFilters = fileFilters;
                                 await this.plugin.saveSettings();
                                 // Re-scan all files to apply new exclusions
                                 this.plugin.scanAllFilesForHighlights();

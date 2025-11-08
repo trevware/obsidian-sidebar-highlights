@@ -40,24 +40,55 @@ export class TaskManager {
      * Check if a file path is in the excluded files list
      */
     private isFileExcluded(filePath: string): boolean {
-        if (!this.plugin.settings.excludedFiles || this.plugin.settings.excludedFiles.length === 0) {
-            return false;
+        const filters = this.plugin.settings.fileFilters;
+
+        if (!filters || filters.length === 0) {
+            return false; // No filters = process all files
         }
 
         const normalizedFilePath = filePath.replace(/\\/g, '/');
 
-        for (const excludedPath of this.plugin.settings.excludedFiles) {
-            const normalizedExcludedPath = excludedPath.replace(/\\/g, '/');
+        // Check each filter - each has its own mode
+        let hasIncludeFilters = false;
+        let matchesIncludeFilter = false;
+        let matchesExcludeFilter = false;
 
-            // Exact file match
-            if (normalizedFilePath === normalizedExcludedPath) {
-                return true;
+        for (const filter of filters) {
+            const normalizedFilterPath = filter.path.replace(/\\/g, '/');
+
+            // Check if file matches this filter
+            const matches =
+                normalizedFilePath === normalizedFilterPath ||
+                normalizedFilePath.startsWith(normalizedFilterPath + '/');
+
+            if (matches) {
+                if (filter.mode === 'include') {
+                    matchesIncludeFilter = true;
+                } else {
+                    matchesExcludeFilter = true;
+                }
             }
 
-            // Folder match - check if file is inside excluded folder
-            if (normalizedFilePath.startsWith(normalizedExcludedPath + '/')) {
-                return true;
+            if (filter.mode === 'include') {
+                hasIncludeFilters = true;
             }
+        }
+
+        // KEY FIX: If file matches an include filter, it should NOT be excluded
+        // (even if it also matches an exclude filter)
+        // This allows more specific include filters to override broader exclude filters
+        if (matchesIncludeFilter) {
+            return false;
+        }
+
+        // If there are any include filters, file must match at least one to be processed
+        if (hasIncludeFilters && !matchesIncludeFilter) {
+            return true; // Excluded because not in any include filter
+        }
+
+        // If file matches an exclude filter, it's excluded
+        if (matchesExcludeFilter) {
+            return true;
         }
 
         return false;
@@ -153,8 +184,9 @@ export class TaskManager {
         const lines = content.split('\n');
 
         // Regex to match checkbox syntax: - [ ] or - [x] or - [!] or - [!1] or - [!2] or - [!3]
+        // Supports tasks in callouts (lines starting with >)
         // Captures leading whitespace, checkbox state, and task text
-        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = /^(?:>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
 
         // Regex to match markdown headers: # Header
         const headerRegex = /^(#{1,6})\s+(.+)$/;
@@ -195,7 +227,13 @@ export class TaskManager {
 
                 // Calculate indent level (treat tab as 4 spaces)
                 const indentSpaces = indent.replace(/\t/g, '    ').length;
-                const indentLevel = Math.floor(indentSpaces / 4);
+                let indentLevel = Math.floor(indentSpaces / 4);
+
+                // FIX: If this task has indentLevel > 0 but no parent task exists,
+                // treat it as a top-level task (orphaned sub-task)
+                if (indentLevel > 0 && !parentTask) {
+                    indentLevel = 0;
+                }
 
                 // Skip completed tasks if not showing them
                 if (isCompleted && !showCompleted) {
@@ -304,20 +342,21 @@ export class TaskManager {
         }
 
         // Toggle the checkbox state - handle all checkbox types including priority markers
-        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        // Support tasks in callouts (preserve the > prefix)
+        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
         }
 
-        const [, indent, currentState, taskText] = match;
+        const [, calloutPrefix, indent, currentState, taskText] = match;
 
         // Toggle logic:
         // [!], [!1], [!2], [!3], [ ] -> [x] (completing removes priority)
         // [x] -> [ ] (uncompleting gives normal checkbox)
         const newState = currentState.toLowerCase() === 'x' ? ' ' : 'x';
-        const newLine = `${indent}- [${newState}] ${taskText}`;
+        const newLine = `${calloutPrefix || ''}${indent}- [${newState}] ${taskText}`;
 
         // Update the line
         lines[task.lineNumber] = newLine;
@@ -357,14 +396,15 @@ export class TaskManager {
         }
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
-        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        // Support tasks in callouts (preserve the > prefix)
+        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
         }
 
-        const [, indent, checkboxState, taskText] = match;
+        const [, calloutPrefix, indent, checkboxState, taskText] = match;
 
         // Toggle flag state: switch between [!] and [ ]
         let newCheckboxState: string;
@@ -376,7 +416,7 @@ export class TaskManager {
             newCheckboxState = '!';
         }
 
-        const newLine = `${indent}- [${newCheckboxState}] ${taskText}`;
+        const newLine = `${calloutPrefix || ''}${indent}- [${newCheckboxState}] ${taskText}`;
 
         // Update the line
         lines[task.lineNumber] = newLine;
@@ -415,14 +455,15 @@ export class TaskManager {
         }
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
-        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        // Support tasks in callouts (preserve the > prefix)
+        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
         }
 
-        const [, indent, checkboxState, taskText] = match;
+        const [, calloutPrefix, indent, checkboxState, taskText] = match;
 
         // Determine new checkbox state
         let newCheckboxState: string;
@@ -438,7 +479,7 @@ export class TaskManager {
             newCheckboxState = `!${priority}`;
         }
 
-        const newLine = `${indent}- [${newCheckboxState}] ${taskText}`;
+        const newLine = `${calloutPrefix || ''}${indent}- [${newCheckboxState}] ${taskText}`;
 
         // Update the line
         lines[task.lineNumber] = newLine;
@@ -478,14 +519,15 @@ export class TaskManager {
         }
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
-        const checkboxRegex = /^(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        // Support tasks in callouts (preserve the > prefix)
+        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
         }
 
-        const [, indent, checkboxState, taskText] = match;
+        const [, calloutPrefix, indent, checkboxState, taskText] = match;
 
         // Remove existing date if present by parsing it from the current file content
         let updatedTaskText = taskText;
@@ -505,7 +547,7 @@ export class TaskManager {
             parsedDate = this.parseDateFromText(finalTaskText);
         }
 
-        const newLine = `${indent}- [${checkboxState}] ${finalTaskText}`;
+        const newLine = `${calloutPrefix || ''}${indent}- [${checkboxState}] ${finalTaskText}`;
 
         // Update the line
         lines[task.lineNumber] = newLine;

@@ -5,6 +5,49 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2025-11-07
+
+### Added
+- **New Filter Menu**: A redesign of filters dropdown with secondary panel expansion
+  - Filters organized into expandable categories (Status, Due Date, Note Created, Tags, Collections)
+  - Hover over category headers to reveal options in a secondary panel
+  - Panel automatically positions left/right based on sidebar location
+  - Applies to both Tasks and Highlights tabs
+- **Note Creation Date Filters**: Filter tasks by the creation date of their containing notes
+  - "Last 7 days" - Shows tasks from notes created in the last week
+  - "Last 30 days" - Shows tasks from notes created in the last month
+  - "Last year" - Shows tasks from notes created in the last year
+- **File Filter Modal**: Complete redesign of file filtering system with include/exclude support
+  - New unified modal for managing both included and excluded files/folders
+  - Mode dropdown allows choosing "Include" or "Exclude" for each filter
+  - Auto-add functionality when selecting from dropdown
+  - Include filters override exclude filters for precise control
+
+### Fixed
+- **Callout Task Detection**: Fixed tasks in callouts not being detected in Tasks tab
+  - Tasks with callout syntax (e.g., `> - [ ] task`, `>> - [ ] nested`) now properly detected
+  - Callout prefix preserved when toggling task completion status
+  - Support for all callout nesting levels
+- **Orphaned Sub-tasks**: Fixed indented tasks without parent tasks being incorrectly nested
+  - Sub-tasks with no parent above them are now treated as top-level tasks
+  - Example: Tasks under headers that are indented but have no parent task
+  - Prevents "Scheduled Report NTHs" scenario where indented tasks appear orphaned
+- **Color Reset Scrolling**: Fixed color reset buttons in settings causing unwanted page scrolling
+  - Reset buttons now update color pickers directly without re-rendering entire settings page
+  - Maintains scroll position when resetting individual highlight colors
+- **Long Highlights with Markdown Links**: Fixed highlights containing markdown links not being detected
+  - Highlights can now contain embedded markdown links (e.g., `==text with [link](url) more text==`)
+  - Original behavior preserved: highlights with delimiters in URLs still prevented (e.g., `[link](url/==test)`)
+  - Improved delimiter-in-URL detection to only check delimiter positions, not entire highlight span
+  - Fixes issue with long highlights (2000+ chars) containing multiple links
+
+### Enhanced
+- **Copy with Comments**: Copy button now includes associated footnotes/comments
+  - Copied text includes inline footnotes in `^[content]` format
+  - Works with all highlight types: regular highlights, HTML highlights
+  - Native comments excluded from footnote duplication
+  - Multiple comments copied in order as adjacent inline footnotes
+
 ## [1.33.0] - 2025-11-06
 
 ### Added

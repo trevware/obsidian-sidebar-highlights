@@ -9,11 +9,13 @@ export class FileFolderSuggest extends AbstractInputSuggest<string> {
     private folders: string[];
     private files: string[];
     private inputEl: HTMLInputElement;
+    private onSelectCallback?: (path: string) => void;
 
-    constructor(app: App, inputEl: HTMLInputElement) {
+    constructor(app: App, inputEl: HTMLInputElement, onSelectCallback?: (path: string) => void) {
         super(app, inputEl);
 
         this.inputEl = inputEl;
+        this.onSelectCallback = onSelectCallback;
 
         // Get all folders
         this.folders = this.app.vault
@@ -75,5 +77,10 @@ export class FileFolderSuggest extends AbstractInputSuggest<string> {
         const event = new Event("input");
         this.inputEl.dispatchEvent(event);
         this.close();
+
+        // Call the callback if provided (for auto-add functionality)
+        if (this.onSelectCallback) {
+            this.onSelectCallback(path);
+        }
     }
 }

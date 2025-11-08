@@ -174,8 +174,8 @@
         "desc": "Skip .excalidraw files when scanning for highlights. This prevents highlights from being detected in Excalidraw drawing files."
       },
       "excludedFiles": {
-        "name": "Excluded files",
-        "desc": "Excluded files or folders will be hidden from Sidebar Highlights.",
+        "name": "File filters",
+        "desc": "Include or exclude specific files and folders from being scanned for highlights and tasks.",
         "manageButton": "Manage"
       }
     },
@@ -298,7 +298,11 @@
     "incomplete": "Incomplete",
     "dueToday": "Due Today",
     "overdue": "Overdue",
-    "noDate": "No Date"
+    "noDate": "No Date",
+    "noteCreated": "Note Created",
+    "last7Days": "Last 7 days",
+    "last30Days": "Last 30 days",
+    "lastYear": "Last year"
   },
   "dateSuggestions": {
     "today": "Today",
@@ -349,15 +353,21 @@
       "nameRequired": "Collection name is required"
     },
     "excludedFiles": {
-      "title": "Excluded files",
-      "noFilter": "No excluded filter is applied right now. Add one below.",
+      "title": "File filters",
+      "noFilter": "No file filters are applied. Add one below.",
       "currentlyExcluded": "Files matching the following filters are currently excluded:",
-      "filterLabel": "Filter",
+      "currentlyIncluded": "Files matching the following filters are currently included:",
+      "included": "Included",
+      "excluded": "Excluded",
+      "filterLabel": "Add filter",
       "filterPlaceholder": "Enter file or folder path...",
+      "exclude": "Exclude",
+      "include": "Include",
       "add": "Add",
       "cancel": "Cancel",
       "save": "Save",
-      "removedNonExistent": "Removed {{count}} excluded {{paths}} that no longer exist"
+      "removedNonExistent": "Removed {{count}} {{paths}} that no longer exist",
+      "alreadyExists": "{{path}} is already in the filter list"
     },
     "taskDate": {
       "title": "Due Date"

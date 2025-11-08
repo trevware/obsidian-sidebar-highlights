@@ -159,8 +159,8 @@
         "desc": "扫描高亮时跳过 .excalidraw 文件。这可以防止在 Excalidraw 绘图文件中检测到高亮。"
       },
       "excludedFiles": {
-        "name": "排除的文件",
-        "desc": "排除的文件或文件夹将从侧边栏高亮中隐藏。",
+        "name": "文件过滤器",
+        "desc": "包含或排除特定文件和文件夹，不扫描其高亮和任务。",
         "manageButton": "管理"
       }
     },
@@ -283,7 +283,11 @@
     "incomplete": "未完成",
     "dueToday": "今天到期",
     "overdue": "已逾期",
-    "noDate": "无日期"
+    "noDate": "无日期",
+    "noteCreated": "笔记创建",
+    "last7Days": "最近7天",
+    "last30Days": "最近30天",
+    "lastYear": "最近一年"
   },
   "dateSuggestions": {
     "today": "今天",
@@ -334,15 +338,21 @@
       "nameRequired": "合集名称为必填项"
     },
     "excludedFiles": {
-      "title": "排除的文件",
-      "noFilter": "当前未应用排除过滤器。在下方添加一个。",
+      "title": "文件过滤器",
+      "noFilter": "当前未应用文件过滤器。在下方添加一个。",
       "currentlyExcluded": "当前排除了匹配以下过滤器的文件：",
-      "filterLabel": "过滤器",
+      "currentlyIncluded": "当前包含了匹配以下过滤器的文件：",
+      "included": "已包含",
+      "excluded": "已排除",
+      "filterLabel": "添加过滤器",
       "filterPlaceholder": "输入文件或文件夹路径...",
+      "exclude": "排除",
+      "include": "包含",
       "add": "添加",
       "cancel": "取消",
       "save": "保存",
-      "removedNonExistent": "已删除 {{count}} 个不存在的排除{{paths}}"
+      "removedNonExistent": "已删除 {{count}} 个不存在的{{paths}}",
+      "alreadyExists": "{{path}} 已在过滤器列表中"
     },
     "taskDate": {
       "title": "截止日期"
