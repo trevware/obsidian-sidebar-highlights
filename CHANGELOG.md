@@ -5,6 +5,18 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.1] - 2025-11-07
+
+### Fixed
+- **Critical: Backup Restore Bug**: Fixed collections being restored as empty when restoring from backup
+  - Orphan cleanup now happens AFTER file scanning instead of before
+  - Ensures collections retain all highlights that still exist in markdown files
+  - Prevents race condition where highlights map is empty during cleanup
+- **Race Condition Protection**: Added mutex to prevent concurrent file scans
+  - Multiple simultaneous scans could corrupt data or waste resources
+  - Subsequent scan requests now skip if a scan is already in progress
+  - Improves stability across plugin initialization, backup restore, and settings changes
+
 ## [1.35.0] - 2025-11-07
 
 ### Added

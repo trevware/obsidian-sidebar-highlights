@@ -217,6 +217,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
     public collectionCommands: Set<string> = new Set(); // Track registered collection commands
+    private isScanningFiles: boolean = false; // Prevent concurrent scans
 
     async onload() {
         await this.loadSettings();
@@ -785,14 +786,21 @@ export default class HighlightCommentsPlugin extends Plugin {
                 this.settings.customColorNames = backupData.customColorNames;
             }
 
-            // Count how many orphaned references exist BEFORE scanning
-            // (scanAllFilesForHighlights will clean them up automatically)
-            const orphanedCount = this.countOrphanedReferences();
-
             // Don't restore highlights from backup - rescan files instead to get current state
             // This ensures we only reference highlights that actually exist in markdown files
             // Note: scanAllFilesForHighlights() will automatically clean up orphaned references
             await this.scanAllFilesForHighlights();
+
+            // Count how many orphaned references were cleaned up AFTER scanning
+            // We do this by comparing the restored collections to what's left after cleanup
+            let orphanedCount = 0;
+            if (backupData.collections) {
+                for (const collectionId in backupData.collections) {
+                    const originalHighlightIds = backupData.collections[collectionId].highlightIds || [];
+                    const currentHighlightIds = this.settings.collections[collectionId]?.highlightIds || [];
+                    orphanedCount += originalHighlightIds.length - currentHighlightIds.length;
+                }
+            }
 
             // Save restored settings
             await this.saveSettings();
@@ -1283,11 +1291,20 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async scanAllFilesForHighlights() {
-        const markdownFiles = this.app.vault.getMarkdownFiles();
-        // Filter files based on shouldProcessFile logic
-        const processableFiles = markdownFiles.filter(file => this.shouldProcessFile(file));
-        const existingFilePaths = new Set(processableFiles.map(file => file.path));
-        let hasChanges = false;
+        // Prevent concurrent scans - if already scanning, skip this call
+        if (this.isScanningFiles) {
+            console.log('Scan already in progress, skipping concurrent scan request');
+            return;
+        }
+
+        this.isScanningFiles = true;
+
+        try {
+            const markdownFiles = this.app.vault.getMarkdownFiles();
+            // Filter files based on shouldProcessFile logic
+            const processableFiles = markdownFiles.filter(file => this.shouldProcessFile(file));
+            const existingFilePaths = new Set(processableFiles.map(file => file.path));
+            let hasChanges = false;
         
         // First, clean up highlights for files that no longer exist
         for (const filePath of this.highlights.keys()) {
@@ -1296,26 +1313,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                 hasChanges = true;
             }
         }
-        
-        // Clean up orphaned highlight IDs from collections
-        for (const collection of this.collections.values()) {
-            const originalLength = collection.highlightIds.length;
-            collection.highlightIds = collection.highlightIds.filter(highlightId => {
-                // Check if this highlight still exists in any file
-                for (const [filePath, fileHighlights] of this.highlights) {
-                    if (fileHighlights.some(h => h.id === highlightId)) {
-                        return true; // Keep this highlight ID
-                    }
-                }
-                return false; // Remove this highlight ID
-            });
-            
-            if (collection.highlightIds.length !== originalLength) {
-                hasChanges = true;
-            }
-        }
-        
-        // Now scan existing files for highlights
+
+        // Scan existing files for highlights FIRST, then clean up orphaned references
+        // This ensures we clean based on the current state of highlights in markdown files
         for (const file of processableFiles) {
             try {
                 // Check if this is an Excalidraw file (deeper check)
@@ -1344,11 +1344,34 @@ export default class HighlightCommentsPlugin extends Plugin {
                 // Continue on error
             }
         }
-        
-        // Save settings and refresh sidebar only once after scanning all files
-        if (hasChanges) {
-            await this.saveSettings();
-            this.refreshSidebar();
+
+        // NOW clean up orphaned highlight IDs from collections
+        // This happens AFTER scanning so we clean based on the current state of highlights
+        for (const collection of this.collections.values()) {
+            const originalLength = collection.highlightIds.length;
+            collection.highlightIds = collection.highlightIds.filter(highlightId => {
+                // Check if this highlight still exists in any file
+                for (const [filePath, fileHighlights] of this.highlights) {
+                    if (fileHighlights.some(h => h.id === highlightId)) {
+                        return true; // Keep this highlight ID
+                    }
+                }
+                return false; // Remove this highlight ID
+            });
+
+            if (collection.highlightIds.length !== originalLength) {
+                hasChanges = true;
+            }
+        }
+
+            // Save settings and refresh sidebar only once after scanning all files
+            if (hasChanges) {
+                await this.saveSettings();
+                this.refreshSidebar();
+            }
+        } finally {
+            // Always reset the scanning flag, even if an error occurred
+            this.isScanningFiles = false;
         }
     }
 
