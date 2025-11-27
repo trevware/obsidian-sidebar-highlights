@@ -2209,7 +2209,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     extractFootnotes(content: string): Map<string, string> {
         const footnoteMap = new Map<string, string>();
-        const footnoteRegex = /^\[\^(\w+)\]:\s*(.+)$/gm;
+        const footnoteRegex = /^\[\^(\w+)\]:\s*(.+(?:(?:\n+\s*$)*\n(?:  |\t).+)*)$/gm;
         let match;
         
         while ((match = footnoteRegex.exec(content)) !== null) {
