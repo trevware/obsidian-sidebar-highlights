@@ -15,6 +15,8 @@ export interface HighlightRenderOptions {
     onHighlightClick?: (highlight: Highlight, event?: MouseEvent) => void;
     onAddComment?: (highlight: Highlight) => void;
     onCommentClick?: (highlight: Highlight, commentIndex: number, event?: MouseEvent) => void;
+    onDeleteComment?: (highlight: Highlight, commentIndex: number) => void;
+    onDeleteHighlight?: (highlight: Highlight) => void;
     onTagClick?: (tag: string) => void;
     onFileNameClick?: (filePath: string, event: MouseEvent) => void;
 }
@@ -115,6 +117,9 @@ export class HighlightRenderer {
 
         // Add copy button to quote section
         this.createCopyButtonInQuote(quoteEl, highlight);
+
+        // Add delete highlight button to quote section
+        this.createDeleteHighlightButton(quoteEl, highlight, options);
 
         quoteEl.addEventListener('click', (event) => {
             options.onHighlightClick?.(highlight, event);
@@ -332,6 +337,21 @@ export class HighlightRenderer {
         return copyButton;
     }
 
+    private createDeleteHighlightButton(quoteEl: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): HTMLElement {
+        const deleteButton = quoteEl.createDiv({ cls: 'highlight-quote-delete-button' });
+        deleteButton.setAttribute('title', 'Delete highlight and comments');
+
+        const icon = deleteButton.createDiv({ cls: 'delete-icon' });
+        setIcon(icon, 'trash-2');
+
+        deleteButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            options.onDeleteHighlight?.(highlight);
+        });
+
+        return deleteButton;
+    }
+
     private addTimestampToInfoLine(infoLineContainer: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         if (options.showTimestamp && highlight.createdAt) {
             const timestamp = moment(highlight.createdAt);
@@ -362,14 +382,22 @@ export class HighlightRenderer {
             const validFootnoteContents = highlight.footnoteContents?.filter(c => c.trim() !== '') || [];
             if (validFootnoteContents.length > 0) {
                 validFootnoteContents.forEach((content, index) => {
-                    const commentDiv = commentsContainer.createDiv({ cls: 'highlight-comment' });
+                    const commentWrapper = commentsContainer.createDiv({ cls: 'highlight-comment-wrapper' });
+                    const commentDiv = commentWrapper.createDiv({ cls: 'highlight-comment' });
                     this.renderMarkdownToElement(commentDiv, content);
                     commentDiv.addEventListener('click', (event) => {
                         event.stopPropagation();
                         options.onCommentClick?.(highlight, index, event);
                     });
 
-
+                    // Delete comment button
+                    const deleteCommentBtn = commentWrapper.createDiv({ cls: 'highlight-comment-delete-btn' });
+                    setIcon(deleteCommentBtn, 'x');
+                    deleteCommentBtn.setAttribute('title', 'Delete comment');
+                    deleteCommentBtn.addEventListener('click', (event) => {
+                        event.stopPropagation();
+                        options.onDeleteComment?.(highlight, index);
+                    });
                 });
             }
         }

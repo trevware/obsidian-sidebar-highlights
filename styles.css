@@ -1254,6 +1254,90 @@
     height: 14px;
 }
 
+/* Delete highlight button in quote section - appears on hover, left of copy button */
+.highlight-quote-delete-button {
+    position: absolute;
+    right: 36px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+.highlight-quote:hover .highlight-quote-delete-button {
+    opacity: 0.6;
+}
+
+.highlight-quote-delete-button:hover {
+    opacity: 1 !important;
+    color: var(--color-red, #e06c75);
+}
+
+.highlight-quote-delete-button .delete-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.highlight-quote-delete-button .delete-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Comment wrapper - flex row containing comment text and delete button */
+.highlight-comment-wrapper {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 0.5px solid var(--background-modifier-border);
+    position: relative;
+}
+
+.highlight-comment-wrapper .highlight-comment {
+    flex: 1;
+    border-bottom: none;
+}
+
+.highlight-comment-wrapper .highlight-comment:last-child {
+    border-radius: 0;
+}
+
+/* Delete comment button - appears on hover of the comment row */
+.highlight-comment-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 24px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    color: var(--text-muted);
+    border-left: none;
+    padding: 0 4px;
+}
+
+.highlight-comment-wrapper:hover .highlight-comment-delete-btn {
+    opacity: 0.5;
+}
+
+.highlight-comment-delete-btn:hover {
+    opacity: 1 !important;
+    color: var(--color-red, #e06c75);
+    background-color: var(--background-modifier-hover);
+}
+
+.highlight-comment-delete-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
 /* Add Comment line styling - distinct from regular comments */
 .highlight-add-comment-line {
     color: var(--text-muted);

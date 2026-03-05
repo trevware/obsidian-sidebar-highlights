@@ -4395,6 +4395,12 @@ export class HighlightsSidebarView extends ItemView {
                 // Set flag to preserve pagination when clicking filenames
                 this.isPreservingPagination = true;
                 this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+            },
+            onDeleteComment: async (highlight, commentIndex) => {
+                await this.deleteCommentFromFile(highlight, commentIndex);
+            },
+            onDeleteHighlight: async (highlight) => {
+                await this.deleteHighlightFromFile(highlight);
             }
         };
 
@@ -4698,6 +4704,214 @@ export class HighlightsSidebarView extends ItemView {
                 this.updateItem(highlight.id);
             }
         }
+    }
+
+    /**
+     * Find the best-matching position of a highlight in the file content.
+     * Returns { index, length } of the full highlight expression (including markers).
+     */
+    private findHighlightInContent(
+        content: string,
+        highlight: Highlight
+    ): { index: number; length: number } | null {
+        const matches: { index: number; length: number }[] = [];
+
+        if (highlight.type === 'custom' && highlight.fullMatch) {
+            const regex = new RegExp(this.escapeRegex(highlight.fullMatch), 'g');
+            let m;
+            while ((m = regex.exec(content)) !== null) {
+                matches.push({ index: m.index, length: m[0].length });
+            }
+        } else if (highlight.isNativeComment) {
+            // Try %%text%% pattern
+            const nativeRegex = new RegExp(`%%${this.escapeRegex(highlight.text)}%%`, 'g');
+            let m;
+            while ((m = nativeRegex.exec(content)) !== null) {
+                matches.push({ index: m.index, length: m[0].length });
+            }
+            // Try HTML comment <!-- text -->
+            if (matches.length === 0) {
+                const htmlRegex = new RegExp(`<!--\\s*${this.escapeRegex(highlight.text)}\\s*-->`, 'g');
+                while ((m = htmlRegex.exec(content)) !== null) {
+                    matches.push({ index: m.index, length: m[0].length });
+                }
+            }
+        } else if (this.isHtmlHighlight(highlight)) {
+            const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+            const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
+                content, highlight.text, highlight.startOffset, codeBlockRanges
+            );
+            if (htmlHighlight) {
+                matches.push({
+                    index: htmlHighlight.startOffset,
+                    length: htmlHighlight.endOffset - htmlHighlight.startOffset
+                });
+            }
+        } else {
+            // Regular ==text==
+            const regex = new RegExp(`==${this.escapeRegex(highlight.text)}==`, 'g');
+            let m;
+            while ((m = regex.exec(content)) !== null) {
+                matches.push({ index: m.index, length: m[0].length });
+            }
+        }
+
+        if (matches.length === 0) return null;
+
+        // Pick the match closest to the stored startOffset
+        return matches.reduce((best, cur) =>
+            Math.abs(cur.index - highlight.startOffset) < Math.abs(best.index - highlight.startOffset)
+                ? cur : best
+        );
+    }
+
+    /**
+     * Extract all footnote tokens immediately following a highlight end position.
+     * Handles both inline footnotes ^[...] and standard footnotes [^key].
+     */
+    private getFootnoteTokens(
+        content: string,
+        afterIndex: number
+    ): Array<{ type: 'inline' | 'standard'; startIndex: number; endIndex: number; key?: string; content: string }> {
+        const tokens: Array<{ type: 'inline' | 'standard'; startIndex: number; endIndex: number; key?: string; content: string }> = [];
+        const footnoteMap = this.plugin.extractFootnotes(content);
+        let pos = afterIndex;
+
+        while (pos < content.length) {
+            // Skip horizontal whitespace
+            const wsMatch = content.substring(pos).match(/^[ \t]+/);
+            if (wsMatch) pos += wsMatch[0].length;
+
+            // Inline footnote ^[...]
+            if (content.substring(pos, pos + 2) === '^[') {
+                const start = pos;
+                pos += 2;
+                let depth = 1;
+                while (pos < content.length && depth > 0) {
+                    if (content[pos] === '[') depth++;
+                    else if (content[pos] === ']') depth--;
+                    pos++;
+                }
+                if (depth === 0) {
+                    tokens.push({
+                        type: 'inline',
+                        startIndex: start,
+                        endIndex: pos,
+                        content: content.substring(start + 2, pos - 1)
+                    });
+                    continue;
+                }
+                break;
+            }
+
+            // Standard footnote [^key] (not a definition [^key]:)
+            const stdMatch = content.substring(pos).match(/^\[\^([a-zA-Z0-9_-]+)\](?!:)/);
+            if (stdMatch) {
+                const key = stdMatch[1];
+                tokens.push({
+                    type: 'standard',
+                    startIndex: pos,
+                    endIndex: pos + stdMatch[0].length,
+                    key,
+                    content: footnoteMap.get(key) || ''
+                });
+                pos += stdMatch[0].length;
+                continue;
+            }
+
+            break;
+        }
+
+        return tokens;
+    }
+
+    /**
+     * Delete a specific comment (footnote) from the file.
+     * commentIndex is 0-based index into the non-empty footnote contents.
+     */
+    private async deleteCommentFromFile(highlight: Highlight, commentIndex: number): Promise<void> {
+        const file = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
+        if (!(file instanceof TFile)) {
+            new Notice('File not found');
+            return;
+        }
+
+        const content = await this.plugin.app.vault.read(file);
+        const matchInfo = this.findHighlightInContent(content, highlight);
+        if (!matchInfo) {
+            new Notice('Could not find highlight in file');
+            return;
+        }
+
+        const tokens = this.getFootnoteTokens(content, matchInfo.index + matchInfo.length);
+
+        // Find the target token by commentIndex (counting only non-empty contents)
+        let validCount = 0;
+        let targetToken: typeof tokens[0] | null = null;
+        for (const token of tokens) {
+            if (token.content.trim() !== '') {
+                if (validCount === commentIndex) {
+                    targetToken = token;
+                    break;
+                }
+                validCount++;
+            }
+        }
+
+        if (!targetToken) {
+            new Notice('Could not find comment to delete');
+            return;
+        }
+
+        // Remove the token text from content
+        let newContent = content.substring(0, targetToken.startIndex) + content.substring(targetToken.endIndex);
+
+        // For standard footnotes, also remove the definition line
+        if (targetToken.type === 'standard' && targetToken.key) {
+            const defPattern = new RegExp(`^\\[\\^${this.escapeRegex(targetToken.key)}\\]:[ \\t]*.+$\\n?`, 'm');
+            newContent = newContent.replace(defPattern, '');
+        }
+
+        await this.plugin.app.vault.modify(file, newContent);
+        await this.plugin.loadHighlightsFromFile(file);
+    }
+
+    /**
+     * Delete an entire highlight (markers + all footnotes) from the file.
+     * The plain text content is kept; only the ==...== markers and footnotes are removed.
+     */
+    private async deleteHighlightFromFile(highlight: Highlight): Promise<void> {
+        const file = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
+        if (!(file instanceof TFile)) {
+            new Notice('File not found');
+            return;
+        }
+
+        const content = await this.plugin.app.vault.read(file);
+        const matchInfo = this.findHighlightInContent(content, highlight);
+        if (!matchInfo) {
+            new Notice('Could not find highlight in file');
+            return;
+        }
+
+        const highlightStart = matchInfo.index;
+        const highlightEnd = matchInfo.index + matchInfo.length;
+        const tokens = this.getFootnoteTokens(content, highlightEnd);
+        const allFootnotesEnd = tokens.length > 0 ? tokens[tokens.length - 1].endIndex : highlightEnd;
+
+        // Replace ==text==<footnotes> with just the plain text
+        let newContent = content.substring(0, highlightStart) + highlight.text + content.substring(allFootnotesEnd);
+
+        // Remove standard footnote definitions
+        for (const token of tokens) {
+            if (token.type === 'standard' && token.key) {
+                const defPattern = new RegExp(`^\\[\\^${this.escapeRegex(token.key)}\\]:[ \\t]*.+$\\n?`, 'm');
+                newContent = newContent.replace(defPattern, '');
+            }
+        }
+
+        await this.plugin.app.vault.modify(file, newContent);
+        await this.plugin.loadHighlightsFromFile(file);
     }
 
     private findAndParseHighlight(content: string, originalHighlight: Highlight, footnoteMap: Map<string, string>): Highlight | null {
