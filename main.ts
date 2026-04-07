@@ -1630,6 +1630,170 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
+    /**
+     * Modify a highlight in its underlying source file.
+     *
+     *   action = 'remove-highlight'
+     *      Strip just the wrapper (== / %% / HTML tags / custom delimiters),
+     *      keep the inner text and any attached comments intact.
+     *
+     *   action = 'remove-comments'
+     *      Keep the highlight wrapper, but strip any inline footnotes (^[..])
+     *      and standard footnote references ([^N]) immediately following the
+     *      highlight, plus any footnote definitions ([^N]: ...) that become
+     *      orphaned as a result.
+     *
+     *   action = 'remove-both'
+     *      Strip the wrapper AND the trailing comments (and orphaned defs).
+     *
+     * Returns true on success, false if the highlight could not be located
+     * or the operation would be a no-op.
+     */
+    async removeHighlightFromSource(
+        highlight: Highlight,
+        action: 'remove-highlight' | 'remove-comments' | 'remove-both'
+    ): Promise<boolean> {
+        const file = this.app.vault.getAbstractFileByPath(highlight.filePath);
+        if (!(file instanceof TFile)) {
+            new Notice('Highlight file not found');
+            return false;
+        }
+
+        const content = await this.app.vault.read(file);
+
+        // Sanity-check: the recorded slice should still contain the highlight text.
+        // Offsets can drift if the file was edited externally; bail rather than
+        // mangling the file.
+        const recordedSlice = content.substring(highlight.startOffset, highlight.endOffset);
+        if (!recordedSlice.includes(highlight.text)) {
+            new Notice('Highlight has moved — please refresh and try again');
+            return false;
+        }
+
+        const stripWrapper = action === 'remove-highlight' || action === 'remove-both';
+        const stripComments = action === 'remove-comments' || action === 'remove-both';
+
+        let removalEnd = highlight.endOffset;
+        let removedFootnoteNames: string[] = [];
+
+        if (stripComments) {
+            const scan = this.scanTrailingFootnotes(content, highlight.endOffset);
+            removalEnd = scan.expandedEnd;
+            removedFootnoteNames = scan.standardNames;
+        }
+
+        // Build the replacement for the [startOffset .. removalEnd] slice.
+        // - If stripping the wrapper: replace with just the inner text.
+        // - If keeping the wrapper: keep the original highlight (chars
+        //   [startOffset .. endOffset]) and discard whatever follows.
+        const replacement = stripWrapper
+            ? highlight.text
+            : content.substring(highlight.startOffset, highlight.endOffset);
+
+        let newContent =
+            content.substring(0, highlight.startOffset) +
+            replacement +
+            content.substring(removalEnd);
+
+        // Remove any [^N]: definitions that no longer have a reference.
+        if (stripComments && removedFootnoteNames.length > 0) {
+            newContent = this.removeOrphanedFootnoteDefinitions(newContent, removedFootnoteNames);
+        }
+
+        // No-op safety check.
+        if (newContent === content) {
+            return false;
+        }
+
+        await this.app.vault.modify(file, newContent);
+
+        // vault.modify doesn't trigger our highlight re-detection pipeline
+        // (that's only on editor-change), so refresh explicitly.
+        await this.loadHighlightsFromFile(file);
+
+        return true;
+    }
+
+    /**
+     * Starting at `startAt`, walk forward over any sequence of footnote tokens
+     * (^[..] inline footnotes and [^N] standard references), allowing
+     * intervening whitespace. Returns where the consumed run ends and the list
+     * of standard footnote names that were swept up.
+     *
+     * Whitespace is only consumed if it's followed by another footnote token,
+     * so we never eat trailing paragraph breaks by accident.
+     */
+    private scanTrailingFootnotes(content: string, startAt: number): { expandedEnd: number; standardNames: string[] } {
+        let pos = startAt;
+        let lastConsumedEnd = startAt;
+        const standardNames: string[] = [];
+
+        while (pos < content.length) {
+            // Tentatively skip whitespace
+            const wsMatch = content.substring(pos).match(/^\s*/);
+            const wsLen = wsMatch ? wsMatch[0].length : 0;
+            const afterWs = pos + wsLen;
+
+            // Standard footnote reference: [^name] (but not a definition [^name]:)
+            const standardMatch = content.substring(afterWs).match(/^\[\^([a-zA-Z0-9_-]+)\](?!:)/);
+            if (standardMatch) {
+                standardNames.push(standardMatch[1]);
+                pos = afterWs + standardMatch[0].length;
+                lastConsumedEnd = pos;
+                continue;
+            }
+
+            // Inline footnote: ^[content with possible nested brackets]
+            if (content.substring(afterWs, afterWs + 2) === '^[') {
+                let depth = 1;
+                let i = afterWs + 2;
+                while (i < content.length && depth > 0) {
+                    if (content[i] === '[') depth++;
+                    else if (content[i] === ']') depth--;
+                    if (depth > 0) i++;
+                }
+                if (depth === 0) {
+                    pos = i + 1; // include the closing ]
+                    lastConsumedEnd = pos;
+                    continue;
+                }
+                break; // unmatched bracket — bail
+            }
+
+            // Not a footnote token — stop here.
+            break;
+        }
+
+        return { expandedEnd: lastConsumedEnd, standardNames };
+    }
+
+    /**
+     * For each footnote name in `removedNames`, if there's no remaining
+     * reference to it in `content`, delete its `[^name]: ...` definition
+     * (including any indented continuation lines).
+     */
+    private removeOrphanedFootnoteDefinitions(content: string, removedNames: string[]): string {
+        let newContent = content;
+        const seen = new Set<string>();
+        for (const name of removedNames) {
+            if (seen.has(name)) continue;
+            seen.add(name);
+
+            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Still referenced somewhere? Skip.
+            const refRegex = new RegExp(`\\[\\^${escaped}\\](?!:)`);
+            if (refRegex.test(newContent)) continue;
+
+            // Remove the definition + any indented continuation lines + trailing newline.
+            const defRegex = new RegExp(
+                `^\\[\\^${escaped}\\]:.*(?:\\n[ \\t]+.*)*\\n?`,
+                'm'
+            );
+            newContent = newContent.replace(defRegex, '');
+        }
+        return newContent;
+    }
+
     debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
         if (this.detectHighlightsTimeout) {
             window.clearTimeout(this.detectHighlightsTimeout);
@@ -2502,8 +2666,10 @@ export default class HighlightCommentsPlugin extends Plugin {
             const lineStart = currentPos;
             const lineEnd = currentPos + line.length;
 
-            // Check for code block markers at start of line
-            if (line.match(/^```/)) {
+            // Check for code block markers — allow leading whitespace and `>`
+            // characters so fences inside callouts, blockquotes, and indented
+            // list items are detected correctly.
+            if (line.match(/^[\s>]*```/)) {
                 if (currentBlockType === 'backtick') {
                     // Closing marker - end the block
                     ranges.push({
@@ -2517,7 +2683,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     currentBlockStart = lineStart;
                     currentBlockType = 'backtick';
                 }
-            } else if (line.match(/^~~~/)) {
+            } else if (line.match(/^[\s>]*~~~/)) {
                 if (currentBlockType === 'wave') {
                     // Closing marker - end the block
                     ranges.push({
@@ -2558,13 +2724,20 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     /**
-     * Get ranges of markdown links [text](url) to exclude highlights within URLs
+     * Get ranges of markdown links [text](url) to exclude highlights within URLs.
+     *
+     * The bracket-content pattern allows one level of balanced nested brackets
+     * so that nested image-in-link syntax like `[![alt](img-url)](dest-url)`
+     * is matched as a single link. The previous pattern `[^\]]+` would stop at
+     * the first inner `]`, exposing the outer destination URL — and any `==`
+     * inside it would form phantom highlights.
      */
     private getMarkdownLinkRanges(content: string): Array<{start: number, end: number}> {
         const ranges: Array<{start: number, end: number}> = [];
 
-        // Match markdown links: [text](url)
-        const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+        // Match markdown links: [text](url), allowing single-level nested
+        // brackets in the label so [![alt](img)](dest) is captured whole.
+        const linkRegex = /\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)]+)\)/g;
         let match;
 
         while ((match = linkRegex.exec(content)) !== null) {

@@ -226,6 +226,9 @@
     "secondaryGroup": "二级分组",
     "sort": "排序高亮",
     "toggleComments": "切换原生注释",
+    "toggleFollowEditorScroll": "跟随编辑器滚动",
+    "moreActions": "更多操作",
+    "copyVisibleHighlights": "复制可见高亮 ({{count}})",
     "toggleHighlightComments": "切换高亮注释",
     "revertColors": "还原高亮颜色",
     "filter": "过滤",
@@ -300,7 +303,10 @@
     "markUnread": "标记为未读",
     "markRead": "标记为已读",
     "markAboveRead": "将上方标记为已读",
-    "markBelowRead": "将下方标记为已读"
+    "markBelowRead": "将下方标记为已读",
+    "removeHighlight": "移除高亮",
+    "removeComments": "移除评论",
+    "removeHighlightAndComments": "移除高亮和评论"
   },
   "filterMenu": {
     "clear": "清除",
@@ -432,6 +438,12 @@
     "displayModeApplied": "已应用显示模式【{{name}}】",
     "displayModeUpdated": "显示模式【{{name}}】已更新",
     "displayModeRenamed": "显示模式已重命名为【{{name}}】",
-    "displayModeDeleted": "显示模式【{{name}}】已删除"
+    "displayModeDeleted": "显示模式【{{name}}】已删除",
+    "copiedHighlights": "已复制 {{count}} 条高亮到剪贴板",
+    "noHighlightsToCopy": "没有可复制的高亮",
+    "copyFailed": "复制到剪贴板失败",
+    "highlightRemoved": "已移除高亮",
+    "commentsRemoved": "已移除评论",
+    "highlightAndCommentsRemoved": "已移除高亮和评论"
   }
 }

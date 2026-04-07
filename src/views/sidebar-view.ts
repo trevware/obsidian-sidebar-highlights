@@ -73,6 +73,20 @@ export class HighlightsSidebarView extends ItemView {
     private collapsedSections: Set<string> = new Set(); // Track collapsed task sections
     private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
 
+    // Follow-editor-scroll: scroll the sidebar to track the editor's visible position
+    private followEditorScroll: boolean = false;
+    private editorScrollCleanup: (() => void) | null = null;
+    private followScrollDebounce: number | null = null;
+    private followScrollSelectedId: string | null = null;
+    private lastManualSidebarScrollAt: number = 0;
+    private sidebarManualScrollCleanup: (() => void) | null = null;
+    // The MarkdownView our scroll listener is currently bound to. Tracked
+    // separately from "active leaf" so the listener stays attached when the
+    // user clicks the sidebar (which would otherwise change the active leaf
+    // away from the editor and detach the listener).
+    private attachedMarkdownView: MarkdownView | null = null;
+    private static FOLLOW_SCROLL_PAUSE_MS = 2000;
+
     constructor(leaf: WorkspaceLeaf, plugin: HighlightCommentsPlugin) {
         super(leaf);
         this.plugin = plugin;
@@ -96,6 +110,8 @@ export class HighlightsSidebarView extends ItemView {
         this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
         // Load native comments visibility from vault-specific localStorage
         this.showNativeComments = this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments') !== 'false';
+        // Load follow-editor-scroll state from vault-specific localStorage
+        this.followEditorScroll = this.plugin.app.loadLocalStorage('sidebar-highlights-follow-editor-scroll') === 'true';
     }
 
     getViewType() { return VIEW_TYPE_HIGHLIGHTS; }
@@ -729,15 +745,6 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderContent(); // Use renderContent instead of renderFilteredList
             });
 
-            const resetColorsButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
-            });
-            setTooltip(resetColorsButton, t('toolbar.revertColors'));
-            setIcon(resetColorsButton, 'rotate-ccw');
-            resetColorsButton.addEventListener('click', () => {
-                this.resetAllColors();
-            });
-
             const tagFilterButton = searchContainer.createEl('button', {
                 cls: 'highlights-group-button highlights-tag-filter-button'
             });
@@ -776,6 +783,17 @@ export class HighlightsSidebarView extends ItemView {
 
             this.actionsButton.addEventListener('click', (event) => {
                 this.showActionsMenu(event);
+            });
+
+            // Overflow ("more") menu — secondary actions, parked at the far right
+            // of the toolbar. Holds follow-scroll, revert colors, copy visible.
+            const overflowMenuButton = searchContainer.createEl('button', {
+                cls: 'highlights-group-button highlights-overflow-button'
+            });
+            setTooltip(overflowMenuButton, t('toolbar.moreActions'));
+            setIcon(overflowMenuButton, 'ellipsis-vertical');
+            overflowMenuButton.addEventListener('click', (event) => {
+                this.showOverflowMenu(event);
             });
 
             // Create search input container (initially hidden)
@@ -1027,6 +1045,22 @@ export class HighlightsSidebarView extends ItemView {
             })
         );
 
+        // Re-evaluate the follow-editor-scroll target whenever the active leaf
+        // changes or the workspace layout changes. attachEditorScrollListener
+        // is idempotent and target-aware, so this just no-ops if the same
+        // markdown view is still the right target (e.g. when the user clicks
+        // the sidebar — the editor stays attached even though the sidebar is
+        // now the "active" leaf).
+        const reevaluateFollowScroll = () => {
+            if (!this.followEditorScroll) return;
+            window.setTimeout(() => {
+                this.attachEditorScrollListener();
+                this.syncSidebarToEditorScroll();
+            }, 50);
+        };
+        this.registerEvent(this.app.workspace.on('active-leaf-change', reevaluateFollowScroll));
+        this.registerEvent(this.app.workspace.on('layout-change', reevaluateFollowScroll));
+
         // Restore settings for the initial viewMode
         this.restoreTabSettings(this.viewMode);
 
@@ -1034,12 +1068,23 @@ export class HighlightsSidebarView extends ItemView {
         if (!skipInitialRender) {
             this.renderContent();
         }
+
+        // If follow-editor-scroll was previously on, attach the scroll listener now
+        if (this.followEditorScroll) {
+            window.setTimeout(() => {
+                this.attachEditorScrollListener();
+                this.syncSidebarToEditorScroll();
+            }, 50);
+        }
     }
 
     async onClose() {
         // Clean up dropdown manager
         this.dropdownManager.cleanup();
-        
+
+        // Clean up editor scroll listener
+        this.detachEditorScrollListener();
+
         // Reset flags
 
         // Clear maps to free memory
@@ -4395,10 +4440,65 @@ export class HighlightsSidebarView extends ItemView {
                 // Set flag to preserve pagination when clicking filenames
                 this.isPreservingPagination = true;
                 this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+            },
+            onContextMenu: (highlight, event) => {
+                this.showHighlightContextMenu(highlight, event);
             }
         };
 
         return this.highlightRenderer.createHighlightItem(container, highlight, options);
+    }
+
+    /**
+     * Right-click context menu for a highlight item in the sidebar.
+     * Offers: remove highlight, remove comments, remove both.
+     */
+    private showHighlightContextMenu(highlight: Highlight, event: MouseEvent) {
+        const menu = new Menu();
+
+        const hasComments = !highlight.isNativeComment
+            && !!highlight.footnoteContents
+            && highlight.footnoteContents.length > 0;
+
+        menu.addItem((item) => {
+            item
+                .setTitle(t('contextMenu.removeHighlight'))
+                .setIcon('eraser')
+                .onClick(async () => {
+                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-highlight');
+                    if (ok) {
+                        new Notice(t('notices.highlightRemoved'));
+                    }
+                });
+        });
+
+        menu.addItem((item) => {
+            item
+                .setTitle(t('contextMenu.removeComments'))
+                .setIcon('message-square-off')
+                .setDisabled(!hasComments)
+                .onClick(async () => {
+                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-comments');
+                    if (ok) {
+                        new Notice(t('notices.commentsRemoved'));
+                    }
+                });
+        });
+
+        menu.addItem((item) => {
+            item
+                .setTitle(t('contextMenu.removeHighlightAndComments'))
+                .setIcon('trash-2')
+                .setDisabled(!hasComments)
+                .onClick(async () => {
+                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-both');
+                    if (ok) {
+                        new Notice(t('notices.highlightAndCommentsRemoved'));
+                    }
+                });
+        });
+
+        menu.showAtMouseEvent(event);
     }
 
     private rerenderCurrentView(): void {
@@ -4845,10 +4945,21 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     async focusHighlightInEditor(highlight: Highlight, event?: MouseEvent) {
-        
+
         // Set flag to preserve pagination when clicking highlights (especially from other pages)
         this.isPreservingPagination = true;
-        
+
+        // The user explicitly clicked this highlight — suppress follow-editor-scroll
+        // sync for the pause window so the resulting editor scroll doesn't snap
+        // selection back to a different "closer to middle" highlight (especially
+        // near the top/bottom of the file where the click target can't be centered).
+        if (this.followEditorScroll) {
+            this.lastManualSidebarScrollAt = Date.now();
+            // Treat this highlight as the current follow-scroll anchor so a later
+            // resumed sync doesn't immediately clear its visual selection.
+            this.followScrollSelectedId = highlight.id;
+        }
+
         // Always clear ALL existing selections first to prevent multiple selections
         const allSelectedElements = this.containerEl.querySelectorAll('.selected, .highlight-selected');
         allSelectedElements.forEach(el => {
@@ -6741,6 +6852,472 @@ export class HighlightsSidebarView extends ItemView {
     private toggleNativeCommentsVisibility() {
         this.showNativeComments = !this.showNativeComments;
         this.plugin.app.saveLocalStorage('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
+    }
+
+    private toggleFollowEditorScroll() {
+        this.followEditorScroll = !this.followEditorScroll;
+        this.plugin.app.saveLocalStorage('sidebar-highlights-follow-editor-scroll', this.followEditorScroll.toString());
+
+        if (this.followEditorScroll) {
+            this.attachEditorScrollListener();
+            // Sync once immediately so the user sees feedback right away
+            this.syncSidebarToEditorScroll();
+        } else {
+            this.detachEditorScrollListener();
+            this.clearFollowScrollSelection();
+        }
+    }
+
+    /**
+     * Show the toolbar overflow menu (secondary actions).
+     */
+    private showOverflowMenu(event: MouseEvent) {
+        const menu = new Menu();
+
+        // Toggle Follow editor scroll
+        menu.addItem((item) => {
+            item
+                .setTitle(t('toolbar.toggleFollowEditorScroll'))
+                .setIcon('scan-eye')
+                .setChecked(this.followEditorScroll)
+                .onClick(() => {
+                    this.toggleFollowEditorScroll();
+                });
+        });
+
+        menu.addSeparator();
+
+        // Copy all visible highlights
+        const visibleCount = this.getCurrentlyVisibleHighlights().length;
+        menu.addItem((item) => {
+            item
+                .setTitle(t('toolbar.copyVisibleHighlights', { count: visibleCount }))
+                .setIcon('copy')
+                .setDisabled(visibleCount === 0)
+                .onClick(() => {
+                    this.copyVisibleHighlightsToClipboard();
+                });
+        });
+
+        // Revert highlight colors
+        menu.addItem((item) => {
+            item
+                .setTitle(t('toolbar.revertColors'))
+                .setIcon('rotate-ccw')
+                .onClick(() => {
+                    this.resetAllColors();
+                });
+        });
+
+        menu.showAtMouseEvent(event);
+    }
+
+    /**
+     * Get the highlights currently rendered in the sidebar (post-filter).
+     * Mirrors the same source-set + filter pipeline as renderFilteredList,
+     * but without grouping/sorting/pagination.
+     */
+    private getCurrentlyVisibleHighlights(): Highlight[] {
+        // Tasks tab has no highlights
+        if (this.viewMode === 'tasks') return [];
+
+        let source: Highlight[] = [];
+
+        if (this.viewMode === 'current') {
+            const file = this.plugin.app.workspace.getActiveFile();
+            if (!file) return [];
+            source = this.plugin.getCurrentFileHighlights() || [];
+        } else if (this.viewMode === 'all') {
+            for (const [, highlights] of this.plugin.highlights) {
+                source.push(...highlights);
+            }
+        } else if (this.viewMode === 'collections') {
+            // Inside a specific collection, show only its highlights;
+            // the collections-grid view itself has no highlights to copy.
+            if (!this.currentCollectionId) return [];
+            const collection = this.plugin.collectionsManager.getCollection(this.currentCollectionId);
+            if (!collection) return [];
+            for (const id of collection.highlightIds) {
+                const h = this.getHighlightById(id);
+                if (h) source.push(h);
+            }
+        }
+
+        // Apply view-level file exclusion (matches renderFilteredList behavior),
+        // except for the collections view, which intentionally bypasses file filtering.
+        if (this.viewMode !== 'collections') {
+            source = source.filter(h => {
+                const file = this.plugin.app.vault.getAbstractFileByPath(h.filePath);
+                if (!file || !(file instanceof TFile)) return false;
+                return this.plugin.shouldProcessFile(file);
+            });
+        }
+
+        return this.applyAllFilters(source);
+    }
+
+    /**
+     * Format a single highlight as markdown text (mirrors the per-item copy
+     * button in highlight-renderer.ts).
+     */
+    private formatHighlightForCopy(highlight: Highlight): string {
+        let text: string;
+        if (highlight.isNativeComment) {
+            text = `%%${highlight.text}%%`;
+        } else {
+            // Both regular markdown and HTML highlights export as ==text==
+            text = `==${highlight.text}==`;
+        }
+
+        // Append footnotes/comments (but not for native comments — the text is the comment)
+        if (!highlight.isNativeComment && highlight.footnoteContents && highlight.footnoteContents.length > 0) {
+            for (const content of highlight.footnoteContents) {
+                text += `^[${content}]`;
+            }
+        }
+        return text;
+    }
+
+    /**
+     * Copy all currently-visible (post-filter) highlights to the clipboard,
+     * one per paragraph. Notifies the user of the count.
+     */
+    private async copyVisibleHighlightsToClipboard() {
+        const visible = this.getCurrentlyVisibleHighlights();
+        if (visible.length === 0) {
+            new Notice(t('notices.noHighlightsToCopy'));
+            return;
+        }
+
+        // Sort by file path then position so the output reflects document order.
+        const ordered = [...visible].sort((a, b) => {
+            if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
+            return a.startOffset - b.startOffset;
+        });
+
+        const text = ordered.map(h => this.formatHighlightForCopy(h)).join('\n\n');
+
+        try {
+            await navigator.clipboard.writeText(text);
+            new Notice(t('notices.copiedHighlights', { count: visible.length }));
+        } catch (err) {
+            // Fallback: hidden textarea
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                new Notice(t('notices.copiedHighlights', { count: visible.length }));
+            } catch (e) {
+                new Notice(t('notices.copyFailed'));
+            }
+            document.body.removeChild(textArea);
+        }
+    }
+
+    /**
+     * Find the markdown view that follow-scroll should track. Tries the active
+     * leaf first; if that's not a markdown view (e.g. focus is on the sidebar),
+     * falls back to scanning open leaves for the one whose file matches
+     * `getActiveFile()`. Returns null only when no markdown editor is open at
+     * all (or when reading mode has no editor instance).
+     */
+    private getTargetMarkdownView(): MarkdownView | null {
+        // Prefer the truly-active markdown view.
+        const active = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (active && active.editor) return active;
+
+        // Fall back: find a markdown leaf showing the workspace's "active file".
+        // (`getActiveFile()` reflects the most recently active markdown file
+        // even when focus is on the sidebar.)
+        const activeFile = this.plugin.app.workspace.getActiveFile();
+        if (!activeFile) return null;
+
+        const leaves = this.plugin.app.workspace.getLeavesOfType('markdown');
+        for (const leaf of leaves) {
+            const view = leaf.view;
+            if (view instanceof MarkdownView && view.editor && view.file?.path === activeFile.path) {
+                return view;
+            }
+        }
+
+        // Last resort: any markdown view at all.
+        for (const leaf of leaves) {
+            const view = leaf.view;
+            if (view instanceof MarkdownView && view.editor) {
+                return view;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the visible line range of the target markdown editor: the top,
+     * middle, and bottom lines (0-based) currently in the scroll viewport.
+     * Returns null in reading mode or when no editor is available.
+     */
+    private getEditorVisibleLineRange(): { top: number; middle: number; bottom: number } | null {
+        const targetView = this.getTargetMarkdownView();
+        if (!targetView || !targetView.editor) return null;
+
+        const cm = (targetView.editor as any).cm;
+        if (!cm || !cm.state || !cm.scrollDOM) return null;
+
+        try {
+            const rect = (cm.scrollDOM as HTMLElement).getBoundingClientRect();
+            const middleY = (rect.top + rect.bottom) / 2;
+            const x = rect.left + 1;
+
+            const topPos = cm.posAtCoords({ x, y: rect.top + 1 });
+            const middlePos = cm.posAtCoords({ x, y: middleY });
+            const bottomPos = cm.posAtCoords({ x, y: rect.bottom - 1 });
+
+            if (topPos == null || middlePos == null || bottomPos == null) return null;
+
+            // CM6 line numbers are 1-based; highlight.line is 0-based.
+            const topLine = cm.state.doc.lineAt(topPos).number - 1;
+            const middleLine = cm.state.doc.lineAt(middlePos).number - 1;
+            const bottomLine = cm.state.doc.lineAt(bottomPos).number - 1;
+
+            return {
+                top: Math.min(topLine, bottomLine),
+                middle: middleLine,
+                bottom: Math.max(topLine, bottomLine),
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * Find the highlight that best represents the editor's current visible
+     * area, then center it in the sidebar with smooth scrolling and apply the
+     * selected styling. Only runs in 'current' note mode.
+     *
+     * Match preference:
+     *   1. If any highlights are inside the visible viewport, pick the one
+     *      whose line is closest to the editor's middle visible line.
+     *   2. Otherwise, fall back to the highlight closest by absolute line
+     *      distance to the middle.
+     */
+    private syncSidebarToEditorScroll() {
+        if (!this.followEditorScroll) return;
+        if (this.viewMode !== 'current') return;
+        if (!this.contentAreaEl) return;
+
+        // Pause sync briefly after the user has scrolled the sidebar by hand,
+        // so we don't yank them back while they're browsing.
+        if (Date.now() - this.lastManualSidebarScrollAt < HighlightsSidebarView.FOLLOW_SCROLL_PAUSE_MS) {
+            return;
+        }
+
+        const range = this.getEditorVisibleLineRange();
+        if (!range) return;
+
+        const activeFile = this.plugin.app.workspace.getActiveFile();
+        if (!activeFile) return;
+
+        const fileHighlights = this.plugin.highlights.get(activeFile.path);
+        if (!fileHighlights || fileHighlights.length === 0) return;
+
+        // First pass: find the highlight in the visible range closest to the middle.
+        let target: Highlight | null = null;
+        let minDistance = Infinity;
+        for (const h of fileHighlights) {
+            if (h.line < range.top || h.line > range.bottom) continue;
+            const distance = Math.abs(h.line - range.middle);
+            if (distance < minDistance) {
+                minDistance = distance;
+                target = h;
+            }
+        }
+
+        // Second pass (fallback): nothing in the viewport — pick absolute closest.
+        if (!target) {
+            minDistance = Infinity;
+            for (const h of fileHighlights) {
+                const distance = Math.abs(h.line - range.middle);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    target = h;
+                }
+            }
+        }
+        if (!target) return;
+
+        // If we're already on this highlight, nothing to do.
+        if (this.followScrollSelectedId === target.id) return;
+
+        const targetEl = this.containerEl.querySelector(
+            `[data-highlight-id="${target.id}"]`
+        ) as HTMLElement | null;
+        if (!targetEl) return;
+
+        // Apply selected styling, clearing any previous follow-scroll selection.
+        this.applyFollowScrollSelection(target, targetEl);
+
+        // Smooth-scroll the sidebar so the target is centered vertically.
+        const containerRect = this.contentAreaEl.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const targetCenter = targetRect.top + targetRect.height / 2;
+        const containerCenter = containerRect.top + containerRect.height / 2;
+        const delta = targetCenter - containerCenter;
+
+        this.contentAreaEl.scrollTo({
+            top: this.contentAreaEl.scrollTop + delta,
+            behavior: 'smooth'
+        });
+    }
+
+    /**
+     * Apply the 'selected' visual styling to a highlight item, clearing any
+     * previous follow-scroll selection. Mirrors the click-selection styling.
+     */
+    private applyFollowScrollSelection(highlight: Highlight, targetEl: HTMLElement) {
+        // Clear previous follow-scroll selection (if any) and any other selected items
+        const previouslySelected = this.containerEl.querySelectorAll('.selected, .highlight-selected');
+        previouslySelected.forEach(el => {
+            el.classList.remove('selected', 'highlight-selected');
+            (el as HTMLElement).style.removeProperty('border-left-color');
+            (el as HTMLElement).style.removeProperty('box-shadow');
+        });
+
+        // Apply selected styling to the new target
+        targetEl.classList.add('selected', 'highlight-selected');
+        const highlightColor = highlight.color || this.plugin.settings.highlightColor;
+        targetEl.style.borderLeftColor = highlightColor;
+        if (!highlight.isNativeComment) {
+            targetEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+        }
+
+        this.followScrollSelectedId = highlight.id;
+    }
+
+    /**
+     * Clear follow-scroll selected styling (used when toggling the feature off).
+     */
+    private clearFollowScrollSelection() {
+        if (!this.followScrollSelectedId) return;
+        const el = this.containerEl.querySelector(
+            `[data-highlight-id="${this.followScrollSelectedId}"]`
+        ) as HTMLElement | null;
+        if (el) {
+            el.classList.remove('selected', 'highlight-selected');
+            el.style.removeProperty('border-left-color');
+            el.style.removeProperty('box-shadow');
+        }
+        this.followScrollSelectedId = null;
+    }
+
+    /**
+     * Attach a scroll listener to the target markdown editor's CodeMirror
+     * scroll container. Debounced so we don't thrash during fast scrolls.
+     *
+     * This is idempotent and target-aware: if we're already attached to the
+     * correct view, it does nothing. If the user switches to a different
+     * markdown file, it swaps the listener. If the user clicks the sidebar
+     * (no markdown view is "active" anymore but we still have a target via
+     * the fallback in getTargetMarkdownView), the listener stays attached to
+     * the same editor — so scrolling the editor still works without focus.
+     */
+    private attachEditorScrollListener() {
+        if (!this.followEditorScroll) {
+            this.detachEditorScrollListener();
+            return;
+        }
+
+        const targetView = this.getTargetMarkdownView();
+
+        // No target → tear down whatever we have.
+        if (!targetView || !targetView.editor) {
+            this.detachEditorScrollListener();
+            return;
+        }
+
+        // Already attached to this exact view? Nothing to do.
+        if (this.attachedMarkdownView === targetView && this.editorScrollCleanup) {
+            return;
+        }
+
+        // Different target — detach the old listener (but keep the manual-scroll
+        // tracker on the sidebar; that doesn't depend on the editor).
+        if (this.editorScrollCleanup) {
+            this.editorScrollCleanup();
+            this.editorScrollCleanup = null;
+        }
+        this.attachedMarkdownView = null;
+
+        const cm = (targetView.editor as any).cm;
+        if (!cm || !cm.scrollDOM) return;
+
+        const scrollEl = cm.scrollDOM as HTMLElement;
+
+        const onScroll = () => {
+            if (this.followScrollDebounce != null) {
+                window.clearTimeout(this.followScrollDebounce);
+            }
+            this.followScrollDebounce = window.setTimeout(() => {
+                this.followScrollDebounce = null;
+                this.syncSidebarToEditorScroll();
+            }, 80);
+        };
+
+        scrollEl.addEventListener('scroll', onScroll, { passive: true });
+
+        this.editorScrollCleanup = () => {
+            scrollEl.removeEventListener('scroll', onScroll);
+        };
+        this.attachedMarkdownView = targetView;
+
+        // Also start tracking manual sidebar scroll, so we can pause sync when
+        // the user is browsing the sidebar by hand. (Idempotent — re-attaches
+        // cleanly each time.)
+        this.attachSidebarManualScrollTracker();
+    }
+
+    private detachEditorScrollListener() {
+        if (this.editorScrollCleanup) {
+            this.editorScrollCleanup();
+            this.editorScrollCleanup = null;
+        }
+        this.attachedMarkdownView = null;
+        if (this.followScrollDebounce != null) {
+            window.clearTimeout(this.followScrollDebounce);
+            this.followScrollDebounce = null;
+        }
+        this.detachSidebarManualScrollTracker();
+    }
+
+    /**
+     * Track wheel/touch input on the sidebar's scroll container so we can
+     * detect when the user is manually scrolling and pause auto-sync.
+     */
+    private attachSidebarManualScrollTracker() {
+        this.detachSidebarManualScrollTracker();
+        if (!this.contentAreaEl) return;
+
+        const markManual = () => {
+            this.lastManualSidebarScrollAt = Date.now();
+        };
+
+        this.contentAreaEl.addEventListener('wheel', markManual, { passive: true });
+        this.contentAreaEl.addEventListener('touchstart', markManual, { passive: true });
+
+        this.sidebarManualScrollCleanup = () => {
+            this.contentAreaEl.removeEventListener('wheel', markManual);
+            this.contentAreaEl.removeEventListener('touchstart', markManual);
+        };
+    }
+
+    private detachSidebarManualScrollTracker() {
+        if (this.sidebarManualScrollCleanup) {
+            this.sidebarManualScrollCleanup();
+            this.sidebarManualScrollCleanup = null;
+        }
     }
 
     private handleSearchInput(query: string, parsed: ParsedSearch): void {

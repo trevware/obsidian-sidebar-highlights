@@ -213,6 +213,96 @@ Text after`;
             expect(codeBlockEnds[0]).toBe(3);
         });
 
+        // Regression: fenced code blocks inside callouts/blockquotes used to be
+        // missed because the fence regex required the marker at column 0,
+        // ignoring the leading "> " prefix. The fixed regex allows leading
+        // whitespace and ">" characters before the fence.
+        describe('fenced code blocks inside callouts/blockquotes', () => {
+            // Mirror of getCodeBlockRanges in main.ts (parameterized so we can
+            // verify the regex shape directly).
+            function getCodeBlockRanges(content: string, openR: RegExp, waveR: RegExp) {
+                const ranges: Array<{ start: number; end: number }> = [];
+                const lines = content.split('\n');
+                let blockStart: number | null = null;
+                let blockType: 'backtick' | 'wave' | null = null;
+                let pos = 0;
+                for (const line of lines) {
+                    const lineStart = pos;
+                    const lineEnd = pos + line.length;
+                    if (line.match(openR)) {
+                        if (blockType === 'backtick') {
+                            ranges.push({ start: blockStart!, end: lineEnd });
+                            blockStart = null;
+                            blockType = null;
+                        } else if (blockStart === null) {
+                            blockStart = lineStart;
+                            blockType = 'backtick';
+                        }
+                    } else if (line.match(waveR)) {
+                        if (blockType === 'wave') {
+                            ranges.push({ start: blockStart!, end: lineEnd });
+                            blockStart = null;
+                            blockType = null;
+                        } else if (blockStart === null) {
+                            blockStart = lineStart;
+                            blockType = 'wave';
+                        }
+                    }
+                    pos = lineEnd + 1;
+                }
+                if (blockStart !== null) {
+                    ranges.push({ start: blockStart, end: content.length });
+                }
+                return ranges;
+            }
+
+            const highlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
+
+            function findHighlights(content: string, ranges: Array<{ start: number; end: number }>) {
+                const found: string[] = [];
+                let m: RegExpExecArray | null;
+                highlightRegex.lastIndex = 0;
+                while ((m = highlightRegex.exec(content)) !== null) {
+                    const inside = ranges.some(r => m!.index >= r.start && m!.index < r.end);
+                    if (!inside) found.push(m[1]);
+                }
+                return found;
+            }
+
+            const FENCE = /^[\s>]*```/;
+            const WAVE = /^[\s>]*~~~/;
+
+            it('excludes ``` fences inside a blockquote', () => {
+                const content = '> ```js\n> if (a == b && c == d) doStuff();\n> ```\nAfter ==real==\n';
+                const ranges = getCodeBlockRanges(content, FENCE, WAVE);
+                expect(findHighlights(content, ranges)).toEqual(['real']);
+            });
+
+            it('excludes ``` fences inside a callout', () => {
+                const content = '> [!note]\n> ```dataviewjs\n> const t = dv.pages().where(p => p.x == 1 && p.y == 2);\n> ```\n==real==\n';
+                const ranges = getCodeBlockRanges(content, FENCE, WAVE);
+                expect(findHighlights(content, ranges)).toEqual(['real']);
+            });
+
+            it('excludes indented ``` fences in list items', () => {
+                const content = '- item\n    ```js\n    if (a == b && c == d) doStuff();\n    ```\n==real==\n';
+                const ranges = getCodeBlockRanges(content, FENCE, WAVE);
+                expect(findHighlights(content, ranges)).toEqual(['real']);
+            });
+
+            it('excludes ~~~ fences inside a blockquote', () => {
+                const content = '> ~~~js\n> if (a == b && c == d) doStuff();\n> ~~~\n==real==\n';
+                const ranges = getCodeBlockRanges(content, FENCE, WAVE);
+                expect(findHighlights(content, ranges)).toEqual(['real']);
+            });
+
+            it('still detects unwrapped ``` fences (regression baseline)', () => {
+                const content = 'Before ==real==\n```js\nif (a == b && c == d) doStuff();\n```\nAfter ==also real==\n';
+                const ranges = getCodeBlockRanges(content, FENCE, WAVE);
+                expect(findHighlights(content, ranges)).toEqual(['real', 'also real']);
+            });
+        });
+
         it('should detect inline code pattern', () => {
             const inlineCodeRegex = /`([^`\n]+?)`/g;
             const text = 'some `inline code` here';
@@ -285,6 +375,60 @@ Text after`;
             expect(links).toHaveLength(2);
             expect(links[0].url).toContain('==');
             expect(links[1].url).toContain('==');
+        });
+
+        // Regression: nested image-in-link syntax `[![alt](img)](dest)` used to
+        // only match the inner image link, leaving the destination URL exposed.
+        // When two such links sit on the same line, the `==` in their dest URLs
+        // would combine to form a phantom highlight spanning between them.
+        describe('nested image-in-link URL exclusion', () => {
+            const linkRegex = /\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)]+)\)/g;
+            const highlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
+
+            function findHighlights(content: string): string[] {
+                const ranges: Array<{ start: number; end: number }> = [];
+                let m: RegExpExecArray | null;
+                linkRegex.lastIndex = 0;
+                while ((m = linkRegex.exec(content)) !== null) {
+                    ranges.push({ start: m.index, end: m.index + m[0].length });
+                }
+                const found: string[] = [];
+                highlightRegex.lastIndex = 0;
+                while ((m = highlightRegex.exec(content)) !== null) {
+                    const inside = ranges.some(r => m!.index >= r.start && m!.index < r.end);
+                    if (!inside) found.push(m[1]);
+                }
+                return found;
+            }
+
+            it('matches a nested image-in-link as a single range', () => {
+                const text = '[![图片](https://example.com/img.png)](http://mp.weixin.qq.com/s?biz=Mzk0MDMyNDUxOQ**==&mid=1)';
+                expect(findHighlights(text)).toEqual([]);
+            });
+
+            it('handles two nested image links on the same line', () => {
+                const text =
+                    '[![img1](https://example.com/img1.png)](http://mp.weixin.qq.com/s?biz=Mzk0MDMyNDUxOQ**==&mid=2247486828) ' +
+                    '[![img2](https://example.com/img2.png)](http://mp.weixin.qq.com/s?biz=Mzk0MDMyNDUxOQ==**&mid=2247486797)';
+                expect(findHighlights(text)).toEqual([]);
+            });
+
+            it('handles nested square brackets in the link label', () => {
+                const text = '[link with [brackets] inside](http://example.com/?a==b)';
+                expect(findHighlights(text)).toEqual([]);
+            });
+
+            it('still detects real highlights next to nested image links', () => {
+                const text = '==important== then [![alt](https://example.com/img.png)](https://example.com/dest)';
+                expect(findHighlights(text)).toEqual(['important']);
+            });
+
+            it('still detects real highlights inside the link label text', () => {
+                // The label is part of the link range, so highlights inside it
+                // are excluded. A highlight outside the link is preserved.
+                const text = 'before ==hi== [text](http://example.com)';
+                expect(findHighlights(text)).toEqual(['hi']);
+            });
         });
     });
 

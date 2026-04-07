@@ -241,6 +241,9 @@
     "secondaryGroup": "Secondary grouping",
     "sort": "Sort highlights",
     "toggleComments": "Toggle native comments",
+    "toggleFollowEditorScroll": "Follow editor scroll",
+    "moreActions": "More actions",
+    "copyVisibleHighlights": "Copy visible highlights ({{count}})",
     "toggleHighlightComments": "Toggle highlight comments",
     "revertColors": "Revert highlight colors",
     "filter": "Filter",
@@ -315,7 +318,10 @@
     "markUnread": "Mark as Unread",
     "markRead": "Mark as Read",
     "markAboveRead": "Mark above as read",
-    "markBelowRead": "Mark below as read"
+    "markBelowRead": "Mark below as read",
+    "removeHighlight": "Remove highlight",
+    "removeComments": "Remove comments",
+    "removeHighlightAndComments": "Remove highlight and comments"
   },
   "filterMenu": {
     "clear": "Clear",
@@ -447,6 +453,12 @@
     "displayModeApplied": "Applied display mode \"{{name}}\"",
     "displayModeUpdated": "Display mode \"{{name}}\" updated",
     "displayModeRenamed": "Display mode renamed to \"{{name}}\"",
-    "displayModeDeleted": "Display mode \"{{name}}\" deleted"
+    "displayModeDeleted": "Display mode \"{{name}}\" deleted",
+    "copiedHighlights": "Copied {{count}} highlights to clipboard",
+    "noHighlightsToCopy": "No highlights to copy",
+    "copyFailed": "Failed to copy to clipboard",
+    "highlightRemoved": "Highlight removed",
+    "commentsRemoved": "Comments removed",
+    "highlightAndCommentsRemoved": "Highlight and comments removed"
   }
 }

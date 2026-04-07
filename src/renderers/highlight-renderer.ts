@@ -17,6 +17,7 @@ export interface HighlightRenderOptions {
     onCommentClick?: (highlight: Highlight, commentIndex: number, event?: MouseEvent) => void;
     onTagClick?: (tag: string) => void;
     onFileNameClick?: (filePath: string, event: MouseEvent) => void;
+    onContextMenu?: (highlight: Highlight, event: MouseEvent) => void;
 }
 
 export class HighlightRenderer {
@@ -62,6 +63,17 @@ export class HighlightRenderer {
         this.createQuoteSection(item, highlight, options);
         this.createActionsSection(item, highlight, options);
         this.createCommentsSection(item, highlight, options);
+
+        // Right-click anywhere on the highlight card opens the context menu.
+        // The filename's own contextmenu listener calls stopPropagation, so it
+        // still wins for filename clicks.
+        if (options.onContextMenu) {
+            item.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                options.onContextMenu!(highlight, event);
+            });
+        }
 
         return item;
     }

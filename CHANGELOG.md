@@ -5,6 +5,21 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-04-07
+
+### Added
+- **Follow editor scroll**: New toggle in the toolbar overflow menu — when enabled, the sidebar automatically centers and selects the highlight closest to your editor's visible area as you scroll. Smooth scrolling, doesn't fight you when you scroll the sidebar manually, and works even when the editor doesn't have focus.
+- **Toolbar overflow menu**: Secondary actions (Follow editor scroll, Copy visible highlights, Revert highlight colors) are now grouped under a single vertical-ellipsis menu at the far right of the toolbar to reduce clutter.
+- **Copy visible highlights**: New menu item that copies all currently-visible highlights to the clipboard in markdown format. Respects every active filter — search, tags, collections, native-comments toggle, minimum character count — so you get exactly what you see in the sidebar. Each highlight is formatted with its `==text==` or `%%comment%%` wrapper plus any attached `^[footnotes]`, separated by paragraph breaks.
+- **Right-click context menu on highlights**: Right-click any highlight in the sidebar for three new actions:
+  - **Remove highlight**: Strips the `==`/`%%`/HTML wrapper, keeps the inner text and any attached comments.
+  - **Remove comments**: Keeps the highlight wrapper, strips trailing inline footnotes, standard footnote references, and any orphaned `[^N]:` definitions.
+  - **Remove highlight and comments**: Strips both.
+
+### Fixed
+- **Code blocks inside callouts and blockquotes**: Fenced code blocks prefixed with `> ` (callouts, blockquotes) or leading whitespace (indented list items) are now correctly excluded from highlight detection. Previously, `==` operators inside DataviewJS or other code blocks nested in callouts would produce phantom highlights in the sidebar.
+- **Nested image-in-link URLs**: `[![alt](image-url)](destination-url)` syntax is now matched as a single link range. Previously the regex only captured the inner image link, leaving destination URLs exposed — which caused phantom highlights when destination URLs contained `==` (e.g. base64-encoded WeChat-style query parameters).
+
 ## [1.35.2] - 2025-11-08
 
 ### Fixed

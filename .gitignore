@@ -30,3 +30,6 @@ CHECKLIST.md
 TESTING.md
 backups/
 test-*.js
+
+# Local hot-reload marker (not for distribution)
+.hotreload

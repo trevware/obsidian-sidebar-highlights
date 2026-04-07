@@ -338,6 +338,11 @@
     box-shadow: none !important;
 }
 
+/* Push the overflow ("more") menu to the far right of the toolbar. */
+.highlights-group-button.highlights-overflow-button {
+    margin-left: auto;
+}
+
 .highlights-group-button:hover {
     background-color: var(--background-modifier-hover) !important;
     opacity: var(--icon-opacity-hover);
