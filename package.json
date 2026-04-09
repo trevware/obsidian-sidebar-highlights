@@ -6,6 +6,8 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"copy-to-local": "node scripts/copy-to-local.mjs",
+		"build:local": "npm run build && npm run copy-to-local",
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
