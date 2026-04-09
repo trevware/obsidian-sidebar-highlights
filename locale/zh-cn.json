@@ -140,6 +140,28 @@
         "name": "检测相邻的原生注释",
         "desc": "启用时，紧跟在高亮后的 Obsidian 原生注释 (%% %%) 将被视为该高亮的注释。禁用时，所有原生注释将单独显示在侧边栏中。"
       },
+      "emojiHighlights": {
+        "heading": "Emoji 前缀高亮",
+        "experimental": "实验性",
+        "enabled": {
+          "name": "启用 Emoji 前缀高亮",
+          "desc": "解析类似 ==🟥文本== 的 Markdown 高亮。Emoji 用于确定颜色，侧边栏正文会忽略开头 emoji。"
+        },
+        "mappingHeading": "Emoji 与颜色映射",
+        "mappingDesc": "使用逗号分隔，例如：🟥,🔴,🍓。所有匹配的 emoji 都会被识别成该颜色。",
+        "defaultHighlightColor": {
+          "name": "默认高亮颜色",
+          "desc": "当高亮改为此颜色时，将移除 emoji 前缀（还原为 ==文本==）。",
+          "none": "无"
+        },
+        "skipWritebackPrompt": {
+          "name": "写入文本时不需要确认",
+          "desc": "每次通过侧边栏悬浮颜色面板改色时，自动将对应的 emoji 改动（添加/修改/移除）写入实际笔记文本。"
+        },
+        "mappingFor": "{{color}} 的 emoji",
+        "mappingInputDesc": "当前该颜色的默认写入 emoji 为：{{emoji}}（列表中的第一项）",
+        "mappingPlaceholder": "🟥,🔴"
+      },
       "customPatterns": {
         "heading": "自定义模式",
         "experimental": "实验性",
@@ -305,6 +327,7 @@
     "markAboveRead": "将上方标记为已读",
     "markBelowRead": "将下方标记为已读",
     "removeHighlight": "移除高亮",
+    "clearHighlightColor": "清除高亮颜色",
     "removeComments": "移除评论",
     "removeHighlightAndComments": "移除高亮和评论"
   },
@@ -428,6 +451,15 @@
       "stats": "{{collections}} 个收藏 • {{highlights}} 个收藏高亮",
       "restore": "恢复",
       "close": "关闭"
+    },
+    "emojiWriteback": {
+      "title": "同步 emoji 到源高亮",
+      "writeMessage": "是否将映射后的 emoji 写入该高亮的源文本？",
+      "clearMessage": "你正在还原默认颜色。是否同时移除源文本中的 emoji 前缀？",
+      "dontAskAgain": "不再询问",
+      "confirmWrite": "写入 emoji",
+      "confirmClear": "移除 emoji",
+      "cancel": "取消"
     }
   },
   "notices": {
@@ -443,7 +475,9 @@
     "noHighlightsToCopy": "没有可复制的高亮",
     "copyFailed": "复制到剪贴板失败",
     "highlightRemoved": "已移除高亮",
+    "highlightColorCleared": "已清除高亮颜色",
     "commentsRemoved": "已移除评论",
-    "highlightAndCommentsRemoved": "已移除高亮和评论"
+    "highlightAndCommentsRemoved": "已移除高亮和评论",
+    "emojiWritebackApplied": "已将 {{count}} 条高亮更新为 emoji {{emoji}}"
   }
 }

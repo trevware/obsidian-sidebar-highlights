@@ -155,6 +155,28 @@
         "name": "Detect adjacent native comments",
         "desc": "When enabled, native Obsidian comments (%% %%) that appear immediately after a highlight will be treated as comments for that highlight. When disabled, all native comments appear separately in the sidebar."
       },
+      "emojiHighlights": {
+        "heading": "Emoji prefixed highlights",
+        "experimental": "Experimental",
+        "enabled": {
+          "name": "Enable emoji-prefixed highlights",
+          "desc": "Parse markdown highlights like ==🟥text==. The emoji determines color, and sidebar text ignores the leading emoji."
+        },
+        "mappingHeading": "Emoji to color mapping",
+        "mappingDesc": "Use comma-separated emojis, e.g. ■, ●, 🍓.",
+        "defaultHighlightColor": {
+          "name": "Default highlight color",
+          "desc": "When a highlight is changed to this color, emoji prefix will be removed (plain ==text==).",
+          "none": "None"
+        },
+        "skipWritebackPrompt": {
+          "name": "No confirmation when writing to note",
+          "desc": "When changing color from sidebar hover options, automatically write emoji changes (add/update/remove) into note text."
+        },
+        "mappingFor": "Emojis for {{color}}",
+        "mappingInputDesc": "Current default write emoji: {{emoji}} (first item in the list)",
+        "mappingPlaceholder": "🟥,🔴"
+      },
       "customPatterns": {
         "heading": "Custom patterns",
         "experimental": "Experimental",
@@ -320,6 +342,7 @@
     "markAboveRead": "Mark above as read",
     "markBelowRead": "Mark below as read",
     "removeHighlight": "Remove highlight",
+    "clearHighlightColor": "Clear highlight color",
     "removeComments": "Remove comments",
     "removeHighlightAndComments": "Remove highlight and comments"
   },
@@ -443,6 +466,15 @@
       "stats": "{{collections}} Collections • {{highlights}} Collection Highlights",
       "restore": "Restore",
       "close": "Close"
+    },
+    "emojiWriteback": {
+      "title": "Sync emoji to source highlight",
+      "writeMessage": "Do you want to write the mapped emoji into this highlight in source text?",
+      "clearMessage": "You are reverting color to default. Do you also want to remove emoji prefix from source text?",
+      "dontAskAgain": "Don't ask again",
+      "confirmWrite": "Write emoji",
+      "confirmClear": "Remove emoji",
+      "cancel": "Cancel"
     }
   },
   "notices": {
@@ -458,7 +490,9 @@
     "noHighlightsToCopy": "No highlights to copy",
     "copyFailed": "Failed to copy to clipboard",
     "highlightRemoved": "Highlight removed",
+    "highlightColorCleared": "Highlight color cleared",
     "commentsRemoved": "Comments removed",
-    "highlightAndCommentsRemoved": "Highlight and comments removed"
+    "highlightAndCommentsRemoved": "Highlight and comments removed",
+    "emojiWritebackApplied": "Updated {{count}} highlights with emoji {{emoji}}"
   }
 }

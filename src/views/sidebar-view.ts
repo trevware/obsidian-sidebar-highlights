@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap, Modal, App, Setting, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection, CommentPluginSettings, Task } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
@@ -4354,7 +4354,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.isColorChanging = false;
                 }, 2000);
                 
-                this.changeHighlightColor(highlight, color);
+                void this.changeHighlightColor(highlight, color);
                 this.rerenderCurrentView();
                 
                 // Restore scroll position after DOM rebuild and clear flag
@@ -4474,6 +4474,18 @@ export class HighlightsSidebarView extends ItemView {
 
         menu.addItem((item) => {
             item
+                .setTitle(t('contextMenu.clearHighlightColor'))
+                .setIcon('paint-roller')
+                .setDisabled(!highlight.color || highlight.type === 'html')
+                .onClick(async () => {
+                    await this.changeHighlightColor(highlight, '');
+                    new Notice(t('notices.highlightColorCleared'));
+                    this.rerenderCurrentView();
+                });
+        });
+
+        menu.addItem((item) => {
+            item
                 .setTitle(t('contextMenu.removeComments'))
                 .setIcon('message-square-off')
                 .setDisabled(!hasComments)
@@ -4575,7 +4587,7 @@ export class HighlightsSidebarView extends ItemView {
             }
         } else if (highlight.isNativeComment) {
             // Use regex to find the highlight in the full content
-            const escapedText = this.escapeRegex(highlight.text);
+            const escapedText = this.escapeRegex(this.getHighlightSourceText(highlight));
             const nativeCommentPattern = `%%${escapedText}%%`;
             const nativeCommentRegex = new RegExp(nativeCommentPattern, 'g');
 
@@ -4669,7 +4681,7 @@ export class HighlightsSidebarView extends ItemView {
             }
         } else {
             // Regular markdown highlight - use regex to find in full content
-            const escapedText = this.escapeRegex(highlight.text);
+            const escapedText = this.escapeRegex(this.getHighlightSourceText(highlight));
             const markdownHighlightPattern = `==${escapedText}==`;
             const markdownHighlightRegex = new RegExp(markdownHighlightPattern, 'g');
 
@@ -4802,9 +4814,10 @@ export class HighlightsSidebarView extends ItemView {
 
     private findAndParseHighlight(content: string, originalHighlight: Highlight, footnoteMap: Map<string, string>): Highlight | null {
         // This is a simplified version - we're looking for the same highlight text and updating its footnotes
+        const sourceText = this.getHighlightSourceText(originalHighlight);
         const regex = originalHighlight.isNativeComment ? 
-            new RegExp(`%%${this.escapeRegex(originalHighlight.text)}%%`, 'g') :
-            new RegExp(`==${this.escapeRegex(originalHighlight.text)}==`, 'g');
+            new RegExp(`%%${this.escapeRegex(sourceText)}%%`, 'g') :
+            new RegExp(`==${this.escapeRegex(sourceText)}==`, 'g');
         
         let match;
         while ((match = regex.exec(content)) !== null) {
@@ -5080,6 +5093,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         const content = targetView.editor.getValue();
+        const sourceText = this.getHighlightSourceText(highlight);
 
         let matches: { index: number, length: number, tagStartLength: number, tagEndLength: number }[] = [];
 
@@ -5100,24 +5114,24 @@ export class HighlightsSidebarView extends ItemView {
             }
         } else if (highlight.isNativeComment) {
             // Try HTML comment pattern first
-            let htmlCommentPattern = `<!--\\s*${this.escapeRegex(highlight.text)}\\s*-->`;
+            let htmlCommentPattern = `<!--\\s*${this.escapeRegex(sourceText)}\\s*-->`;
             let htmlCommentRegex = new RegExp(htmlCommentPattern, 'g');
             let matchResult;
 
             while ((matchResult = htmlCommentRegex.exec(content)) !== null) {
                 const fullMatch = matchResult[0];
-                const textStart = fullMatch.indexOf(highlight.text);
+                const textStart = fullMatch.indexOf(sourceText);
                 matches.push({
                     index: matchResult.index,
                     length: fullMatch.length,
                     tagStartLength: textStart, // <!-- and whitespace
-                    tagEndLength: fullMatch.length - textStart - highlight.text.length // whitespace and -->
+                    tagEndLength: fullMatch.length - textStart - sourceText.length // whitespace and -->
                 });
             }
 
             // If no HTML comment matches, try native comment pattern
             if (matches.length === 0) {
-                const regexPattern = `%%${this.escapeRegex(highlight.text)}%%`;
+                const regexPattern = `%%${this.escapeRegex(sourceText)}%%`;
                 const regex = new RegExp(regexPattern, 'g');
                 while ((matchResult = regex.exec(content)) !== null) {
                     matches.push({
@@ -5139,7 +5153,7 @@ export class HighlightsSidebarView extends ItemView {
                         while ((matchResult = customRegex.exec(content)) !== null) {
                             const fullMatch = matchResult[0];
                             const capturedText = matchResult[1] || '';
-                            if (capturedText === highlight.text) {
+                            if (capturedText === sourceText) {
                                 const textStart = fullMatch.indexOf(capturedText);
                                 matches.push({
                                     index: matchResult.index,
@@ -5182,7 +5196,7 @@ export class HighlightsSidebarView extends ItemView {
             }
         } else {
             // Regular markdown highlight pattern
-            const regexPattern = `==${this.escapeRegex(highlight.text)}==`;
+            const regexPattern = `==${this.escapeRegex(sourceText)}==`;
             const regex = new RegExp(regexPattern, 'g');
             let matchResult;
             while ((matchResult = regex.exec(content)) !== null) {
@@ -5204,7 +5218,7 @@ export class HighlightsSidebarView extends ItemView {
                         while ((matchResult = customRegex.exec(content)) !== null) {
                             const fullMatch = matchResult[0];
                             const capturedText = matchResult[1] || '';
-                            if (capturedText === highlight.text) {
+                            if (capturedText === sourceText) {
                                 const textStart = fullMatch.indexOf(capturedText);
                                 matches.push({
                                     index: matchResult.index,
@@ -5273,6 +5287,10 @@ export class HighlightsSidebarView extends ItemView {
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    private getHighlightSourceText(highlight: Highlight): string {
+        return highlight.sourceText ?? highlight.text;
+    }
+
     private async focusFootnoteInEditor(highlight: Highlight, footnoteIndex: number, event?: MouseEvent) {
         // First, ensure the correct file is open
         let targetView: MarkdownView | null = null;
@@ -5312,7 +5330,7 @@ export class HighlightsSidebarView extends ItemView {
             const content = editor.getValue();
             
             // Find the highlight in the content
-            const escapedText = this.escapeRegex(highlight.text);
+            const escapedText = this.escapeRegex(this.getHighlightSourceText(highlight));
             let bestMatch: { index: number, length: number } | null = null;
             let minDistance = Infinity;
 
@@ -5645,9 +5663,80 @@ export class HighlightsSidebarView extends ItemView {
         }, 150);
     }
 
-    private changeHighlightColor(highlight: Highlight, color: string) {
+    private async changeHighlightColor(highlight: Highlight, color: string) {
+        const nextColor = color || undefined;
+        const currentColor = highlight.color || undefined;
+
+        if (currentColor === nextColor) {
+            return;
+        }
+
         // Update the highlight color (use undefined for empty string to clear the color)
-        this.plugin.updateHighlight(highlight.id, { color: color || undefined }, highlight.filePath);
+        this.plugin.updateHighlight(highlight.id, { color: nextColor }, highlight.filePath);
+
+        if (!this.plugin.settings.emojiHighlightsEnabled) {
+            return;
+        }
+
+        if (highlight.isNativeComment || highlight.type === 'html' || highlight.type === 'comment') {
+            return;
+        }
+
+        const isDefaultSlotColor = this.plugin.settings.emojiDefaultColorSlot !== 'none' &&
+            nextColor === this.plugin.settings.customColors[this.plugin.settings.emojiDefaultColorSlot];
+        const shouldClearEmoji = !nextColor || isDefaultSlotColor;
+        const hasEmojiPrefix = this.hasMappedEmojiPrefix(highlight.sourceText ?? highlight.text);
+
+        // No emoji prefix exists, so clear action is a no-op: skip prompt + writeback.
+        if (shouldClearEmoji && !hasEmojiPrefix) {
+            return;
+        }
+
+        let shouldWriteBack = this.plugin.settings.emojiWritebackNoPrompt;
+        let dontAskAgain = false;
+
+        if (!shouldWriteBack) {
+            const result = await EmojiWritebackConfirmModal.open(this.app, {
+                mode: shouldClearEmoji ? 'clear' : 'write'
+            });
+            shouldWriteBack = result.confirmed;
+            dontAskAgain = result.dontAskAgain;
+        }
+
+        if (dontAskAgain) {
+            this.plugin.settings.emojiWritebackNoPrompt = true;
+            await this.plugin.saveSettings();
+        }
+
+        if (!shouldWriteBack) {
+            return;
+        }
+
+        // When emoji highlight mode is enabled, write emoji change back to source.
+        await this.plugin.updateHighlightEmojiPrefixInSource(highlight, nextColor);
+    }
+
+    private hasMappedEmojiPrefix(text: string): boolean {
+        const leadingWhitespaceMatch = text.match(/^\s*/u);
+        const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : '';
+        const remaining = text.slice(leadingWhitespace.length);
+        if (!remaining) {
+            return false;
+        }
+
+        const mappings = this.plugin.settings.emojiColorMappings;
+        const candidates = [
+            mappings.yellow,
+            mappings.red,
+            mappings.teal,
+            mappings.blue,
+            mappings.green
+        ]
+            .flatMap(raw => raw.split(',').map(v => v.trim()))
+            .filter(v => v.length > 0)
+            .sort((a, b) => b.length - a.length);
+
+        return candidates.some(emoji => remaining.startsWith(emoji));
     }
 
     private getColorName(hex: string): string {
@@ -6962,11 +7051,12 @@ export class HighlightsSidebarView extends ItemView {
      */
     private formatHighlightForCopy(highlight: Highlight): string {
         let text: string;
+        const sourceText = this.getHighlightSourceText(highlight);
         if (highlight.isNativeComment) {
-            text = `%%${highlight.text}%%`;
+            text = `%%${sourceText}%%`;
         } else {
             // Both regular markdown and HTML highlights export as ==text==
-            text = `==${highlight.text}==`;
+            text = `==${sourceText}==`;
         }
 
         // Append footnotes/comments (but not for native comments — the text is the comment)
@@ -7688,5 +7778,84 @@ class DateInputModal extends Modal {
     onClose() {
         const { contentEl } = this;
         contentEl.empty();
+    }
+}
+
+type EmojiWritebackMode = 'write' | 'clear';
+
+interface EmojiWritebackConfirmResult {
+    confirmed: boolean;
+    dontAskAgain: boolean;
+}
+
+class EmojiWritebackConfirmModal extends Modal {
+    private readonly mode: EmojiWritebackMode;
+    private resolveResult: ((result: EmojiWritebackConfirmResult) => void) | null;
+    private dontAskAgain: boolean = false;
+
+    constructor(app: App, mode: EmojiWritebackMode, resolveResult: (result: EmojiWritebackConfirmResult) => void) {
+        super(app);
+        this.mode = mode;
+        this.resolveResult = resolveResult;
+    }
+
+    static open(app: App, options: { mode: EmojiWritebackMode }): Promise<EmojiWritebackConfirmResult> {
+        return new Promise((resolve) => {
+            const modal = new EmojiWritebackConfirmModal(app, options.mode, resolve);
+            modal.open();
+        });
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+
+        contentEl.createEl('h3', { text: t('modals.emojiWriteback.title') });
+        contentEl.createEl('p', {
+            text: this.mode === 'clear'
+                ? t('modals.emojiWriteback.clearMessage')
+                : t('modals.emojiWriteback.writeMessage')
+        });
+
+        new Setting(contentEl)
+            .setName(t('modals.emojiWriteback.dontAskAgain'))
+            .addToggle(toggle => toggle
+                .setValue(false)
+                .onChange((value) => {
+                    this.dontAskAgain = value;
+                }));
+
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
+        const cancelButton = buttonContainer.createEl('button', { text: t('modals.emojiWriteback.cancel') });
+        cancelButton.addEventListener('click', () => {
+            this.finish(false);
+        });
+
+        const confirmButton = buttonContainer.createEl('button', {
+            text: this.mode === 'clear'
+                ? t('modals.emojiWriteback.confirmClear')
+                : t('modals.emojiWriteback.confirmWrite'),
+            cls: 'mod-cta'
+        });
+        confirmButton.addEventListener('click', () => {
+            this.finish(true);
+        });
+    }
+
+    onClose() {
+        const { contentEl } = this;
+        contentEl.empty();
+        if (this.resolveResult) {
+            this.resolveResult({ confirmed: false, dontAskAgain: false });
+            this.resolveResult = null;
+        }
+    }
+
+    private finish(confirmed: boolean) {
+        if (this.resolveResult) {
+            this.resolveResult({ confirmed, dontAskAgain: this.dontAskAgain });
+            this.resolveResult = null;
+        }
+        this.close();
     }
 }

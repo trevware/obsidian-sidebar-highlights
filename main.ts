@@ -11,6 +11,7 @@ import { i18n, t } from './src/i18n';
 export interface Highlight {
     id: string;
     text: string;
+    sourceText?: string; // Original inner text in source (for emoji-prefixed highlights)
     tags: string[];
     line: number;
     startOffset: number;
@@ -118,6 +119,16 @@ export interface CommentPluginSettings {
     taskFontWeight: number; // Font weight for task text
     detectHtmlComments: boolean; // Detect HTML comments (<!-- -->)
     detectAdjacentNativeComments: boolean; // Detect native comments (%% %%) adjacent to highlights as comments for those highlights
+    emojiHighlightsEnabled: boolean; // Enable emoji-prefixed markdown highlights (e.g. ==🟥text==)
+    emojiColorMappings: {
+        yellow: string;
+        red: string;
+        teal: string;
+        blue: string;
+        green: string;
+    }; // Comma-separated emoji aliases per color slot (first item used for write-back)
+    emojiDefaultColorSlot: 'none' | 'yellow' | 'red' | 'teal' | 'blue' | 'green'; // Switching to this color clears emoji prefix instead of writing one
+    emojiWritebackNoPrompt: boolean; // Skip confirmation prompt when writing emoji changes from sidebar color picker
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -176,6 +187,16 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskFontWeight: 400, // Default task text font weight (normal)
     detectHtmlComments: false, // Do not detect HTML comments by default
     detectAdjacentNativeComments: true, // Detect adjacent native comments by default (new behavior)
+    emojiHighlightsEnabled: false, // Disabled by default
+    emojiColorMappings: {
+        yellow: '🟨,🟡',
+        red: '🟥,🔴',
+        teal: '🩵,🔹',
+        blue: '🟦,🔵',
+        green: '🟩,🟢'
+    },
+    emojiDefaultColorSlot: 'yellow',
+    emojiWritebackNoPrompt: false,
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -203,6 +224,9 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     displayModes: [], // Empty array by default
     currentDisplayModeId: null // No active display mode by default
 }
+
+type ColorSlotKey = 'yellow' | 'red' | 'teal' | 'blue' | 'green';
+type DefaultEmojiColorSlot = 'none' | ColorSlotKey;
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
@@ -431,6 +455,29 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         if (loadedData.customColorNames !== undefined) {
             merged.customColorNames = loadedData.customColorNames;
+        }
+        if (loadedData.customColors !== undefined) {
+            merged.customColors = {
+                ...DEFAULT_SETTINGS.customColors,
+                ...loadedData.customColors
+            };
+        }
+        if (loadedData.emojiColorMappings !== undefined) {
+            merged.emojiColorMappings = {
+                ...DEFAULT_SETTINGS.emojiColorMappings,
+                ...loadedData.emojiColorMappings
+            };
+        }
+        if (loadedData.emojiDefaultColorSlot !== undefined) {
+            merged.emojiDefaultColorSlot = loadedData.emojiDefaultColorSlot;
+        }
+        if (loadedData.emojiDefaultHighlightEmoji !== undefined && loadedData.emojiDefaultColorSlot === undefined) {
+            // Legacy migration: old setting only represented yellow behavior.
+            const legacyValue = String(loadedData.emojiDefaultHighlightEmoji || '').trim();
+            merged.emojiDefaultColorSlot = legacyValue.length > 0 ? 'yellow' : 'none';
+        }
+        if (loadedData.emojiWritebackNoPrompt !== undefined) {
+            merged.emojiWritebackNoPrompt = loadedData.emojiWritebackNoPrompt;
         }
 
         return merged;
@@ -1150,25 +1197,190 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     validateHighlightInFile(highlight: Highlight, fileContent: string): boolean {
+        const sourceText = this.getHighlightSourceText(highlight);
         // Check if the exact text still exists in the file
-        const textExists = fileContent.includes(highlight.text);
+        const textExists = fileContent.includes(sourceText);
         if (!textExists) {
             return false;
         }
 
         // For native comments, check if it's in a comment block
         if (highlight.isNativeComment) {
-            const commentPattern = new RegExp(`%%\\s*${this.escapeRegex(highlight.text)}\\s*%%`);
+            const commentPattern = new RegExp(`%%\\s*${this.escapeRegex(sourceText)}\\s*%%`);
             return commentPattern.test(fileContent);
         }
 
         // For regular highlights, check if it's still highlighted
-        const highlightPattern = new RegExp(`==\\s*${this.escapeRegex(highlight.text)}\\s*==`);
+        const highlightPattern = new RegExp(`==\\s*${this.escapeRegex(sourceText)}\\s*==`);
         return highlightPattern.test(fileContent);
     }
 
     escapeRegex(str: string): string {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    private normalizeHexColor(color: string): string {
+        return color.trim().toLowerCase();
+    }
+
+    private getColorHexBySlot(slot: ColorSlotKey): string {
+        return this.settings.customColors[slot];
+    }
+
+    private getEmojiAliasesBySlot(): Record<ColorSlotKey, string[]> {
+        const parse = (value: string): string[] => {
+            return value
+                .split(',')
+                .map(v => v.trim())
+                .filter(v => v.length > 0);
+        };
+
+        const unique = (items: string[]): string[] => {
+            return Array.from(new Set(items));
+        };
+
+        const yellowAliases = parse(this.settings.emojiColorMappings.yellow);
+
+        return {
+            yellow: unique(yellowAliases),
+            red: unique(parse(this.settings.emojiColorMappings.red)),
+            teal: unique(parse(this.settings.emojiColorMappings.teal)),
+            blue: unique(parse(this.settings.emojiColorMappings.blue)),
+            green: unique(parse(this.settings.emojiColorMappings.green))
+        };
+    }
+
+    private getEmojiToColorSlotMap(): Map<string, ColorSlotKey> {
+        const aliasesBySlot = this.getEmojiAliasesBySlot();
+        const entries: Array<[string, ColorSlotKey]> = [];
+
+        (Object.keys(aliasesBySlot) as ColorSlotKey[]).forEach((slot) => {
+            aliasesBySlot[slot].forEach((emoji) => {
+                entries.push([emoji, slot]);
+            });
+        });
+
+        // Longest emoji first to support multi-codepoint aliases (e.g. ❤️)
+        entries.sort((a, b) => b[0].length - a[0].length);
+
+        return new Map(entries);
+    }
+
+    private getColorSlotByHex(color?: string): ColorSlotKey | undefined {
+        if (!color) {
+            return undefined;
+        }
+
+        const normalized = this.normalizeHexColor(color);
+        const slots: ColorSlotKey[] = ['yellow', 'red', 'teal', 'blue', 'green'];
+        for (const slot of slots) {
+            if (normalized === this.normalizeHexColor(this.settings.customColors[slot])) {
+                return slot;
+            }
+        }
+
+        return undefined;
+    }
+
+    private parseEmojiPrefixedHighlightText(text: string): { strippedText: string; color?: string; hadEmoji: boolean } {
+        const leadingWhitespaceMatch = text.match(/^\s*/u);
+        const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : '';
+        const remaining = text.slice(leadingWhitespace.length);
+
+        if (!remaining) {
+            return { strippedText: text, hadEmoji: false };
+        }
+
+        const emojiMap = this.getEmojiToColorSlotMap();
+        for (const [emoji, slot] of emojiMap.entries()) {
+            if (!remaining.startsWith(emoji)) {
+                continue;
+            }
+
+            const strippedText = `${leadingWhitespace}${remaining.slice(emoji.length)}`;
+            return {
+                strippedText,
+                color: this.getColorHexBySlot(slot),
+                hadEmoji: true
+            };
+        }
+
+        return { strippedText: text, hadEmoji: false };
+    }
+
+    private getPreferredEmojiForColor(color?: string): string | undefined {
+        const slot = this.getColorSlotByHex(color);
+        if (!slot) {
+            return undefined;
+        }
+
+        // If default-yellow emoji is configured, setting color to yellow means
+        // reverting to plain highlight syntax (no emoji prefix).
+        if (this.settings.emojiDefaultColorSlot !== 'none' && slot === this.settings.emojiDefaultColorSlot) {
+            return undefined;
+        }
+
+        return this.getFirstEmojiAliasForSlot(slot);
+    }
+
+    private getFirstEmojiAliasForSlot(slot: ColorSlotKey): string | undefined {
+        const aliases = this.getEmojiAliasesBySlot()[slot];
+        if (!aliases || aliases.length === 0) {
+            return undefined;
+        }
+
+        return aliases[0];
+    }
+
+    private getHighlightSourceText(highlight: Highlight): string {
+        return highlight.sourceText ?? highlight.text;
+    }
+
+    async updateHighlightEmojiPrefixInSource(highlight: Highlight, color?: string): Promise<boolean> {
+        if (!this.settings.emojiHighlightsEnabled) {
+            return false;
+        }
+
+        if (highlight.isNativeComment || highlight.type === 'html' || highlight.type === 'comment') {
+            return false;
+        }
+
+        const file = this.app.vault.getAbstractFileByPath(highlight.filePath);
+        if (!(file instanceof TFile)) {
+            return false;
+        }
+
+        const content = await this.app.vault.read(file);
+        const recordedSlice = content.substring(highlight.startOffset, highlight.endOffset);
+        const sourceText = this.getHighlightSourceText(highlight);
+
+        if (!recordedSlice.includes(sourceText)) {
+            return false;
+        }
+
+        const highlightMatch = recordedSlice.match(/^==([\s\S]*?)==$/);
+        if (!highlightMatch) {
+            return false;
+        }
+
+        const currentInnerText = highlightMatch[1];
+        const parsed = this.parseEmojiPrefixedHighlightText(currentInnerText);
+        const emoji = this.getPreferredEmojiForColor(color);
+        const nextInnerText = emoji ? `${emoji}${parsed.strippedText}` : parsed.strippedText;
+        const replacement = `==${nextInnerText}==`;
+
+        if (replacement === recordedSlice) {
+            return false;
+        }
+
+        const newContent =
+            content.substring(0, highlight.startOffset) +
+            replacement +
+            content.substring(highlight.endOffset);
+
+        await this.app.vault.modify(file, newContent);
+        await this.loadHighlightsFromFile(file);
+        return true;
     }
 
     countOrphanedReferences(): number {
@@ -1394,6 +1606,24 @@ export default class HighlightCommentsPlugin extends Plugin {
                     ...DEFAULT_SETTINGS.customColors,
                     ...oldSettings.customColors
                 };
+            }
+            if (oldSettings.emojiHighlightsEnabled !== undefined) {
+                this.settings.emojiHighlightsEnabled = oldSettings.emojiHighlightsEnabled;
+            }
+            if (oldSettings.emojiColorMappings !== undefined) {
+                this.settings.emojiColorMappings = {
+                    ...DEFAULT_SETTINGS.emojiColorMappings,
+                    ...oldSettings.emojiColorMappings
+                };
+            }
+            if (oldSettings.emojiDefaultColorSlot !== undefined) {
+                this.settings.emojiDefaultColorSlot = oldSettings.emojiDefaultColorSlot;
+            } else if (oldSettings.emojiDefaultHighlightEmoji !== undefined) {
+                const legacyValue = String(oldSettings.emojiDefaultHighlightEmoji || '').trim();
+                this.settings.emojiDefaultColorSlot = legacyValue.length > 0 ? 'yellow' : 'none';
+            }
+            if (oldSettings.emojiWritebackNoPrompt !== undefined) {
+                this.settings.emojiWritebackNoPrompt = oldSettings.emojiWritebackNoPrompt;
             }
             
             // Update version to current
@@ -1665,7 +1895,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Offsets can drift if the file was edited externally; bail rather than
         // mangling the file.
         const recordedSlice = content.substring(highlight.startOffset, highlight.endOffset);
-        if (!recordedSlice.includes(highlight.text)) {
+        const sourceText = this.getHighlightSourceText(highlight);
+        if (!recordedSlice.includes(sourceText)) {
             new Notice('Highlight has moved — please refresh and try again');
             return false;
         }
@@ -1873,8 +2104,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                 const newHighlights = this.highlights.get(file.path) || [];
                 
                 // Check if any highlights were found or changed (more thorough than just count)
-                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
-                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
                 
                 if (oldHighlightsJSON !== newHighlightsJSON) {
                     hasChanges = true;
@@ -1924,11 +2155,37 @@ export default class HighlightCommentsPlugin extends Plugin {
         const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
         
         // Create a more robust matching system that considers text, position, and type
-        const findExistingHighlight = (text: string, startOffset: number, endOffset: number, isComment: boolean): Highlight | undefined => {
+        const findExistingHighlight = (
+            text: string,
+            startOffset: number,
+            endOffset: number,
+            isComment: boolean,
+            sourceText?: string
+        ): Highlight | undefined => {
+            const textMatches = (h: Highlight): boolean => {
+                const highlightSourceText = h.sourceText ?? h.text;
+
+                if (h.text === text || highlightSourceText === text) {
+                    return true;
+                }
+
+                if (sourceText && (h.text === sourceText || highlightSourceText === sourceText)) {
+                    return true;
+                }
+
+                if (this.settings.emojiHighlightsEnabled && !isComment) {
+                    const normalizedExisting = this.parseEmojiPrefixedHighlightText(highlightSourceText).strippedText;
+                    const normalizedCandidate = this.parseEmojiPrefixedHighlightText(sourceText ?? text).strippedText;
+                    return normalizedExisting === normalizedCandidate;
+                }
+
+                return false;
+            };
+
             // First, try exact position match
             let exactMatch = existingHighlightsForFile.find(h => 
                 !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
+                textMatches(h) &&
                 h.startOffset === startOffset && 
                 h.endOffset === endOffset &&
                 h.isNativeComment === isComment
@@ -1941,7 +2198,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             // If no exact match, try fuzzy position match (within 50 characters)
             let fuzzyMatch = existingHighlightsForFile.find(h => 
                 !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
+                textMatches(h) &&
                 Math.abs(h.startOffset - startOffset) <= 50 &&
                 h.isNativeComment === isComment
             );
@@ -1953,10 +2210,10 @@ export default class HighlightCommentsPlugin extends Plugin {
             // If still no match, try text-only match for highlights that might have moved significantly
             let textMatch = existingHighlightsForFile.find(h => 
                 !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
+                textMatches(h) &&
                 h.isNativeComment === isComment &&
                 !existingHighlightsForFile.some(other => 
-                    other !== h && other.text === text && other.isNativeComment === isComment
+                    other !== h && textMatches(other) && other.isNativeComment === isComment
                 ) // Only if it's the only highlight with this text
             );
             if (textMatch) {
@@ -2154,18 +2411,30 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Skip matches that were merged as adjacent comments
             if (skip) return;
             const [, highlightText] = match;
+
+            let parsedText = highlightText;
+            let sourceText: string | undefined;
+            let parsedEmojiColor: string | undefined;
+
+            if (type === 'highlight' && this.settings.emojiHighlightsEnabled) {
+                sourceText = highlightText;
+                const parsed = this.parseEmojiPrefixedHighlightText(highlightText);
+                parsedText = parsed.strippedText;
+                parsedEmojiColor = parsed.color;
+            }
             
             // Skip empty or whitespace-only highlights
-            if (!highlightText || highlightText.trim() === '') {
+            if (!parsedText || parsedText.trim() === '') {
                 return;
             }
             
             // Find existing highlight using improved matching
             const existingHighlight = findExistingHighlight(
-                highlightText, 
+                parsedText,
                 match.index, 
                 match.index + match[0].length, 
-                type === 'comment'
+                type === 'comment',
+                sourceText
             );
             
             // Calculate line number from offset
@@ -2249,6 +2518,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (existingHighlight) {
                 newHighlights.push({
                     ...existingHighlight,
+                    text: parsedText,
+                    sourceText: sourceText,
                     line: lineNumber,
                     startOffset: match.index,
                     endOffset: match.index + match[0].length,
@@ -2256,8 +2527,10 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteCount: footnoteCount,
                     footnoteContents: footnoteContents,
                     isNativeComment: type === 'comment',
-                    // Update color for HTML highlights, preserve existing for others
-                    color: type === 'html' ? color : existingHighlight.color,
+                    // Update color for HTML highlights, parse emoji colors when enabled.
+                    color: type === 'html'
+                        ? color
+                        : (parsedEmojiColor || existingHighlight.color),
                     // Preserve existing createdAt timestamp if it exists
                     createdAt: existingHighlight.createdAt || Date.now(),
                     // Store the type for proper identification
@@ -2271,7 +2544,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                 const uniqueTimestamp = file.stat.mtime + (match.index % 1000);
                 newHighlights.push({
                     id: this.generateId(),
-                    text: highlightText,
+                    text: parsedText,
+                    sourceText: sourceText,
                     tags: [],
                     line: lineNumber,
                     startOffset: match.index,
@@ -2281,8 +2555,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteContents: footnoteContents,
                     createdAt: uniqueTimestamp,
                     isNativeComment: type === 'comment',
-                    // Set color for HTML highlights
-                    color: type === 'html' ? color : undefined,
+                    // Set color for HTML highlights and emoji-prefixed markdown highlights
+                    color: type === 'html' ? color : parsedEmojiColor,
                     // Store the type for proper identification
                     type: isCustomPattern ? 'custom' : type,
                     // Store full match for custom patterns
@@ -2292,8 +2566,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         });
 
         // Check for actual changes before updating and refreshing
-        const oldHighlightsJSON = JSON.stringify(existingHighlightsForFile.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
-        const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
+        const oldHighlightsJSON = JSON.stringify(existingHighlightsForFile.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, sourceText: h.sourceText, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
+        const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, sourceText: h.sourceText, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
 
         if (oldHighlightsJSON !== newHighlightsJSON) {
             this.highlights.set(file.path, newHighlights);
@@ -2348,6 +2622,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Compare highlights to see if this one changed
                     const oldJSON = JSON.stringify({
                         text: oldHighlight.text, 
+                        sourceText: oldHighlight.sourceText,
                         footnotes: oldHighlight.footnoteCount, 
                         contents: oldHighlight.footnoteContents?.filter(c => c.trim() !== ''), 
                         color: oldHighlight.color,
@@ -2355,6 +2630,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     });
                     const newJSON = JSON.stringify({
                         text: newHighlight.text, 
+                        sourceText: newHighlight.sourceText,
                         footnotes: newHighlight.footnoteCount, 
                         contents: newHighlight.footnoteContents?.filter(c => c.trim() !== ''), 
                         color: newHighlight.color,
@@ -3044,6 +3320,14 @@ class HighlightSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
 
+        // Cross-section refresh hook: color/color-name changes should refresh emoji mapping labels.
+        let renderEmojiSettings: () => void = () => {};
+        let refreshEmojiMappingLabels: () => void = () => {};
+        let persistEmojiMappingsDebounceTimer: number | null = null;
+        const parseFirstEmojiAlias = (raw: string): string => {
+            return raw.split(',').map(v => v.trim()).find(v => v.length > 0) || '';
+        };
+
         // DISPLAY SECTION
         new Setting(containerEl).setHeading().setName(t('settings.display.heading'));
 
@@ -3306,6 +3590,9 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.updateColorMappings();
                         yellowSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
                         yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                        if (this.plugin.settings.emojiHighlightsEnabled) {
+                            refreshEmojiMappingLabels();
+                        }
                     });
             })
             .addButton(button => button
@@ -3318,6 +3605,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     yellowSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
                     yellowColorPicker?.setValue('#ffd700'); // Update color picker value
                     yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         let redNameSetting: Setting;
@@ -3336,6 +3626,9 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.updateColorMappings();
                         redSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
                         redNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                        if (this.plugin.settings.emojiHighlightsEnabled) {
+                            refreshEmojiMappingLabels();
+                        }
                     });
             })
             .addButton(button => button
@@ -3348,6 +3641,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     redSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
                     redColorPicker?.setValue('#ff6b6b'); // Update color picker value
                     redNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         let tealNameSetting: Setting;
@@ -3366,6 +3662,9 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.updateColorMappings();
                         tealSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
                         tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                        if (this.plugin.settings.emojiHighlightsEnabled) {
+                            refreshEmojiMappingLabels();
+                        }
                     });
             })
             .addButton(button => button
@@ -3378,6 +3677,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     tealSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
                     tealColorPicker?.setValue('#4ecdc4'); // Update color picker value
                     tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         let blueNameSetting: Setting;
@@ -3396,6 +3698,9 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.updateColorMappings();
                         blueSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
                         blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                        if (this.plugin.settings.emojiHighlightsEnabled) {
+                            refreshEmojiMappingLabels();
+                        }
                     });
             })
             .addButton(button => button
@@ -3408,6 +3713,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     blueSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
                     blueColorPicker?.setValue('#45b7d1'); // Update color picker value
                     blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         let greenNameSetting: Setting;
@@ -3426,6 +3734,9 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.updateColorMappings();
                         greenSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
                         greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
+                        if (this.plugin.settings.emojiHighlightsEnabled) {
+                            refreshEmojiMappingLabels();
+                        }
                     });
             })
             .addButton(button => button
@@ -3438,6 +3749,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     greenSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
                     greenColorPicker?.setValue('#96ceb4'); // Update color picker value
                     greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         // Color names subsection
@@ -3453,6 +3767,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColorNames.yellow = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         redNameSetting = new Setting(containerEl)
@@ -3465,6 +3782,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColorNames.red = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         tealNameSetting = new Setting(containerEl)
@@ -3477,6 +3797,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColorNames.teal = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         blueNameSetting = new Setting(containerEl)
@@ -3489,6 +3812,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColorNames.blue = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         greenNameSetting = new Setting(containerEl)
@@ -3501,6 +3827,9 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.customColorNames.green = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                    if (this.plugin.settings.emojiHighlightsEnabled) {
+                        refreshEmojiMappingLabels();
+                    }
                 }));
 
         // COMMENTS SECTION
@@ -3549,6 +3878,169 @@ class HighlightSettingTab extends PluginSettingTab {
                     // Re-scan all files to apply new detection setting
                     this.plugin.scanAllFilesForHighlights();
                 }));
+
+        // EMOJI HIGHLIGHTS (EXPERIMENTAL) SECTION
+        const emojiHeadingName = document.createDocumentFragment();
+        emojiHeadingName.append(t('settings.detection.emojiHighlights.heading') + ' ');
+        const emojiBadge = document.createElement('span');
+        emojiBadge.textContent = t('settings.detection.emojiHighlights.experimental');
+        emojiBadge.style.fontSize = '0.8em';
+        emojiBadge.style.padding = '2px 6px';
+        emojiBadge.style.borderRadius = '3px';
+        emojiBadge.style.backgroundColor = 'var(--interactive-accent)';
+        emojiBadge.style.color = 'var(--text-on-accent)';
+        emojiBadge.style.fontWeight = '500';
+        emojiBadge.style.marginLeft = '6px';
+        emojiHeadingName.appendChild(emojiBadge);
+
+        new Setting(containerEl).setHeading().setName(emojiHeadingName as any);
+
+        const emojiSettingsContainer = containerEl.createDiv('emoji-highlights-settings-container');
+        const emojiMappingSettings: Partial<Record<ColorSlotKey, Setting>> = {};
+        let defaultEmojiColorSelectEl: HTMLSelectElement | null = null;
+        const getMappingLabel = (slot: ColorSlotKey): string => {
+            const hex = this.plugin.settings.customColors[slot].toUpperCase();
+            const customName = this.plugin.settings.customColorNames[slot]?.trim();
+            if (customName && customName.length > 0) {
+                return `${hex} (${customName})`;
+            }
+            return hex;
+        };
+
+        const updateDefaultEmojiColorDropdownLabels = () => {
+            if (!defaultEmojiColorSelectEl) {
+                return;
+            }
+
+            const updateOption = (value: string, label: string) => {
+                const option = Array.from(defaultEmojiColorSelectEl!.options).find(opt => opt.value === value);
+                if (option) {
+                    option.text = label;
+                }
+            };
+
+            updateOption('none', t('settings.detection.emojiHighlights.defaultHighlightColor.none'));
+            updateOption('yellow', getMappingLabel('yellow'));
+            updateOption('red', getMappingLabel('red'));
+            updateOption('teal', getMappingLabel('teal'));
+            updateOption('blue', getMappingLabel('blue'));
+            updateOption('green', getMappingLabel('green'));
+        };
+
+        refreshEmojiMappingLabels = () => {
+            if (!this.plugin.settings.emojiHighlightsEnabled) {
+                return;
+            }
+
+            updateDefaultEmojiColorDropdownLabels();
+
+            const slots: ColorSlotKey[] = ['yellow', 'red', 'teal', 'blue', 'green'];
+            for (const slot of slots) {
+                const setting = emojiMappingSettings[slot];
+                if (setting) {
+                    setting.setName(t('settings.detection.emojiHighlights.mappingFor', { color: getMappingLabel(slot) }));
+                }
+            }
+        };
+
+        renderEmojiSettings = () => {
+            emojiSettingsContainer.empty();
+            defaultEmojiColorSelectEl = null;
+            (['yellow', 'red', 'teal', 'blue', 'green'] as ColorSlotKey[]).forEach((slot) => {
+                delete emojiMappingSettings[slot];
+            });
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.enabled.name'))
+                .setDesc(t('settings.detection.emojiHighlights.enabled.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.emojiHighlightsEnabled)
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiHighlightsEnabled = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.scanAllFilesForHighlights();
+                        renderEmojiSettings();
+                    }));
+
+            if (!this.plugin.settings.emojiHighlightsEnabled) {
+                return;
+            }
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.defaultHighlightColor.name'))
+                .setDesc(t('settings.detection.emojiHighlights.defaultHighlightColor.desc'))
+                .addDropdown(dropdown => dropdown
+                    .addOption('none', t('settings.detection.emojiHighlights.defaultHighlightColor.none'))
+                    .addOption('yellow', getMappingLabel('yellow'))
+                    .addOption('red', getMappingLabel('red'))
+                    .addOption('teal', getMappingLabel('teal'))
+                    .addOption('blue', getMappingLabel('blue'))
+                    .addOption('green', getMappingLabel('green'))
+                    .setValue(this.plugin.settings.emojiDefaultColorSlot)
+                    .onChange(async (value) => {
+                        const next = (['none', 'yellow', 'red', 'teal', 'blue', 'green'] as const).includes(value as any)
+                            ? (value as DefaultEmojiColorSlot)
+                            : 'none';
+                        this.plugin.settings.emojiDefaultColorSlot = next;
+                        await this.plugin.saveSettings();
+                        this.plugin.scanAllFilesForHighlights();
+                    }));
+
+            // Keep a direct handle so labels can be updated without full rerender.
+            const defaultSelect = emojiSettingsContainer.querySelector('select.dropdown') as HTMLSelectElement | null;
+            if (defaultSelect) {
+                defaultEmojiColorSelectEl = defaultSelect;
+            }
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.skipWritebackPrompt.name'))
+                .setDesc(t('settings.detection.emojiHighlights.skipWritebackPrompt.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.emojiWritebackNoPrompt)
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiWritebackNoPrompt = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.mappingHeading'))
+                .setDesc(t('settings.detection.emojiHighlights.mappingDesc'));
+
+            const addMappingSetting = (slot: ColorSlotKey) => {
+                const mappingSetting = new Setting(emojiSettingsContainer)
+                    .setName(t('settings.detection.emojiHighlights.mappingFor', { color: getMappingLabel(slot) }))
+                    .setDesc(t('settings.detection.emojiHighlights.mappingInputDesc', {
+                        emoji: parseFirstEmojiAlias(this.plugin.settings.emojiColorMappings[slot]) || '∅'
+                    }))
+                    .addText(text => text
+                        .setPlaceholder(t('settings.detection.emojiHighlights.mappingPlaceholder'))
+                        .setValue(this.plugin.settings.emojiColorMappings[slot])
+                        .onChange((value) => {
+                            this.plugin.settings.emojiColorMappings[slot] = value;
+                            mappingSetting.setDesc(t('settings.detection.emojiHighlights.mappingInputDesc', {
+                                emoji: parseFirstEmojiAlias(value) || '∅'
+                            }));
+                            if (persistEmojiMappingsDebounceTimer !== null) {
+                                window.clearTimeout(persistEmojiMappingsDebounceTimer);
+                            }
+                            persistEmojiMappingsDebounceTimer = window.setTimeout(async () => {
+                                await this.plugin.saveSettings();
+                                this.plugin.scanAllFilesForHighlights();
+                                persistEmojiMappingsDebounceTimer = null;
+                            }, 300);
+                        }));
+
+                emojiMappingSettings[slot] = mappingSetting;
+            };
+
+            addMappingSetting('yellow');
+            addMappingSetting('red');
+            addMappingSetting('teal');
+            addMappingSetting('blue');
+            addMappingSetting('green');
+        };
+
+        renderEmojiSettings();
 
         // CUSTOM PATTERNS SECTION
         // Create heading with experimental badge
