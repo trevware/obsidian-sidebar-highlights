@@ -106,6 +106,8 @@ export interface CommentPluginSettings {
     autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
     selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
+    copyIncludeHighlightMarkers: boolean; // Include == / %% wrappers when copying highlights
+    searchMatchEmoji: boolean; // Include sourceText/emoji symbols when searching text
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
     excludedFiles: string[]; // Legacy: Array of file/folder paths (kept for backward compatibility)
     fileFilters: FileFilter[]; // New: Array of file/folder filters with individual modes
@@ -129,6 +131,7 @@ export interface CommentPluginSettings {
     }; // Comma-separated emoji aliases per color slot (first item used for write-back)
     emojiDefaultColorSlot: 'none' | 'yellow' | 'red' | 'teal' | 'blue' | 'green'; // Switching to this color clears emoji prefix instead of writing one
     emojiWritebackNoPrompt: boolean; // Skip confirmation prompt when writing emoji changes from sidebar color picker
+    copyIncludeEmojiColorSymbol: boolean; // Include emoji color prefix when copying in emoji mode
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -174,6 +177,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
     selectTextOnCommentClick: false, // Position to highlight by default
+    copyIncludeHighlightMarkers: true,
+    searchMatchEmoji: false,
     excludeExcalidraw: true, // Exclude .excalidraw files by default
     excludedFiles: [], // Legacy: Empty array by default
     fileFilters: [], // New: Empty array by default
@@ -197,6 +202,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     },
     emojiDefaultColorSlot: 'yellow',
     emojiWritebackNoPrompt: false,
+    copyIncludeEmojiColorSymbol: false,
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -242,6 +248,22 @@ export default class HighlightCommentsPlugin extends Plugin {
     public selectedHighlightId: string | null = null;
     public collectionCommands: Set<string> = new Set(); // Track registered collection commands
     private isScanningFiles: boolean = false; // Prevent concurrent scans
+    private fileScanMtimeCache: Map<string, number> = new Map(); // Track file mtime to skip unchanged files
+    private pendingSettingsScanTimeout: number | null = null; // Debounce settings-triggered scans
+
+    /**
+     * Debounced scan for settings changes.
+     * Multiple rapid settings changes will only trigger one scan after the user stops toggling.
+     */
+    debouncedScanAllFiles(forceFullRescan: boolean = false) {
+        if (this.pendingSettingsScanTimeout !== null) {
+            window.clearTimeout(this.pendingSettingsScanTimeout);
+        }
+        this.pendingSettingsScanTimeout = window.setTimeout(() => {
+            this.pendingSettingsScanTimeout = null;
+            this.scanAllFilesForHighlights(forceFullRescan);
+        }, 500);
+    }
 
     async onload() {
         await this.loadSettings();
@@ -478,6 +500,15 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         if (loadedData.emojiWritebackNoPrompt !== undefined) {
             merged.emojiWritebackNoPrompt = loadedData.emojiWritebackNoPrompt;
+        }
+        if (loadedData.copyIncludeHighlightMarkers !== undefined) {
+            merged.copyIncludeHighlightMarkers = loadedData.copyIncludeHighlightMarkers;
+        }
+        if (loadedData.searchMatchEmoji !== undefined) {
+            merged.searchMatchEmoji = loadedData.searchMatchEmoji;
+        }
+        if (loadedData.copyIncludeEmojiColorSymbol !== undefined) {
+            merged.copyIncludeEmojiColorSymbol = loadedData.copyIncludeEmojiColorSymbol;
         }
 
         return merged;
@@ -1336,18 +1367,18 @@ export default class HighlightCommentsPlugin extends Plugin {
         return highlight.sourceText ?? highlight.text;
     }
 
-    async updateHighlightEmojiPrefixInSource(highlight: Highlight, color?: string): Promise<boolean> {
+    async updateHighlightEmojiPrefixInSource(highlight: Highlight, color?: string): Promise<'updated' | 'unchanged' | 'failed'> {
         if (!this.settings.emojiHighlightsEnabled) {
-            return false;
+            return 'unchanged';
         }
 
         if (highlight.isNativeComment || highlight.type === 'html' || highlight.type === 'comment') {
-            return false;
+            return 'unchanged';
         }
 
         const file = this.app.vault.getAbstractFileByPath(highlight.filePath);
         if (!(file instanceof TFile)) {
-            return false;
+            return 'failed';
         }
 
         const content = await this.app.vault.read(file);
@@ -1355,12 +1386,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         const sourceText = this.getHighlightSourceText(highlight);
 
         if (!recordedSlice.includes(sourceText)) {
-            return false;
+            return 'failed';
         }
 
         const highlightMatch = recordedSlice.match(/^==([\s\S]*?)==$/);
         if (!highlightMatch) {
-            return false;
+            return 'failed';
         }
 
         const currentInnerText = highlightMatch[1];
@@ -1370,7 +1401,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const replacement = `==${nextInnerText}==`;
 
         if (replacement === recordedSlice) {
-            return false;
+            return 'unchanged';
         }
 
         const newContent =
@@ -1380,7 +1411,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         await this.app.vault.modify(file, newContent);
         await this.loadHighlightsFromFile(file);
-        return true;
+        return 'updated';
     }
 
     countOrphanedReferences(): number {
@@ -1592,6 +1623,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (oldSettings.selectTextOnCommentClick !== undefined) {
                 this.settings.selectTextOnCommentClick = oldSettings.selectTextOnCommentClick;
             }
+            if (oldSettings.copyIncludeHighlightMarkers !== undefined) {
+                this.settings.copyIncludeHighlightMarkers = oldSettings.copyIncludeHighlightMarkers;
+            }
+            if (oldSettings.searchMatchEmoji !== undefined) {
+                this.settings.searchMatchEmoji = oldSettings.searchMatchEmoji;
+            }
             if (oldSettings.excludeExcalidraw !== undefined) {
                 this.settings.excludeExcalidraw = oldSettings.excludeExcalidraw;
             }
@@ -1624,6 +1661,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
             if (oldSettings.emojiWritebackNoPrompt !== undefined) {
                 this.settings.emojiWritebackNoPrompt = oldSettings.emojiWritebackNoPrompt;
+            }
+            if (oldSettings.copyIncludeEmojiColorSymbol !== undefined) {
+                this.settings.copyIncludeEmojiColorSymbol = oldSettings.copyIncludeEmojiColorSymbol;
             }
             
             // Update version to current
@@ -1918,7 +1958,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         // - If keeping the wrapper: keep the original highlight (chars
         //   [startOffset .. endOffset]) and discard whatever follows.
         const replacement = stripWrapper
-            ? highlight.text
+            ? sourceText
             : content.substring(highlight.startOffset, highlight.endOffset);
 
         let newContent =
@@ -2041,7 +2081,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.detectAndStoreMarkdownHighlights(content, file);
     }
 
-    async scanAllFilesForHighlights() {
+    async scanAllFilesForHighlights(forceFullRescan: boolean = false) {
         // Prevent concurrent scans - if already scanning, skip this call
         if (this.isScanningFiles) {
             console.log('Scan already in progress, skipping concurrent scan request');
@@ -2079,6 +2119,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
                 if (shouldDelete) {
                     this.highlights.delete(filePath);
+                    this.fileScanMtimeCache.delete(filePath);
                     hasChanges = true;
                 }
             }
@@ -2086,48 +2127,73 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Scan existing files for highlights FIRST, then clean up orphaned references
         // This ensures we clean based on the current state of highlights in markdown files
-        for (const file of allFilesToProcess) {
-            try {
-                // Check if this is an Excalidraw file (deeper check)
-                if (await this.isExcalidrawFile(file)) {
-                    // Remove any existing highlights for Excalidraw files
-                    if (this.highlights.has(file.path)) {
-                        this.highlights.delete(file.path);
+        // Process in chunks to avoid blocking the main thread
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < allFilesToProcess.length; i += CHUNK_SIZE) {
+            const chunk = allFilesToProcess.slice(i, i + CHUNK_SIZE);
+
+            for (const file of chunk) {
+                try {
+                    // Incremental scan: skip files whose mtime hasn't changed (unless forced)
+                    if (!forceFullRescan) {
+                        const cachedMtime = this.fileScanMtimeCache.get(file.path);
+                        if (cachedMtime === file.stat.mtime) {
+                            continue; // File unchanged since last scan
+                        }
+                    }
+
+                    // Check if this is an Excalidraw file (deeper check)
+                    if (await this.isExcalidrawFile(file)) {
+                        // Remove any existing highlights for Excalidraw files
+                        if (this.highlights.has(file.path)) {
+                            this.highlights.delete(file.path);
+                            hasChanges = true;
+                        }
+                        this.fileScanMtimeCache.set(file.path, file.stat.mtime);
+                        continue;
+                    }
+                    
+                    const content = await this.app.vault.cachedRead(file);
+                    const oldHighlights = this.highlights.get(file.path) || [];
+                    this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each file
+                    const newHighlights = this.highlights.get(file.path) || [];
+                    
+                    // Record mtime after successful scan
+                    this.fileScanMtimeCache.set(file.path, file.stat.mtime);
+                    
+                    // Check if any highlights were found or changed (more thorough than just count)
+                    const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                    const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                    
+                    if (oldHighlightsJSON !== newHighlightsJSON) {
                         hasChanges = true;
                     }
-                    continue;
+                } catch (error) {
+                    // Continue on error
                 }
-                
-                const content = await this.app.vault.read(file);
-                const oldHighlights = this.highlights.get(file.path) || [];
-                this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each file
-                const newHighlights = this.highlights.get(file.path) || [];
-                
-                // Check if any highlights were found or changed (more thorough than just count)
-                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
-                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, sourceText: h.sourceText, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
-                
-                if (oldHighlightsJSON !== newHighlightsJSON) {
-                    hasChanges = true;
-                }
-            } catch (error) {
-                // Continue on error
+            }
+
+            // Yield to the main thread between chunks so the UI stays responsive
+            if (i + CHUNK_SIZE < allFilesToProcess.length) {
+                await new Promise<void>(resolve => setTimeout(resolve, 0));
             }
         }
 
         // NOW clean up orphaned highlight IDs from collections
         // This happens AFTER scanning so we clean based on the current state of highlights
+        // Build a Set of all highlight IDs for O(1) lookup instead of nested loops
+        const allHighlightIds = new Set<string>();
+        for (const fileHighlights of this.highlights.values()) {
+            for (const h of fileHighlights) {
+                allHighlightIds.add(h.id);
+            }
+        }
+
         for (const collection of this.collections.values()) {
             const originalLength = collection.highlightIds.length;
-            collection.highlightIds = collection.highlightIds.filter(highlightId => {
-                // Check if this highlight still exists in any file
-                for (const [filePath, fileHighlights] of this.highlights) {
-                    if (fileHighlights.some(h => h.id === highlightId)) {
-                        return true; // Keep this highlight ID
-                    }
-                }
-                return false; // Remove this highlight ID
-            });
+            collection.highlightIds = collection.highlightIds.filter(highlightId =>
+                allHighlightIds.has(highlightId)
+            );
 
             if (collection.highlightIds.length !== originalLength) {
                 hasChanges = true;
@@ -3856,6 +3922,16 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName(t('settings.comments.copyIncludeHighlightMarkers.name'))
+            .setDesc(t('settings.comments.copyIncludeHighlightMarkers.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.copyIncludeHighlightMarkers)
+                .onChange(async (value) => {
+                    this.plugin.settings.copyIncludeHighlightMarkers = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName(t('settings.detection.detectHtmlComments.name'))
             .setDesc(t('settings.detection.detectHtmlComments.desc'))
             .addToggle(toggle => toggle
@@ -3864,7 +3940,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.detectHtmlComments = value;
                     await this.plugin.saveSettings();
                     // Re-scan all files to apply new detection setting
-                    this.plugin.scanAllFilesForHighlights();
+                    this.plugin.debouncedScanAllFiles(true);
                 }));
 
         new Setting(containerEl)
@@ -3876,7 +3952,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.detectAdjacentNativeComments = value;
                     await this.plugin.saveSettings();
                     // Re-scan all files to apply new detection setting
-                    this.plugin.scanAllFilesForHighlights();
+                    this.plugin.debouncedScanAllFiles(true);
                 }));
 
         // EMOJI HIGHLIGHTS (EXPERIMENTAL) SECTION
@@ -3958,8 +4034,28 @@ class HighlightSettingTab extends PluginSettingTab {
                     .onChange(async (value) => {
                         this.plugin.settings.emojiHighlightsEnabled = value;
                         await this.plugin.saveSettings();
-                        this.plugin.scanAllFilesForHighlights();
+                        this.plugin.debouncedScanAllFiles(true);
                         renderEmojiSettings();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.copyIncludeEmojiColorSymbol.name'))
+                .setDesc(t('settings.detection.emojiHighlights.copyIncludeEmojiColorSymbol.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.copyIncludeEmojiColorSymbol)
+                    .onChange(async (value) => {
+                        this.plugin.settings.copyIncludeEmojiColorSymbol = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.searchMatchEmoji.name'))
+                .setDesc(t('settings.detection.emojiHighlights.searchMatchEmoji.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.searchMatchEmoji)
+                    .onChange(async (value) => {
+                        this.plugin.settings.searchMatchEmoji = value;
+                        await this.plugin.saveSettings();
                     }));
 
             if (!this.plugin.settings.emojiHighlightsEnabled) {
@@ -3983,7 +4079,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             : 'none';
                         this.plugin.settings.emojiDefaultColorSlot = next;
                         await this.plugin.saveSettings();
-                        this.plugin.scanAllFilesForHighlights();
+                        this.plugin.debouncedScanAllFiles(true);
                     }));
 
             // Keep a direct handle so labels can be updated without full rerender.
@@ -4025,7 +4121,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             }
                             persistEmojiMappingsDebounceTimer = window.setTimeout(async () => {
                                 await this.plugin.saveSettings();
-                                this.plugin.scanAllFilesForHighlights();
+                                this.plugin.debouncedScanAllFiles(true);
                                 persistEmojiMappingsDebounceTimer = null;
                             }, 300);
                         }));
@@ -4094,7 +4190,7 @@ class HighlightSettingTab extends PluginSettingTab {
                                 this.plugin.settings.customPatterns[index] = edited;
                                 await this.plugin.saveSettings();
                                 renderPatterns();
-                                this.plugin.scanAllFilesForHighlights();
+                                this.plugin.debouncedScanAllFiles(true);
                             }).open();
                         }))
                     .addButton(button => button
@@ -4104,7 +4200,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             this.plugin.settings.customPatterns.splice(index, 1);
                             await this.plugin.saveSettings();
                             renderPatterns();
-                            this.plugin.scanAllFilesForHighlights();
+                            this.plugin.debouncedScanAllFiles(true);
                         }));
             });
 
@@ -4118,7 +4214,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             this.plugin.settings.customPatterns.push(newPattern);
                             await this.plugin.saveSettings();
                             renderPatterns();
-                            this.plugin.scanAllFilesForHighlights();
+                            this.plugin.debouncedScanAllFiles(true);
                         }).open();
                     }));
         };
@@ -4137,7 +4233,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.excludeExcalidraw = value;
                     await this.plugin.saveSettings();
                     // Refresh highlights to apply the new exclusion setting
-                    this.plugin.scanAllFilesForHighlights();
+                    this.plugin.debouncedScanAllFiles(true);
                 }));
 
         new Setting(containerEl)
@@ -4154,7 +4250,7 @@ class HighlightSettingTab extends PluginSettingTab {
                                 this.plugin.settings.fileFilters = fileFilters;
                                 await this.plugin.saveSettings();
                                 // Re-scan all files to apply new exclusions
-                                this.plugin.scanAllFilesForHighlights();
+                                this.plugin.debouncedScanAllFiles(true);
                                 // Refresh sidebar to update tasks from newly included/excluded files
                                 // (invalidates task cache and re-renders)
                                 this.plugin.refreshSidebar();
