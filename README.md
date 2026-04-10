@@ -149,6 +149,56 @@ Display Modes let you save and quickly switch between different display configur
 
 **Change colors**: Hover over the side of a highlight to view the color picker.
 
+### Emoji Colored Highlights
+
+Sidebar Highlights now supports emoji-prefixed colored highlights when enabled in Settings.
+
+#### Syntax
+
+```markdown
+==🟥Important warning==
+==🟦Reference / theory==
+==🟩Actionable guidance==
+```
+
+- The first matching emoji inside `==...==` determines the highlight color.
+- Sidebar text can ignore the emoji prefix for cleaner reading.
+- Emoji aliases are configurable per color (comma-separated list).
+
+#### Typical Workflow
+
+1. Open **Settings → Detection → Emoji prefixed highlights (Experimental)**
+2. Enable **Emoji prefixed highlights**
+3. Configure **Emoji to color mapping** (e.g. `🟥,🔴,🍓`)
+4. Optionally choose a **Default highlight color** (this color removes emoji prefix)
+
+#### Common Operations
+
+- **Create colored highlight from editor context menu**
+  - Select text → right-click → **Create colored highlight** → choose color
+- **Change color for existing highlight**
+  - In sidebar: right-click a highlight → **Create colored highlight** list
+  - In editor (cursor inside highlight): right-click → **Modify highlight color**
+- **Clear color**
+  - Use **Clear highlight color** to remove color binding
+  - If emoji mode is on, this can also remove emoji prefix in note text
+
+#### Copy Behavior (Configurable)
+
+- **Include highlight markers when copying** (default ON)
+  - ON: copy `==...==` / `%%...%%`
+  - OFF: copy plain text only
+- **Include emoji color symbol when copying** (default OFF)
+  - ON: copy with emoji prefix
+  - OFF: copy plain text without emoji prefix
+
+#### Compatibility Notes (for plugin developers)
+
+- Use `sourceText ?? text` when locating/updating highlights.
+- Do not hardcode emoji-color mapping; read configured mappings.
+- Treat emoji writeback as transactional: rollback UI color if source write fails.
+- Full technical spec: see `ref/Emoji彩色高亮兼容规范.md`.
+
 ## Installation
 
 ### Option 1: Community Plugin (Recommended)

@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Code blocks inside callouts and blockquotes**: Fenced code blocks prefixed with `> ` (callouts, blockquotes) or leading whitespace (indented list items) are now correctly excluded from highlight detection. Previously, `==` operators inside DataviewJS or other code blocks nested in callouts would produce phantom highlights in the sidebar.
 - **Nested image-in-link URLs**: `[![alt](image-url)](destination-url)` syntax is now matched as a single link range. Previously the regex only captured the inner image link, leaving destination URLs exposed — which caused phantom highlights when destination URLs contained `==` (e.g. base64-encoded WeChat-style query parameters).
 
+## [1.37.0] - 2026-04-10
+
+### Added
+- **Emoji colored highlights (experimental)**: Added support for emoji-prefixed highlight syntax (e.g. `==🟥text==`) with configurable emoji-to-color mappings, context-menu creation/change actions, and optional text writeback behavior.
+- **Editor context-menu color workflows**: Added "Create colored highlight" for selected text and "Modify highlight color" for highlights at cursor, with compact submenu behavior where supported.
+- **Copy behavior controls**: Added toggles to include/exclude highlight markers and emoji symbols during copy.
+
+### Changed
+- **Context menu consistency**: Unified color option sorting with settings order and aligned color visibility logic between sidebar/editor menus.
+- **UI copy and localization**: Refined new emoji-related settings/menu wording in both English and Chinese.
+
+### Fixed
+- **Emoji removal/replace sync**: Fixed cases where manual emoji deletion/replacement in markdown did not reliably update sidebar color or color grouping.
+- **Remove-highlight cleanup**: Fixed right-click "Remove highlight" to strip emoji prefix correctly when unwrapping `==...==`.
+
 ## [1.35.2] - 2025-11-08
 
 ### Fixed
