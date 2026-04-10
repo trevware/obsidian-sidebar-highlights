@@ -4525,6 +4525,10 @@ export class HighlightsSidebarView extends ItemView {
             }
         }
 
+        if (hasComments) {
+            menu.addSeparator();
+        }
+
         menu.addItem((item) => {
             item
                 .setTitle(t('contextMenu.removeComments'))
@@ -5833,26 +5837,34 @@ export class HighlightsSidebarView extends ItemView {
         // Check if user has defined custom names
         const customNames = this.plugin.settings.customColorNames;
         const colors = this.plugin.settings.customColors;
+        const normalized = hex.trim().toLowerCase();
+        const defaultColor = this.plugin.settings.highlightColor.trim().toLowerCase();
+
+        // Highlights with no explicit color use the default highlight color.
+        // Show "Default" instead of a hex code.
+        if (normalized === defaultColor) {
+            return t('emptyStates.default');
+        }
 
         // Use custom names if they exist and are not empty
-        if (hex === colors.yellow && customNames.yellow.trim()) {
+        if (normalized === colors.yellow.toLowerCase() && customNames.yellow.trim()) {
             return customNames.yellow.trim();
         }
-        if (hex === colors.red && customNames.red.trim()) {
+        if (normalized === colors.red.toLowerCase() && customNames.red.trim()) {
             return customNames.red.trim();
         }
-        if (hex === colors.teal && customNames.teal.trim()) {
+        if (normalized === colors.teal.toLowerCase() && customNames.teal.trim()) {
             return customNames.teal.trim();
         }
-        if (hex === colors.blue && customNames.blue.trim()) {
+        if (normalized === colors.blue.toLowerCase() && customNames.blue.trim()) {
             return customNames.blue.trim();
         }
-        if (hex === colors.green && customNames.green.trim()) {
+        if (normalized === colors.green.toLowerCase() && customNames.green.trim()) {
             return customNames.green.trim();
         }
 
-        // Fall back to hex code
-        return hex;
+        // Fall back to hex code (uppercase for consistency)
+        return hex.toUpperCase();
     }
 
     private getGroupDisplayName(groupKey: string): string {
