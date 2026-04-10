@@ -4490,10 +4490,13 @@ export class HighlightsSidebarView extends ItemView {
                 });
         });
 
-        if (this.plugin.settings.emojiHighlightsEnabled && !highlight.isNativeComment && highlight.type !== 'html') {
-            const colorSlots: Array<'yellow' | 'red' | 'teal' | 'blue' | 'green'> = ['yellow', 'red', 'teal', 'blue', 'green'];
-            const defaultSlot = this.plugin.settings.emojiDefaultColorSlot;
-            const availableSlots = colorSlots.filter(slot => defaultSlot === 'none' || slot !== defaultSlot);
+        if (
+            this.plugin.settings.emojiHighlightsEnabled &&
+            this.plugin.settings.showEmojiColorActionsInContextMenu &&
+            !highlight.isNativeComment &&
+            highlight.type !== 'html'
+        ) {
+            const availableSlots = this.plugin.getMenuColorSlots(highlight.color);
 
             if (availableSlots.length > 0) {
                 menu.addSeparator();
@@ -4506,10 +4509,10 @@ export class HighlightsSidebarView extends ItemView {
 
                 availableSlots.forEach((slot) => {
                     const display = this.getColorLabelForMenuSlot(slot);
-                    const emoji = this.getFirstEmojiAliasForMenuSlot(slot);
-                    const title = emoji ? `${emoji}${display}` : display;
+                    const colorHex = this.plugin.settings.customColors[slot];
 
                     menu.addItem((item) => {
+                        const title = this.buildColoredMenuTitle(display, colorHex);
                         item
                             .setTitle(title)
                             .setIcon('highlighter')
@@ -4551,17 +4554,38 @@ export class HighlightsSidebarView extends ItemView {
         menu.showAtMouseEvent(event);
     }
 
-    private getFirstEmojiAliasForMenuSlot(slot: 'yellow' | 'red' | 'teal' | 'blue' | 'green'): string {
-        const raw = this.plugin.settings.emojiColorMappings[slot] || '';
-        return raw.split(',').map(v => v.trim()).find(v => v.length > 0) || '';
-    }
-
     private getColorLabelForMenuSlot(slot: 'yellow' | 'red' | 'teal' | 'blue' | 'green'): string {
         const customName = this.plugin.settings.customColorNames[slot]?.trim();
         if (customName && customName.length > 0) {
             return customName;
         }
         return this.plugin.settings.customColors[slot].toUpperCase();
+    }
+
+    private buildColoredMenuTitle(label: string, colorHex: string): DocumentFragment {
+        const frag = document.createDocumentFragment();
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '14');
+        svg.setAttribute('height', '14');
+        svg.setAttribute('viewBox', '0 0 14 14');
+        svg.style.cssText = 'display:inline-block;vertical-align:middle;margin-left:4px;margin-right:6px;flex-shrink:0';
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', '7');
+        circle.setAttribute('cy', '7');
+        circle.setAttribute('r', '5.5');
+        circle.setAttribute('fill', colorHex);
+        circle.setAttribute('stroke', 'var(--background-modifier-border)');
+        circle.setAttribute('stroke-width', '1');
+        svg.appendChild(circle);
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = label;
+
+        frag.appendChild(textSpan);
+        frag.appendChild(svg);
+        return frag;
     }
 
     private rerenderCurrentView(): void {

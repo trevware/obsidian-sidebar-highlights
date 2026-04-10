@@ -186,6 +186,14 @@
           "name": "复制时附带 emoji 颜色符号",
           "desc": "默认关闭。启用时复制保留 emoji 前缀；关闭时仅复制正文。"
         },
+        "showEmojiColorActionsInContextMenu": {
+          "name": "在右键显示高亮颜色操作",
+          "desc": "默认开启。关闭后将隐藏 emoji 相关改色菜单，仅保留高亮基础操作。"
+        },
+        "showAllColorsInMenu": {
+          "name": "菜单中显示出所有颜色",
+          "desc": "启用后菜单显示全部颜色（包含默认颜色和当前颜色）；关闭时会隐藏默认颜色和当前颜色。"
+        },
         "searchMatchEmoji": {
           "name": "搜索时匹配 emoji",
           "desc": "默认关闭。启用后，文本搜索会同时匹配源高亮文本中的 emoji。"
@@ -369,6 +377,8 @@
     "markRead": "标记为已读",
     "markAboveRead": "将上方标记为已读",
     "markBelowRead": "将下方标记为已读",
+    "modifyHighlightColor": "修改高亮颜色",
+    "addColoredHighlight": "创建彩色高亮",
     "createColoredHighlightGroup": "创建彩色高亮",
     "removeHighlight": "移除高亮",
     "clearHighlightColor": "清除高亮颜色",

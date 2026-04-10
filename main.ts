@@ -1,5 +1,5 @@
 // main.ts
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, debounce } from 'obsidian';
+import { App, Editor, MarkdownView, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, debounce } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
@@ -7,6 +7,12 @@ import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { i18n, t } from './src/i18n';
+
+declare module 'obsidian' {
+    interface MenuItem {
+        setSubmenu?(): Menu;
+    }
+}
 
 export interface Highlight {
     id: string;
@@ -132,6 +138,8 @@ export interface CommentPluginSettings {
     emojiDefaultColorSlot: 'none' | 'yellow' | 'red' | 'teal' | 'blue' | 'green'; // Switching to this color clears emoji prefix instead of writing one
     emojiWritebackNoPrompt: boolean; // Skip confirmation prompt when writing emoji changes from sidebar color picker
     copyIncludeEmojiColorSymbol: boolean; // Include emoji color prefix when copying in emoji mode
+    showEmojiColorActionsInContextMenu: boolean; // Show emoji color action menu items in context menus
+    showAllColorsInMenu: boolean; // Show all colors in menu, including default/current color
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -204,6 +212,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     emojiDefaultColorSlot: 'yellow',
     emojiWritebackNoPrompt: false,
     copyIncludeEmojiColorSymbol: false,
+    showEmojiColorActionsInContextMenu: true,
+    showAllColorsInMenu: false,
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -327,16 +337,61 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.registerEvent(
             this.app.workspace.on('editor-menu', (menu, editor, view) => {
+                const file = view.file;
+                if (!file) {
+                    return;
+                }
+
+                // Submenu hover behavior is unreliable in native/system menus.
+                // Force Obsidian-rendered menu when emoji context submenus are enabled.
+                if (this.settings.emojiHighlightsEnabled && this.settings.showEmojiColorActionsInContextMenu) {
+                    menu.setUseNativeMenu(false);
+                }
+
                 if (editor.getSelection()) {
                     menu.addItem((item) => {
                         item
-                            .setTitle('Create highlight')
+                            .setTitle(t('commands.createHighlight'))
                             .setIcon('highlighter')
                             .onClick(() => {
                                 this.createHighlight(editor);
                             });
                     });
+
+                    if (this.settings.emojiHighlightsEnabled && this.settings.showEmojiColorActionsInContextMenu) {
+                        const createColorMenu = this.buildCreateColoredHighlightMenu(editor);
+                        menu.addItem((item) => {
+                            item
+                                .setTitle(t('contextMenu.addColoredHighlight'))
+                                .setIcon('palette');
+
+                            if (item.setSubmenu) {
+                                const submenu = item.setSubmenu();
+                                this.populateCreateColoredHighlightMenu(submenu, editor);
+                            } else {
+                                item.onClick((evt) => {
+                                    if (evt instanceof MouseEvent) {
+                                        createColorMenu.showAtMouseEvent(evt);
+                                    }
+                                });
+                            }
+                        });
+                    }
+
+                    const highlightAtSelection = this.findHighlightAtSelection(editor, file.path);
+                    if (highlightAtSelection) {
+                        this.addHighlightActionsToEditorMenu(menu, highlightAtSelection);
+                    }
+
+                    return;
                 }
+
+                // Keep cursor-based menu support when no text is selected.
+                const highlightAtCursor = this.findHighlightAtCursor(editor, file.path);
+                if (!highlightAtCursor) {
+                    return;
+                }
+                this.addHighlightActionsToEditorMenu(menu, highlightAtCursor);
             })
         );
 
@@ -520,6 +575,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         if (loadedData.copyIncludeEmojiColorSymbol !== undefined) {
             merged.copyIncludeEmojiColorSymbol = loadedData.copyIncludeEmojiColorSymbol;
+        }
+        if (loadedData.showEmojiColorActionsInContextMenu !== undefined) {
+            merged.showEmojiColorActionsInContextMenu = loadedData.showEmojiColorActionsInContextMenu;
+        }
+        if (loadedData.showAllColorsInMenu !== undefined) {
+            merged.showAllColorsInMenu = loadedData.showAllColorsInMenu;
         }
 
         return merged;
@@ -1695,6 +1756,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (oldSettings.copyIncludeEmojiColorSymbol !== undefined) {
                 this.settings.copyIncludeEmojiColorSymbol = oldSettings.copyIncludeEmojiColorSymbol;
             }
+            if (oldSettings.showEmojiColorActionsInContextMenu !== undefined) {
+                this.settings.showEmojiColorActionsInContextMenu = oldSettings.showEmojiColorActionsInContextMenu;
+            }
+            if (oldSettings.showAllColorsInMenu !== undefined) {
+                this.settings.showAllColorsInMenu = oldSettings.showAllColorsInMenu;
+            }
             if (oldSettings.liteMode !== undefined) {
                 this.settings.liteMode = oldSettings.liteMode;
             }
@@ -1890,6 +1957,234 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
+    private findHighlightAtCursor(editor: Editor, filePath: string): Highlight | null {
+        const highlights = this.highlights.get(filePath);
+        if (!highlights || highlights.length === 0) {
+            return null;
+        }
+
+        const cursorOffset = editor.posToOffset(editor.getCursor());
+        return highlights.find((h) => cursorOffset >= h.startOffset && cursorOffset <= h.endOffset) || null;
+    }
+
+    private findHighlightAtSelection(editor: Editor, filePath: string): Highlight | null {
+        const highlights = this.highlights.get(filePath);
+        if (!highlights || highlights.length === 0) {
+            return null;
+        }
+
+        const fromOffset = editor.posToOffset(editor.getCursor('from'));
+        const toOffset = editor.posToOffset(editor.getCursor('to'));
+        return highlights.find((h) => fromOffset >= h.startOffset && toOffset <= h.endOffset) || null;
+    }
+
+    private addHighlightActionsToEditorMenu(menu: Menu, highlight: Highlight): void {
+        menu.addSeparator();
+        menu.addItem((item) => {
+            item
+                .setTitle(t('contextMenu.removeHighlight'))
+                .setIcon('eraser')
+                .onClick(async () => {
+                    const ok = await this.removeHighlightFromSource(highlight, 'remove-highlight');
+                    if (ok) {
+                        new Notice(t('notices.highlightRemoved'));
+                    }
+                });
+        });
+
+        if (
+            this.settings.emojiHighlightsEnabled &&
+            this.settings.showEmojiColorActionsInContextMenu &&
+            !highlight.isNativeComment &&
+            highlight.type !== 'html' &&
+            highlight.type !== 'comment'
+        ) {
+            const currentColor = highlight.color;
+            const availableSlots = this.getMenuColorSlots(currentColor);
+
+            if (availableSlots.length > 0 || !!currentColor) {
+                if (currentColor) {
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('contextMenu.clearHighlightColor'))
+                            .setIcon('paint-roller')
+                            .onClick(async () => {
+                                await this.changeHighlightColorFromEditorMenu(highlight, undefined);
+                                new Notice(t('notices.highlightColorCleared'));
+                            });
+                    });
+                }
+
+                const colorMenu = this.buildEditorHighlightColorMenu(highlight);
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('contextMenu.modifyHighlightColor'))
+                        .setIcon('palette');
+
+                    if (item.setSubmenu) {
+                        const submenu = item.setSubmenu();
+                        this.populateEditorHighlightColorMenu(submenu, highlight);
+                    } else {
+                        item.onClick((evt) => {
+                            if (evt instanceof MouseEvent) {
+                                colorMenu.showAtMouseEvent(evt);
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    private buildEditorHighlightColorMenu(highlight: Highlight): Menu {
+        const colorMenu = new Menu();
+        this.populateEditorHighlightColorMenu(colorMenu, highlight);
+        return colorMenu;
+    }
+
+    private populateEditorHighlightColorMenu(colorMenu: Menu, highlight: Highlight): void {
+        const availableSlots = this.getMenuColorSlots(highlight.color);
+
+        for (const slot of availableSlots) {
+            const colorHex = this.settings.customColors[slot];
+            const label = this.getColorMenuLabel(slot);
+            colorMenu.addItem((item) => {
+                const title = this.buildColoredMenuTitle(label, colorHex);
+                item
+                    .setTitle(title)
+                    .setIcon('highlighter')
+                    .onClick(async () => {
+                        await this.changeHighlightColorFromEditorMenu(highlight, colorHex);
+                    });
+            });
+        }
+
+    }
+
+    private buildCreateColoredHighlightMenu(editor: Editor): Menu {
+        const colorMenu = new Menu();
+        this.populateCreateColoredHighlightMenu(colorMenu, editor);
+        return colorMenu;
+    }
+
+    private populateCreateColoredHighlightMenu(colorMenu: Menu, editor: Editor): void {
+        const availableSlots = this.getMenuColorSlots();
+
+        for (const slot of availableSlots) {
+            const colorHex = this.settings.customColors[slot];
+            const label = this.getColorMenuLabel(slot);
+            colorMenu.addItem((item) => {
+                const title = this.buildColoredMenuTitle(label, colorHex);
+                item
+                    .setTitle(title)
+                    .setIcon('highlighter')
+                    .onClick(() => {
+                        this.createColoredHighlight(editor, colorHex);
+                    });
+            });
+        }
+    }
+
+    private createColoredHighlight(editor: Editor, colorHex: string): void {
+        const selection = editor.getSelection();
+        if (!selection) {
+            new Notice(t('notices.noTextSelected'));
+            return;
+        }
+
+        const emoji = this.getPreferredEmojiForColor(colorHex);
+        const selectionWithEmoji = emoji ? `${emoji}${selection}` : selection;
+        editor.replaceSelection(`==${selectionWithEmoji}==`);
+    }
+
+    private getColorMenuLabel(slot: 'yellow' | 'red' | 'teal' | 'blue' | 'green'): string {
+        const customName = this.settings.customColorNames[slot]?.trim();
+        if (customName && customName.length > 0) {
+            return customName;
+        }
+        return this.settings.customColors[slot].toUpperCase();
+    }
+
+    public getMenuColorSlots(currentColor?: string): Array<'yellow' | 'red' | 'teal' | 'blue' | 'green'> {
+        // Keep exactly the same order as color settings section.
+        const ordered: Array<'yellow' | 'red' | 'teal' | 'blue' | 'green'> = ['yellow', 'red', 'teal', 'blue', 'green'];
+
+        if (this.settings.showAllColorsInMenu) {
+            return ordered;
+        }
+
+        const defaultSlot = this.settings.emojiDefaultColorSlot;
+        const normalizedCurrent = (currentColor || '').trim().toLowerCase();
+        return ordered.filter((slot) => {
+            if (defaultSlot !== 'none' && slot === defaultSlot) {
+                return false;
+            }
+
+            const slotColor = (this.settings.customColors[slot] || '').trim().toLowerCase();
+            if (normalizedCurrent && slotColor === normalizedCurrent) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    private buildColoredMenuTitle(label: string, colorHex: string): DocumentFragment {
+        const frag = document.createDocumentFragment();
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '14');
+        svg.setAttribute('height', '14');
+        svg.setAttribute('viewBox', '0 0 14 14');
+        svg.style.cssText = 'display:inline-block;vertical-align:middle;margin-left:4px;margin-right:6px;flex-shrink:0';
+
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', '7');
+        circle.setAttribute('cy', '7');
+        circle.setAttribute('r', '5.5');
+        circle.setAttribute('fill', colorHex);
+        circle.setAttribute('stroke', 'var(--background-modifier-border)');
+        circle.setAttribute('stroke-width', '1');
+        svg.appendChild(circle);
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = label;
+
+        frag.appendChild(textSpan);
+        frag.appendChild(svg);
+        return frag;
+    }
+
+    private async changeHighlightColorFromEditorMenu(highlight: Highlight, nextColor?: string): Promise<void> {
+        const currentColor = highlight.color || undefined;
+        if (currentColor === nextColor) {
+            return;
+        }
+
+        this.updateHighlight(highlight.id, { color: nextColor }, highlight.filePath);
+
+        if (this.settings.emojiHighlightsEnabled && !highlight.isNativeComment && highlight.type !== 'html' && highlight.type !== 'comment') {
+            try {
+                const writebackResult = await this.updateHighlightEmojiPrefixInSource(highlight, nextColor);
+                if (writebackResult === 'failed') {
+                    this.updateHighlight(highlight.id, { color: currentColor }, highlight.filePath);
+                    this.debouncedScanAllFiles(true);
+                    new Notice(t('notices.colorWritebackFailed'));
+                    this.refreshSidebar();
+                    return;
+                }
+            } catch (error) {
+                this.updateHighlight(highlight.id, { color: currentColor }, highlight.filePath);
+                this.debouncedScanAllFiles(true);
+                new Notice(t('notices.colorWritebackFailed'));
+                this.refreshSidebar();
+                return;
+            }
+        }
+
+        this.refreshSidebar();
+    }
+
     async loadHighlightsFromFile(file: TFile) {
         // Only clear selection if it's not for a highlight-initiated file switch
         // (if selectedHighlightId exists and matches a highlight in the target file, preserve it)
@@ -1992,8 +2287,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         // - If stripping the wrapper: replace with just the inner text.
         // - If keeping the wrapper: keep the original highlight (chars
         //   [startOffset .. endOffset]) and discard whatever follows.
+        const normalizedInnerText = (this.settings.emojiHighlightsEnabled && !highlight.isNativeComment && highlight.type !== 'html' && highlight.type !== 'comment')
+            ? this.parseEmojiPrefixedHighlightText(sourceText).strippedText
+            : highlight.text;
+
         const replacement = stripWrapper
-            ? sourceText
+            ? normalizedInnerText
             : content.substring(highlight.startOffset, highlight.endOffset);
 
         let newContent =
@@ -4147,6 +4446,26 @@ class HighlightSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.copyIncludeEmojiColorSymbol)
                     .onChange(async (value) => {
                         this.plugin.settings.copyIncludeEmojiColorSymbol = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.showEmojiColorActionsInContextMenu.name'))
+                .setDesc(t('settings.detection.emojiHighlights.showEmojiColorActionsInContextMenu.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showEmojiColorActionsInContextMenu)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showEmojiColorActionsInContextMenu = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.showAllColorsInMenu.name'))
+                .setDesc(t('settings.detection.emojiHighlights.showAllColorsInMenu.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showAllColorsInMenu)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showAllColorsInMenu = value;
                         await this.plugin.saveSettings();
                     }));
 

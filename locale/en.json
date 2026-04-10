@@ -186,6 +186,14 @@
           "name": "Include emoji color symbol when copying",
           "desc": "Default off. When enabled, copied content keeps emoji prefixes; when disabled, only plain text is copied."
         },
+        "showEmojiColorActionsInContextMenu": {
+          "name": "Show color actions in context menus",
+          "desc": "Default on. When disabled, emoji-related color menus are hidden and only base highlight actions remain."
+        },
+        "showAllColorsInMenu": {
+          "name": "Show all colors in menu",
+          "desc": "When enabled, menu shows all colors (including default and current color). When disabled, default/current colors are hidden."
+        },
         "searchMatchEmoji": {
           "name": "Match emoji in search",
           "desc": "Default off. When enabled, text search also matches emoji in source highlight text."
@@ -369,6 +377,8 @@
     "markRead": "Mark as Read",
     "markAboveRead": "Mark above as read",
     "markBelowRead": "Mark below as read",
+    "modifyHighlightColor": "Modify highlight color",
+    "addColoredHighlight": "Create colored highlight",
     "createColoredHighlightGroup": "Create colored highlight",
     "removeHighlight": "Remove highlight",
     "clearHighlightColor": "Clear highlight color",
