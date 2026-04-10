@@ -5,20 +5,28 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.36.0] - 2026-04-07
+## [1.38.0] - 2026-04-10
 
 ### Added
-- **Follow editor scroll**: New toggle in the toolbar overflow menu — when enabled, the sidebar automatically centers and selects the highlight closest to your editor's visible area as you scroll. Smooth scrolling, doesn't fight you when you scroll the sidebar manually, and works even when the editor doesn't have focus.
-- **Toolbar overflow menu**: Secondary actions (Follow editor scroll, Copy visible highlights, Revert highlight colors) are now grouped under a single vertical-ellipsis menu at the far right of the toolbar to reduce clutter.
-- **Copy visible highlights**: New menu item that copies all currently-visible highlights to the clipboard in markdown format. Respects every active filter — search, tags, collections, native-comments toggle, minimum character count — so you get exactly what you see in the sidebar. Each highlight is formatted with its `==text==` or `%%comment%%` wrapper plus any attached `^[footnotes]`, separated by paragraph breaks.
-- **Right-click context menu on highlights**: Right-click any highlight in the sidebar for three new actions:
-  - **Remove highlight**: Strips the `==`/`%%`/HTML wrapper, keeps the inner text and any attached comments.
-  - **Remove comments**: Keeps the highlight wrapper, strips trailing inline footnotes, standard footnote references, and any orphaned `[^N]:` definitions.
-  - **Remove highlight and comments**: Strips both.
+- **Editor highlight decorations**: Emoji-prefixed highlights (e.g. `==🟥text==`) now display their configured background color directly in the editor. The emoji prefix is hidden when the cursor is outside the highlight and revealed when editing, matching Obsidian's native `==` marker behavior.
+- **Default color for plain highlights**: When a default emoji color slot is configured (e.g. yellow), plain `==highlights==` without emoji also display the configured background color in the editor.
+- **Highlight color intensity slider**: New settings slider (30–100%) to control the background color opacity of editor highlight decorations.
+- **Editor decorator toggle**: Independent toggle to enable/disable editor highlight decorations without affecting other emoji highlight features.
+
+### Changed
+- **Sidebar color grouping**: Shows "Default" label for ungrouped highlights in color groups instead of raw hex values; hex comparison is now case-insensitive.
 
 ### Fixed
-- **Code blocks inside callouts and blockquotes**: Fenced code blocks prefixed with `> ` (callouts, blockquotes) or leading whitespace (indented list items) are now correctly excluded from highlight detection. Previously, `==` operators inside DataviewJS or other code blocks nested in callouts would produce phantom highlights in the sidebar.
-- **Nested image-in-link URLs**: `[![alt](image-url)](destination-url)` syntax is now matched as a single link range. Previously the regex only captured the inner image link, leaving destination URLs exposed — which caused phantom highlights when destination URLs contained `==` (e.g. base64-encoded WeChat-style query parameters).
+- **Editor context menu**: Highlight color actions now always appear in editor right-click by using unconditional cursor fallback when no text is selected.
+- **Comment separator**: Only shows comment separator in sidebar when comments actually exist.
+
+---
+
+**编辑器高亮装饰**：带有 emoji 前缀的高亮（如 `==🟥文字==`）现在直接在编辑器中显示对应的彩色背景。光标不在高亮范围时隐藏 emoji 前缀，点击编辑时显示，行为与 Obsidian 原生 `==` 标记一致。
+
+**默认颜色高亮**：配置了默认 emoji 颜色后（如黄色），无 emoji 的普通 `==高亮==` 也会在编辑器中显示对应背景色。
+
+**颜色浓度滑块**：新增设置滑块（30–100%），控制编辑器高亮装饰的背景色透明度。
 
 ## [1.37.0] - 2026-04-10
 
