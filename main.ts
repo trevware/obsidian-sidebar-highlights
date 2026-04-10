@@ -7,6 +7,8 @@ import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { i18n, t } from './src/i18n';
+import { createEmojiHighlightExtension } from './src/extensions/emoji-highlight-extension';
+import type { Extension } from '@codemirror/state';
 
 declare module 'obsidian' {
     interface MenuItem {
@@ -140,6 +142,8 @@ export interface CommentPluginSettings {
     copyIncludeEmojiColorSymbol: boolean; // Include emoji color prefix when copying in emoji mode
     showEmojiColorActionsInContextMenu: boolean; // Show emoji color action menu items in context menus
     showAllColorsInMenu: boolean; // Show all colors in menu, including default/current color
+    emojiEditorDecorator: boolean; // Decorate emoji highlights in editor with background color and hide emoji when not editing
+    emojiEditorColorOpacity: number; // Background color mix percentage for editor emoji highlight decorations (30–100)
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -214,6 +218,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     copyIncludeEmojiColorSymbol: false,
     showEmojiColorActionsInContextMenu: true,
     showAllColorsInMenu: false,
+    emojiEditorDecorator: true,
+    emojiEditorColorOpacity: 60,
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -262,6 +268,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private isScanningFiles: boolean = false; // Prevent concurrent scans
     private fileScanMtimeCache: Map<string, number> = new Map(); // Track file mtime to skip unchanged files
     private pendingSettingsScanTimeout: number | null = null; // Debounce settings-triggered scans
+    private emojiEditorExtensions: Extension[] = []; // CM6 editor extensions for emoji highlight decorations
 
     /**
      * Debounced scan for settings changes.
@@ -278,6 +285,26 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.pendingSettingsScanTimeout = null;
             this.scanAllFilesForHighlights(forceFullRescan);
         }, 500);
+    }
+
+    /**
+     * Rebuild the CM6 editor extension array for emoji highlight decorations.
+     * Mutates the registered Extension[] in place and triggers a workspace refresh.
+     */
+    rebuildEmojiEditorExtensions() {
+        this.emojiEditorExtensions.length = 0;
+        if (this.settings.emojiHighlightsEnabled && this.settings.emojiEditorDecorator) {
+            this.emojiEditorExtensions.push(
+                createEmojiHighlightExtension({
+                    emojiColorMappings: { ...this.settings.emojiColorMappings },
+                    customColors: { ...this.settings.customColors },
+                    defaultColorSlot: this.settings.emojiDefaultColorSlot,
+                })
+            );
+        }
+        // Update the CSS variable so styles.css picks up the current opacity
+        document.body.style.setProperty('--sh-editor-highlight-opacity', `${this.settings.emojiEditorColorOpacity}%`);
+        this.app.workspace.updateOptions();
     }
 
     async onload() {
@@ -378,20 +405,27 @@ export default class HighlightCommentsPlugin extends Plugin {
                         });
                     }
 
-                    const highlightAtSelection = this.findHighlightAtSelection(editor, file.path);
+                    const highlightAtSelection = this.findHighlightAtSelection(editor, file.path)
+                        ?? this.findHighlightAtCursor(editor, file.path);
                     if (highlightAtSelection) {
                         this.addHighlightActionsToEditorMenu(menu, highlightAtSelection);
                     }
-
-                    return;
                 }
 
-                // Keep cursor-based menu support when no text is selected.
-                const highlightAtCursor = this.findHighlightAtCursor(editor, file.path);
-                if (!highlightAtCursor) {
-                    return;
+                // Always try cursor-based matching as fallback — Obsidian may
+                // report a "selection" (e.g. when expanding ==markers==) even
+                // though nothing is visually selected, which skips the block above.
+                {
+                    const highlightAtCursor = this.findHighlightAtCursor(editor, file.path);
+                    if (highlightAtCursor) {
+                        // Avoid duplicate menu items if the selection branch already added them.
+                        const alreadyAdded = editor.getSelection() &&
+                            (this.findHighlightAtSelection(editor, file.path) ?? this.findHighlightAtCursor(editor, file.path));
+                        if (!alreadyAdded) {
+                            this.addHighlightActionsToEditorMenu(menu, highlightAtCursor);
+                        }
+                    }
                 }
-                this.addHighlightActionsToEditorMenu(menu, highlightAtCursor);
             })
         );
 
@@ -420,6 +454,10 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.addStyles();
+
+        // Register CM6 editor extension for emoji highlight decorations
+        this.rebuildEmojiEditorExtensions();
+        this.registerEditorExtension(this.emojiEditorExtensions);
 
         if (!this.settings.liteMode) {
             // Register collection commands
@@ -640,6 +678,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         document.body.style.removeProperty('--sh-comment-font-size');
         document.body.style.removeProperty('--sh-highlight-font-weight');
         document.body.style.removeProperty('--sh-task-font-weight');
+        document.body.style.removeProperty('--sh-editor-highlight-opacity');
     }
 
     private updateCustomColorStyles() {
@@ -661,6 +700,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Set font weight custom properties
         document.body.style.setProperty('--sh-highlight-font-weight', `${this.settings.highlightFontWeight}`);
         document.body.style.setProperty('--sh-task-font-weight', `${this.settings.taskFontWeight}`);
+
+        // Set editor highlight opacity
+        document.body.style.setProperty('--sh-editor-highlight-opacity', `${this.settings.emojiEditorColorOpacity}%`);
     }
 
     async activateView() {
@@ -4436,6 +4478,7 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.plugin.settings.emojiHighlightsEnabled = value;
                         await this.plugin.saveSettings();
                         this.plugin.debouncedScanAllFiles(true);
+                        this.plugin.rebuildEmojiEditorExtensions();
                         renderEmojiSettings();
                     }));
 
@@ -4479,6 +4522,30 @@ class HighlightSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     }));
 
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.editorDecorator.name'))
+                .setDesc(t('settings.detection.emojiHighlights.editorDecorator.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.emojiEditorDecorator)
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiEditorDecorator = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.rebuildEmojiEditorExtensions();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.editorColorOpacity.name'))
+                .setDesc(t('settings.detection.emojiHighlights.editorColorOpacity.desc'))
+                .addSlider(slider => slider
+                    .setLimits(30, 100, 5)
+                    .setValue(this.plugin.settings.emojiEditorColorOpacity)
+                    .setDynamicTooltip()
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiEditorColorOpacity = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.rebuildEmojiEditorExtensions();
+                    }));
+
             if (!this.plugin.settings.emojiHighlightsEnabled) {
                 return;
             }
@@ -4501,6 +4568,7 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.plugin.settings.emojiDefaultColorSlot = next;
                         await this.plugin.saveSettings();
                         this.plugin.debouncedScanAllFiles(true);
+                        this.plugin.rebuildEmojiEditorExtensions();
                     }));
 
             // Keep a direct handle so labels can be updated without full rerender.
@@ -4543,6 +4611,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             persistEmojiMappingsDebounceTimer = window.setTimeout(async () => {
                                 await this.plugin.saveSettings();
                                 this.plugin.debouncedScanAllFiles(true);
+                                this.plugin.rebuildEmojiEditorExtensions();
                                 persistEmojiMappingsDebounceTimer = null;
                             }, 300);
                         }));
@@ -5001,6 +5070,8 @@ class HighlightSettingTab extends PluginSettingTab {
         this.plugin.refreshSidebar();
         // Update theme classes if needed
         this.plugin.updateStyles();
+        // Rebuild CM6 editor decorations with updated colors
+        this.plugin.rebuildEmojiEditorExtensions();
     }
 }
 

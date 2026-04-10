@@ -198,6 +198,14 @@
           "name": "搜索时匹配 emoji",
           "desc": "默认关闭。启用后，文本搜索会同时匹配源高亮文本中的 emoji。"
         },
+        "editorDecorator": {
+          "name": "在编辑器中装饰高亮",
+          "desc": "在编辑器中为 emoji 高亮显示对应的彩色背景。未编辑时隐藏 emoji 前缀，点击编辑时才显示。"
+        },
+        "editorColorOpacity": {
+          "name": "编辑器高亮颜色浓度",
+          "desc": "编辑器中高亮装饰的背景色混合比例（30–100%）。"
+        },
         "mappingHeading": "Emoji 与颜色映射",
         "mappingDesc": "使用逗号分隔，例如：🟥,🔴,🍓。所有匹配的 emoji 都会被识别成该颜色。",
         "defaultHighlightColor": {

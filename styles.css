@@ -22,6 +22,23 @@
 
 /* Plugin does not style editor highlights - themes handle .cm-highlight completely */
 
+/* ── Editor emoji highlight decorations ──
+ * The CM6 ViewPlugin adds .sh-editor-highlight-{slot} marks inside the native
+ * .cm-highlight span.  We override the parent .cm-highlight background using
+ * the same specificity prefix as Obsidian's own rule (.cm-s-obsidian span.cm-highlight).
+ * --sh-editor-highlight-opacity is set from plugin settings (default 60%).
+ */
+.cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-yellow),
+.cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-yellow) { background-color: color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-editor-highlight-opacity, 60%), transparent); }
+.cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-red),
+.cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-red)    { background-color: color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-editor-highlight-opacity, 60%), transparent); }
+.cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-teal),
+.cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-teal)   { background-color: color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-editor-highlight-opacity, 60%), transparent); }
+.cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-blue),
+.cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-blue)   { background-color: color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-editor-highlight-opacity, 60%), transparent); }
+.cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
+.cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green)  { background-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
 /* Sidebar highlights in tasks - use same styling as editor */
 .task-text-content .cm-highlight,
 .task-context .cm-highlight {
