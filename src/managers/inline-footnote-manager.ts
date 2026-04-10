@@ -201,7 +201,8 @@ export class InlineFootnoteManager {
      */
     public insertInlineFootnote(editor: Editor, highlight: Highlight, footnoteContent: string): { success: boolean, insertPos?: { line: number, ch: number }, contentLength: number } {
         const content = editor.getValue();
-        const escapedText = this.escapeRegex(highlight.text);
+        const sourceText = highlight.sourceText ?? highlight.text;
+        const escapedText = this.escapeRegex(sourceText);
 
         let bestMatch: { index: number, length: number } | null = null;
         let minDistance = Infinity;
@@ -247,7 +248,7 @@ export class InlineFootnoteManager {
             // Use HTML parser for distance-based matching
             const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
                 content,
-                highlight.text,
+                sourceText,
                 highlight.startOffset,
                 [] // No code block ranges available in this context
             );

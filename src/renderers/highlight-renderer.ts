@@ -296,6 +296,9 @@ export class HighlightRenderer {
         copyButton.addEventListener('click', async (event) => {
             event.stopPropagation();
             const sourceText = highlight.sourceText ?? highlight.text;
+            const includeEmoji = this.plugin.settings.copyIncludeEmojiColorSymbol;
+            const includeMarkers = this.plugin.settings.copyIncludeHighlightMarkers;
+            const baseText = includeEmoji ? sourceText : highlight.text;
 
             // Build the markdown text based on highlight type
             let textToCopy = '';
@@ -303,13 +306,13 @@ export class HighlightRenderer {
             if (highlight.isNativeComment) {
                 // Native comment: %%text%%
                 // For native comments, the text itself IS the comment, so don't add footnotes
-                textToCopy = `%%${sourceText}%%`;
+                textToCopy = includeMarkers ? `%%${baseText}%%` : baseText;
             } else if (highlight.type === 'html') {
                 // HTML highlights - just copy the text content (can't reconstruct exact HTML)
-                textToCopy = `==${sourceText}==`;
+                textToCopy = includeMarkers ? `==${baseText}==` : baseText;
             } else {
                 // Regular markdown highlight: ==text==
-                textToCopy = `==${sourceText}==`;
+                textToCopy = includeMarkers ? `==${baseText}==` : baseText;
             }
 
             // Add footnotes/comments if they exist (but not for native comments)

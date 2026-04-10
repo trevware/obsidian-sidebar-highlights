@@ -158,6 +158,7 @@ export interface CommentPluginSettings {
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
+    liteMode: boolean; // Lite mode: only process current note highlights
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -228,7 +229,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
     displayModes: [], // Empty array by default
-    currentDisplayModeId: null // No active display mode by default
+    currentDisplayModeId: null, // No active display mode by default
+    liteMode: false
 }
 
 type ColorSlotKey = 'yellow' | 'red' | 'teal' | 'blue' | 'green';
@@ -256,6 +258,9 @@ export default class HighlightCommentsPlugin extends Plugin {
      * Multiple rapid settings changes will only trigger one scan after the user stops toggling.
      */
     debouncedScanAllFiles(forceFullRescan: boolean = false) {
+        if (this.settings.liteMode) {
+            return;
+        }
         if (this.pendingSettingsScanTimeout !== null) {
             window.clearTimeout(this.pendingSettingsScanTimeout);
         }
@@ -361,46 +366,52 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.addStyles();
 
-        // Register collection commands
-        this.registerCollectionCommands();
+        if (!this.settings.liteMode) {
+            // Register collection commands
+            this.registerCollectionCommands();
 
-        // Register display mode commands
-        this.registerDisplayModeCommands();
+            // Register display mode commands
+            this.registerDisplayModeCommands();
+        }
 
         // Register all vault events after workspace is ready to avoid processing during initialization
         this.app.workspace.onLayoutReady(async () => {
             // Fix any duplicate timestamps from previous versions
             await this.fixDuplicateTimestamps();
 
-            this.scanAllFilesForHighlights();
+            if (!this.settings.liteMode) {
+                this.scanAllFilesForHighlights();
+            }
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
 
-            // Register vault events after layout is ready
-            this.registerEvent(
-                this.app.vault.on('create', (file) => {
-                    if (file instanceof TFile && this.shouldProcessFile(file)) {
-                        this.handleFileCreate(file);
-                    }
-                })
-            );
+            if (!this.settings.liteMode) {
+                // Register vault events after layout is ready
+                this.registerEvent(
+                    this.app.vault.on('create', (file) => {
+                        if (file instanceof TFile && this.shouldProcessFile(file)) {
+                            this.handleFileCreate(file);
+                        }
+                    })
+                );
 
-            this.registerEvent(
-                this.app.vault.on('rename', (file, oldPath) => {
-                    if (file instanceof TFile && this.shouldProcessFile(file)) {
-                        this.handleFileRename(file, oldPath);
-                    }
-                })
-            );
+                this.registerEvent(
+                    this.app.vault.on('rename', (file, oldPath) => {
+                        if (file instanceof TFile && this.shouldProcessFile(file)) {
+                            this.handleFileRename(file, oldPath);
+                        }
+                    })
+                );
 
-            this.registerEvent(
-                this.app.vault.on('delete', (file) => {
-                    if (file instanceof TFile && this.shouldProcessFile(file)) {
-                        this.handleFileDelete(file);
-                    }
-                })
-            );
+                this.registerEvent(
+                    this.app.vault.on('delete', (file) => {
+                        if (file instanceof TFile && this.shouldProcessFile(file)) {
+                            this.handleFileDelete(file);
+                        }
+                    })
+                );
+            }
         });
     }
 
@@ -516,10 +527,24 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async saveSettings() {
         // Save highlights and collections to settings before saving
-        this.settings.highlights = Object.fromEntries(this.highlights);
-        this.settings.collections = Object.fromEntries(this.collections);
+        if (!this.settings.liteMode) {
+            this.settings.highlights = Object.fromEntries(this.highlights);
+            this.settings.collections = Object.fromEntries(this.collections);
+        }
         await this.saveData(this.settings);
         this.updateStyles();
+    }
+
+    async clearGlobalStoredData() {
+        this.highlights.clear();
+        this.collections.clear();
+        this.fileScanMtimeCache.clear();
+
+        this.settings.highlights = {};
+        this.settings.collections = {};
+
+        await this.saveData(this.settings);
+        this.refreshSidebar();
     }
 
     addStyles() {
@@ -747,7 +772,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.highlights = new Map(Object.entries(this.settings.highlights || {}));
         
         // Re-register collection commands with updated data
-        this.registerCollectionCommands();
+        if (!this.settings.liteMode) {
+            this.registerCollectionCommands();
+        }
         
         // Update styles to reflect any color changes
         this.updateStyles();
@@ -1569,8 +1596,11 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async migrateSettings(oldSettings: any) {
         try {
-            // Always backup before migration
-            await this.createBackup('migration');
+            const isLiteMode = oldSettings?.liteMode === true;
+            // In lite mode, skip automatic backups.
+            if (!isLiteMode) {
+                await this.createBackup('migration');
+            }
             
             const oldVersion = oldSettings.settingsVersion || '1.13.0';
             const newVersion = DEFAULT_SETTINGS.settingsVersion;
@@ -1665,6 +1695,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (oldSettings.copyIncludeEmojiColorSymbol !== undefined) {
                 this.settings.copyIncludeEmojiColorSymbol = oldSettings.copyIncludeEmojiColorSymbol;
             }
+            if (oldSettings.liteMode !== undefined) {
+                this.settings.liteMode = oldSettings.liteMode;
+            }
             
             // Update version to current
             this.settings.settingsVersion = newVersion;
@@ -1742,8 +1775,10 @@ export default class HighlightCommentsPlugin extends Plugin {
     // Implement onExternalSettingsChange to reload all settings when they change externally
     async onExternalSettingsChange() {
         try {
-            // Create backup before any changes
-            await this.createBackup('external-sync');
+            // In lite mode, skip automatic backups.
+            if (!this.settings.liteMode) {
+                await this.createBackup('external-sync');
+            }
             
             // Load external settings
             const externalSettings = await this.loadData();
@@ -2082,6 +2117,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async scanAllFilesForHighlights(forceFullRescan: boolean = false) {
+        if (this.settings.liteMode) {
+            return;
+        }
         // Prevent concurrent scans - if already scanning, skip this call
         if (this.isScanningFiles) {
             console.log('Scan already in progress, skipping concurrent scan request');
@@ -2596,7 +2634,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Update color for HTML highlights, parse emoji colors when enabled.
                     color: type === 'html'
                         ? color
-                        : (parsedEmojiColor || existingHighlight.color),
+                        : (this.settings.emojiHighlightsEnabled && type === 'highlight'
+                            ? parsedEmojiColor
+                            : (parsedEmojiColor || existingHighlight.color)),
                     // Preserve existing createdAt timestamp if it exists
                     createdAt: existingHighlight.createdAt || Date.now(),
                     // Store the type for proper identification
@@ -2681,6 +2721,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             // This avoids clearing task cache and rebuilding entire DOM
             this.sidebarView.updateContent();
         } else {
+            const isColorGroupingMode = this.sidebarView.getGroupingMode() === 'color';
+
             // Only content changes - use targeted updates
             for (const [id, newHighlight] of newByID) {
                 const oldHighlight = oldByID.get(id);
@@ -2704,6 +2746,13 @@ export default class HighlightCommentsPlugin extends Plugin {
                     });
                     
                     if (oldJSON !== newJSON) {
+                        // When grouping by color, color changes require regrouping
+                        // (move item to a different section), not in-place patching.
+                        if (isColorGroupingMode && oldHighlight.color !== newHighlight.color) {
+                            this.sidebarView.updateContent();
+                            return;
+                        }
+
                         // This highlight changed - update just this item
                         this.sidebarView.updateItem(id);
                     }
@@ -2727,6 +2776,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private async handleFileCreate(file: TFile) {
+        if (this.settings.liteMode) {
+            return;
+        }
         try {
             // Read the content of the newly created file
             const content = await this.app.vault.read(file);
@@ -2747,6 +2799,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async handleFileRename(file: TFile, oldPath: string) {
+        if (this.settings.liteMode) {
+            return;
+        }
         const oldHighlights = this.highlights.get(oldPath);
         if (oldHighlights && oldHighlights.length > 0) {
             // Update file paths in highlights
@@ -2766,6 +2821,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private handleFileDelete(file: TFile) {
+        if (this.settings.liteMode) {
+            return;
+        }
         // Remove highlights for the deleted file
         if (this.highlights.has(file.path)) {
             
@@ -3390,9 +3448,47 @@ class HighlightSettingTab extends PluginSettingTab {
         let renderEmojiSettings: () => void = () => {};
         let refreshEmojiMappingLabels: () => void = () => {};
         let persistEmojiMappingsDebounceTimer: number | null = null;
+        const isLiteMode = this.plugin.settings.liteMode;
         const parseFirstEmojiAlias = (raw: string): string => {
             return raw.split(',').map(v => v.trim()).find(v => v.length > 0) || '';
         };
+
+        // LITE MODE SECTION
+        new Setting(containerEl).setHeading().setName(t('settings.liteMode.heading'));
+
+        new Setting(containerEl)
+            .setName(t('settings.liteMode.enabled.name'))
+            .setDesc(t('settings.liteMode.enabled.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.liteMode)
+                .onChange(async (value) => {
+                    this.plugin.settings.liteMode = value;
+
+                    if (value) {
+                        // Lite mode only keeps current note highlights; keep existing global data untouched.
+                        this.plugin.settings.showCurrentNoteTab = true;
+                        this.plugin.settings.showAllNotesTab = false;
+                        this.plugin.settings.showCollectionsTab = false;
+                        this.plugin.settings.showTasksTab = false;
+                    }
+
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                    this.display();
+
+                    new Notice(value ? t('notices.liteModeEnabled') : t('notices.liteModeDisabled'));
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.liteMode.clearGlobalData.name'))
+            .setDesc(t('settings.liteMode.clearGlobalData.desc'))
+            .addButton(button => button
+                .setButtonText(t('settings.liteMode.clearGlobalData.button'))
+                .setWarning()
+                .onClick(async () => {
+                    await this.plugin.clearGlobalStoredData();
+                    new Notice(t('notices.globalDataCleared'));
+                }));
 
         // DISPLAY SECTION
         new Setting(containerEl).setHeading().setName(t('settings.display.heading'));
@@ -3479,75 +3575,81 @@ class HighlightSettingTab extends PluginSettingTab {
         // VIEWS SECTION
         new Setting(containerEl).setHeading().setName(t('settings.views.heading'));
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showCurrentNoteTab.name'))
-            .setDesc(t('settings.views.showCurrentNoteTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCurrentNoteTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCurrentNoteTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        if (isLiteMode) {
+            new Setting(containerEl)
+                .setName(t('settings.views.liteModeLocked.name'))
+                .setDesc(t('settings.views.liteModeLocked.desc'));
+        } else {
+            new Setting(containerEl)
+                .setName(t('settings.views.showCurrentNoteTab.name'))
+                .setDesc(t('settings.views.showCurrentNoteTab.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showCurrentNoteTab)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showCurrentNoteTab = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshSidebar();
+                    }));
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showAllNotesTab.name'))
-            .setDesc(t('settings.views.showAllNotesTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showAllNotesTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showAllNotesTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+            new Setting(containerEl)
+                .setName(t('settings.views.showAllNotesTab.name'))
+                .setDesc(t('settings.views.showAllNotesTab.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showAllNotesTab)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showAllNotesTab = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshSidebar();
+                    }));
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showCollectionsTab.name'))
-            .setDesc(t('settings.views.showCollectionsTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCollectionsTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCollectionsTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+            new Setting(containerEl)
+                .setName(t('settings.views.showCollectionsTab.name'))
+                .setDesc(t('settings.views.showCollectionsTab.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showCollectionsTab)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showCollectionsTab = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshSidebar();
+                    }));
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showTasksTab.name'))
-            .setDesc(t('settings.views.showTasksTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showTasksTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showTasksTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+            new Setting(containerEl)
+                .setName(t('settings.views.showTasksTab.name'))
+                .setDesc(t('settings.views.showTasksTab.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.showTasksTab)
+                    .onChange(async (value) => {
+                        this.plugin.settings.showTasksTab = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshSidebar();
+                    }));
 
-        // DISPLAY MODES SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.displayModes.heading'));
+            // DISPLAY MODES SECTION
+            new Setting(containerEl).setHeading().setName(t('settings.displayModes.heading'));
 
-        // Save Current Display Settings button
-        new Setting(containerEl)
-            .setName(t('settings.displayModes.saveCurrentLabel'))
-            .setDesc(t('settings.displayModes.saveCurrentDesc'))
-            .addButton(button => button
-                .setButtonText(t('settings.displayModes.saveButton'))
-                .setCta()
-                .onClick(() => {
-                    const modal = new DisplayModeNameModal(this.app, (name) => {
-                        const displayMode = this.plugin.createDisplayModeFromCurrent(name);
-                        this.plugin.settings.displayModes.push(displayMode);
-                        this.plugin.saveSettings();
-                        this.plugin.registerDisplayModeCommands();
-                        this.display();  // Refresh settings to show new display mode
-                        new Notice(t('notices.displayModeSaved', { name: name }));
-                    });
-                    modal.open();
-                }));
+            // Save Current Display Settings button
+            new Setting(containerEl)
+                .setName(t('settings.displayModes.saveCurrentLabel'))
+                .setDesc(t('settings.displayModes.saveCurrentDesc'))
+                .addButton(button => button
+                    .setButtonText(t('settings.displayModes.saveButton'))
+                    .setCta()
+                    .onClick(() => {
+                        const modal = new DisplayModeNameModal(this.app, (name) => {
+                            const displayMode = this.plugin.createDisplayModeFromCurrent(name);
+                            this.plugin.settings.displayModes.push(displayMode);
+                            this.plugin.saveSettings();
+                            this.plugin.registerDisplayModeCommands();
+                            this.display();  // Refresh settings to show new display mode
+                            new Notice(t('notices.displayModeSaved', { name: name }));
+                        });
+                        modal.open();
+                    }));
 
-        // List existing display modes
-        const displayModesContainer = containerEl.createDiv();
-        this.renderDisplayModes(displayModesContainer);
+            // List existing display modes
+            const displayModesContainer = containerEl.createDiv();
+            this.renderDisplayModes(displayModesContainer);
+        }
 
         // TYPOGRAPHY SECTION
         new Setting(containerEl).setHeading().setName(t('settings.typography.heading'));

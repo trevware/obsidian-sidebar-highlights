@@ -255,6 +255,10 @@ export class HighlightsSidebarView extends ItemView {
         return this.viewMode;
     }
 
+    public getGroupingMode(): 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' {
+        return this.groupingMode;
+    }
+
     /**
      * Extract task lines AND their context from content for comparison
      * Returns array of normalized task strings (including context lines)
@@ -827,7 +831,7 @@ export class HighlightsSidebarView extends ItemView {
         let defaultActive = false;
 
         let currentNoteTab: HTMLElement | null = null;
-        if (this.plugin.settings.showCurrentNoteTab) {
+        if (this.plugin.settings.liteMode || this.plugin.settings.showCurrentNoteTab) {
             currentNoteTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
@@ -840,7 +844,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         let allNotesTab: HTMLElement | null = null;
-        if (this.plugin.settings.showAllNotesTab) {
+        if (!this.plugin.settings.liteMode && this.plugin.settings.showAllNotesTab) {
             allNotesTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
@@ -853,7 +857,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         let collectionsTab: HTMLElement | null = null;
-        if (this.plugin.settings.showCollectionsTab) {
+        if (!this.plugin.settings.liteMode && this.plugin.settings.showCollectionsTab) {
             collectionsTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
@@ -866,7 +870,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         let tasksTab: HTMLElement | null = null;
-        if (this.plugin.settings.showTasksTab) {
+        if (!this.plugin.settings.liteMode && this.plugin.settings.showTasksTab) {
             tasksTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
@@ -4354,32 +4358,34 @@ export class HighlightsSidebarView extends ItemView {
                     this.isColorChanging = false;
                 }, 2000);
                 
-                void this.changeHighlightColor(highlight, color);
-                this.rerenderCurrentView();
-                
-                // Restore scroll position after DOM rebuild and clear flag
-                requestAnimationFrame(() => {
-                    if (this.contentAreaEl && this.isColorChanging) {
-                        this.contentAreaEl.scrollTop = this.preservedScrollTop;
-                        this.isColorChanging = false;
-                        
-                        // Ensure the selected highlight styling is correct after color group change
-                        if (this.plugin.selectedHighlightId) {
-                            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
-                            if (selectedEl) {
-                                // Find the highlight data to get the updated color
-                                const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
-                                if (selectedHighlight) {
-                                    const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
-                                    selectedEl.style.borderLeftColor = highlightColor;
-                                    if (!selectedHighlight.isNativeComment) {
-                                        selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                void (async () => {
+                    await this.changeHighlightColor(highlight, color);
+                    this.rerenderCurrentView();
+
+                    // Restore scroll position after DOM rebuild and clear flag
+                    requestAnimationFrame(() => {
+                        if (this.contentAreaEl && this.isColorChanging) {
+                            this.contentAreaEl.scrollTop = this.preservedScrollTop;
+                            this.isColorChanging = false;
+
+                            // Ensure the selected highlight styling is correct after color group change
+                            if (this.plugin.selectedHighlightId) {
+                                const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+                                if (selectedEl) {
+                                    // Find the highlight data to get the updated color
+                                    const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
+                                    if (selectedHighlight) {
+                                        const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
+                                        selectedEl.style.borderLeftColor = highlightColor;
+                                        if (!selectedHighlight.isNativeComment) {
+                                            selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                })();
             },
             onHighlightClick: (highlight, event) => {
                 // Check if CMD/CTRL key is held for multi-select
@@ -4484,6 +4490,38 @@ export class HighlightsSidebarView extends ItemView {
                 });
         });
 
+        if (this.plugin.settings.emojiHighlightsEnabled && !highlight.isNativeComment && highlight.type !== 'html') {
+            const colorSlots: Array<'yellow' | 'red' | 'teal' | 'blue' | 'green'> = ['yellow', 'red', 'teal', 'blue', 'green'];
+            const defaultSlot = this.plugin.settings.emojiDefaultColorSlot;
+            const availableSlots = colorSlots.filter(slot => defaultSlot === 'none' || slot !== defaultSlot);
+
+            if (availableSlots.length > 0) {
+                menu.addSeparator();
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('contextMenu.createColoredHighlightGroup'))
+                        .setIcon('palette')
+                        .setDisabled(true);
+                });
+
+                availableSlots.forEach((slot) => {
+                    const display = this.getColorLabelForMenuSlot(slot);
+                    const emoji = this.getFirstEmojiAliasForMenuSlot(slot);
+                    const title = emoji ? `${emoji}${display}` : display;
+
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(title)
+                            .setIcon('highlighter')
+                            .onClick(async () => {
+                                await this.changeHighlightColor(highlight, this.plugin.settings.customColors[slot]);
+                                this.rerenderCurrentView();
+                            });
+                    });
+                });
+            }
+        }
+
         menu.addItem((item) => {
             item
                 .setTitle(t('contextMenu.removeComments'))
@@ -4511,6 +4549,19 @@ export class HighlightsSidebarView extends ItemView {
         });
 
         menu.showAtMouseEvent(event);
+    }
+
+    private getFirstEmojiAliasForMenuSlot(slot: 'yellow' | 'red' | 'teal' | 'blue' | 'green'): string {
+        const raw = this.plugin.settings.emojiColorMappings[slot] || '';
+        return raw.split(',').map(v => v.trim()).find(v => v.length > 0) || '';
+    }
+
+    private getColorLabelForMenuSlot(slot: 'yellow' | 'red' | 'teal' | 'blue' | 'green'): string {
+        const customName = this.plugin.settings.customColorNames[slot]?.trim();
+        if (customName && customName.length > 0) {
+            return customName;
+        }
+        return this.plugin.settings.customColors[slot].toUpperCase();
     }
 
     private rerenderCurrentView(): void {
@@ -4639,9 +4690,10 @@ export class HighlightsSidebarView extends ItemView {
         } else if (this.isHtmlHighlight(highlight)) {
             // HTML highlight handling
             const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+            const sourceText = this.getHighlightSourceText(highlight);
             const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
                 content,
-                highlight.text,
+                sourceText,
                 highlight.startOffset,
                 codeBlockRanges
             );
@@ -5174,18 +5226,19 @@ export class HighlightsSidebarView extends ItemView {
         } else if (this.isHtmlHighlight(highlight)) {
             // Use HTML parser to find highlights
             const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+            const sourceText = this.getHighlightSourceText(highlight);
             const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
                 content,
-                highlight.text,
+                sourceText,
                 highlight.startOffset,
                 codeBlockRanges
             );
 
             if (htmlHighlight) {
                 const fullMatch = htmlHighlight.fullMatch;
-                const textStartIndex = fullMatch.lastIndexOf(highlight.text);
+                const textStartIndex = fullMatch.lastIndexOf(sourceText);
                 const tagStartLength = textStartIndex;
-                const tagEndLength = fullMatch.length - textStartIndex - highlight.text.length;
+                const tagEndLength = fullMatch.length - textStartIndex - sourceText.length;
 
                 matches.push({
                     index: htmlHighlight.startOffset,
@@ -5361,9 +5414,10 @@ export class HighlightsSidebarView extends ItemView {
             } else if (this.isHtmlHighlight(highlight)) {
                 // Use HTML parser for distance-based matching
                 const codeBlockRanges = this.plugin.getCodeBlockRanges(content);
+                const sourceText = this.getHighlightSourceText(highlight);
                 const htmlHighlight = HtmlHighlightParser.findHighlightAtOffset(
                     content,
-                    highlight.text,
+                    sourceText,
                     highlight.startOffset,
                     codeBlockRanges
                 );
@@ -5713,7 +5767,19 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // When emoji highlight mode is enabled, write emoji change back to source.
-        await this.plugin.updateHighlightEmojiPrefixInSource(highlight, nextColor);
+        try {
+            const writebackResult = await this.plugin.updateHighlightEmojiPrefixInSource(highlight, nextColor);
+            if (writebackResult === 'failed') {
+                // Transaction rollback on source write failure.
+                this.plugin.updateHighlight(highlight.id, { color: currentColor }, highlight.filePath);
+                this.plugin.debouncedScanAllFiles(true);
+                new Notice(t('notices.colorWritebackFailed'));
+            }
+        } catch (error) {
+            this.plugin.updateHighlight(highlight.id, { color: currentColor }, highlight.filePath);
+            this.plugin.debouncedScanAllFiles(true);
+            new Notice(t('notices.colorWritebackFailed'));
+        }
     }
 
     private hasMappedEmojiPrefix(text: string): boolean {
@@ -7051,12 +7117,15 @@ export class HighlightsSidebarView extends ItemView {
      */
     private formatHighlightForCopy(highlight: Highlight): string {
         let text: string;
-        const sourceText = this.getHighlightSourceText(highlight);
+        const includeEmoji = this.plugin.settings.copyIncludeEmojiColorSymbol;
+        const includeMarkers = this.plugin.settings.copyIncludeHighlightMarkers;
+        const baseText = includeEmoji ? this.getHighlightSourceText(highlight) : highlight.text;
+
         if (highlight.isNativeComment) {
-            text = `%%${sourceText}%%`;
+            text = includeMarkers ? `%%${baseText}%%` : baseText;
         } else {
             // Both regular markdown and HTML highlights export as ==text==
-            text = `==${sourceText}==`;
+            text = includeMarkers ? `==${baseText}==` : baseText;
         }
 
         // Append footnotes/comments (but not for native comments — the text is the comment)
@@ -7508,8 +7577,14 @@ export class HighlightsSidebarView extends ItemView {
             return filterNode.exclude ? !matches : matches;
         } else if (node.type === 'text') {
             const textNode = node as TextNode;
-            return highlight.text.toLowerCase().includes(textNode.value.toLowerCase()) ||
-                   highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(textNode.value.toLowerCase());
+            const needle = textNode.value.toLowerCase();
+            const candidates = [highlight.text.toLowerCase()];
+            if (this.plugin.settings.searchMatchEmoji && highlight.sourceText) {
+                candidates.push(highlight.sourceText.toLowerCase());
+            }
+
+            return candidates.some(c => c.includes(needle)) ||
+                   highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(needle);
         } else if (node.type === 'operator') {
             const opNode = node as OperatorNode;
             
