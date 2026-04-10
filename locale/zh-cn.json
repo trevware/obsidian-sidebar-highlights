@@ -45,6 +45,18 @@
         "placeholder": "0"
       }
     },
+    "liteMode": {
+      "heading": "轻量模式",
+      "enabled": {
+        "name": "启用轻量模式",
+        "desc": "仅处理当前笔记中的高亮。为提升流畅度，将禁用全库扫描、【所有笔记】、【合集】和【任务】标签页。"
+      },
+      "clearGlobalData": {
+        "name": "清理全局数据",
+        "desc": "删除已存储的全局高亮和合集数据，不会修改笔记正文。",
+        "button": "清理"
+      }
+    },
     "views": {
       "heading": "视图",
       "showCurrentNoteTab": {
@@ -62,6 +74,10 @@
       "showTasksTab": {
         "name": "显示【任务】标签页",
         "desc": "在侧边栏中显示【任务】标签页。"
+      },
+      "liteModeLocked": {
+        "name": "轻量模式已启用",
+        "desc": "轻量模式下仅保留【当前笔记】标签页。"
       }
     },
     "displayModes": {
@@ -93,6 +109,21 @@
         "name": "注释文本大小",
         "desc": "调整注释文本大小（默认为 11）。",
         "placeholder": "11"
+      },
+      "highlightTextWeight": {
+        "name": "主高亮文本粗细",
+        "desc": "调整侧边栏高亮文本粗细（默认：常规）。"
+      },
+      "taskTextWeight": {
+        "name": "任务文本粗细",
+        "desc": "调整侧边栏任务文本粗细（默认：常规）。"
+      },
+      "fontWeight": {
+        "light": "细体 (300)",
+        "normal": "常规 (400)",
+        "medium": "中等 (500)",
+        "semiBold": "半粗 (600)",
+        "bold": "粗体 (700)"
       }
     },
     "styling": {
@@ -128,6 +159,10 @@
       "selectTextOnClick": {
         "name": "点击时选择文本",
         "desc": "点击注释时，选择注释而不是将光标定位在其前面。注意：仅适用于内联脚注 (^[...]) 和标准脚注 ([^1])，不适用于 HTML 注释或自定义模式。"
+      },
+      "copyIncludeHighlightMarkers": {
+        "name": "复制时附带高亮符号",
+        "desc": "启用时，复制内容会保留 ==...== / %%...%% 包裹符号；关闭时仅复制正文。"
       }
     },
     "detection": {
@@ -145,7 +180,15 @@
         "experimental": "实验性",
         "enabled": {
           "name": "启用 Emoji 前缀高亮",
-          "desc": "解析类似 ==🟥文本== 的 Markdown 高亮。Emoji 用于确定颜色，侧边栏正文会忽略开头 emoji。"
+          "desc": "解析类似 ==🟥文本== 的 Markdown 高亮。Emoji 用于确定颜色，侧边栏正文会忽略前缀 emoji。"
+        },
+        "copyIncludeEmojiColorSymbol": {
+          "name": "复制时附带 emoji 颜色符号",
+          "desc": "默认关闭。启用时复制保留 emoji 前缀；关闭时仅复制正文。"
+        },
+        "searchMatchEmoji": {
+          "name": "搜索时匹配 emoji",
+          "desc": "默认关闭。启用后，文本搜索会同时匹配源高亮文本中的 emoji。"
         },
         "mappingHeading": "Emoji 与颜色映射",
         "mappingDesc": "使用逗号分隔，例如：🟥,🔴,🍓。所有匹配的 emoji 都会被识别成该颜色。",
@@ -156,7 +199,7 @@
         },
         "skipWritebackPrompt": {
           "name": "写入文本时不需要确认",
-          "desc": "每次通过侧边栏悬浮颜色面板改色时，自动将对应的 emoji 改动（添加/修改/移除）写入实际笔记文本。"
+          "desc": "启用后，通过侧边栏悬浮颜色面板改色时，会自动将 emoji 变更（添加/修改/移除）写入笔记文本。"
         },
         "mappingFor": "{{color}} 的 emoji",
         "mappingInputDesc": "当前该颜色的默认写入 emoji 为：{{emoji}}（列表中的第一项）",
@@ -326,6 +369,7 @@
     "markRead": "标记为已读",
     "markAboveRead": "将上方标记为已读",
     "markBelowRead": "将下方标记为已读",
+    "createColoredHighlightGroup": "创建彩色高亮",
     "removeHighlight": "移除高亮",
     "clearHighlightColor": "清除高亮颜色",
     "removeComments": "移除评论",
@@ -454,8 +498,8 @@
     },
     "emojiWriteback": {
       "title": "同步 emoji 到源高亮",
-      "writeMessage": "是否将映射后的 emoji 写入该高亮的源文本？",
-      "clearMessage": "你正在还原默认颜色。是否同时移除源文本中的 emoji 前缀？",
+      "writeMessage": "是否将映射后的 emoji 写入该高亮的笔记文本？",
+      "clearMessage": "你正在还原默认颜色。是否同时移除该高亮文本中的 emoji 前缀？",
       "dontAskAgain": "不再询问",
       "confirmWrite": "写入 emoji",
       "confirmClear": "移除 emoji",
@@ -474,10 +518,14 @@
     "copiedHighlights": "已复制 {{count}} 条高亮到剪贴板",
     "noHighlightsToCopy": "没有可复制的高亮",
     "copyFailed": "复制到剪贴板失败",
+    "colorWritebackFailed": "写入笔记文本失败，侧边栏颜色已回滚。",
     "highlightRemoved": "已移除高亮",
     "highlightColorCleared": "已清除高亮颜色",
     "commentsRemoved": "已移除评论",
     "highlightAndCommentsRemoved": "已移除高亮和评论",
-    "emojiWritebackApplied": "已将 {{count}} 条高亮更新为 emoji {{emoji}}"
+    "emojiWritebackApplied": "已将 {{count}} 条高亮更新为 emoji {{emoji}}",
+    "liteModeEnabled": "已启用轻量模式。侧边栏现在仅聚焦当前笔记。",
+    "liteModeDisabled": "已关闭轻量模式。完整全库功能已恢复。",
+    "globalDataCleared": "已清理全局高亮与合集数据。"
   }
 }

@@ -45,6 +45,18 @@
         "placeholder": "0"
       }
     },
+    "liteMode": {
+      "heading": "Lite mode",
+      "enabled": {
+        "name": "Enable Lite mode",
+        "desc": "Only process highlights in the current note. Vault-wide scanning, All Notes, Collections, and Tasks tabs are disabled for better responsiveness."
+      },
+      "clearGlobalData": {
+        "name": "Clear global data",
+        "desc": "Delete stored global highlights and collections data. This does not affect note content.",
+        "button": "Clear"
+      }
+    },
     "views": {
       "heading": "Views",
       "showCurrentNoteTab": {
@@ -62,6 +74,10 @@
       "showTasksTab": {
         "name": "Show Tasks tab",
         "desc": "Show the Tasks tab in the sidebar."
+      },
+      "liteModeLocked": {
+        "name": "Lite mode is active",
+        "desc": "Only the Current Note tab is available in Lite mode."
       }
     },
     "displayModes": {
@@ -143,6 +159,10 @@
       "selectTextOnClick": {
         "name": "Select text on click",
         "desc": "When clicking a comment, select the comment instead of positioning the cursor in front of it. Note: Only works for inline footnotes (^[...]) and standard footnotes ([^1]), not HTML comments or custom patterns."
+      },
+      "copyIncludeHighlightMarkers": {
+        "name": "Include highlight markers when copying",
+        "desc": "When enabled, copied content keeps wrappers like ==...== / %%...%%. When disabled, only plain text is copied."
       }
     },
     "detection": {
@@ -160,7 +180,15 @@
         "experimental": "Experimental",
         "enabled": {
           "name": "Enable emoji-prefixed highlights",
-          "desc": "Parse markdown highlights like ==🟥text==. The emoji determines color, and sidebar text ignores the leading emoji."
+          "desc": "Parse markdown highlights like ==🟥text==. The emoji determines color, and sidebar text ignores the emoji prefix."
+        },
+        "copyIncludeEmojiColorSymbol": {
+          "name": "Include emoji color symbol when copying",
+          "desc": "Default off. When enabled, copied content keeps emoji prefixes; when disabled, only plain text is copied."
+        },
+        "searchMatchEmoji": {
+          "name": "Match emoji in search",
+          "desc": "Default off. When enabled, text search also matches emoji in source highlight text."
         },
         "mappingHeading": "Emoji to color mapping",
         "mappingDesc": "Use comma-separated emojis, e.g. ■, ●, 🍓.",
@@ -171,7 +199,7 @@
         },
         "skipWritebackPrompt": {
           "name": "No confirmation when writing to note",
-          "desc": "When changing color from sidebar hover options, automatically write emoji changes (add/update/remove) into note text."
+          "desc": "When enabled, changing color from sidebar hover options automatically writes emoji changes (add/update/remove) into note text."
         },
         "mappingFor": "Emojis for {{color}}",
         "mappingInputDesc": "Current default write emoji: {{emoji}} (first item in the list)",
@@ -341,6 +369,7 @@
     "markRead": "Mark as Read",
     "markAboveRead": "Mark above as read",
     "markBelowRead": "Mark below as read",
+    "createColoredHighlightGroup": "Create colored highlight",
     "removeHighlight": "Remove highlight",
     "clearHighlightColor": "Clear highlight color",
     "removeComments": "Remove comments",
@@ -469,8 +498,8 @@
     },
     "emojiWriteback": {
       "title": "Sync emoji to source highlight",
-      "writeMessage": "Do you want to write the mapped emoji into this highlight in source text?",
-      "clearMessage": "You are reverting color to default. Do you also want to remove emoji prefix from source text?",
+      "writeMessage": "Write the mapped emoji into this highlight in note text?",
+      "clearMessage": "You are reverting to the default color. Also remove the emoji prefix from this highlight text?",
       "dontAskAgain": "Don't ask again",
       "confirmWrite": "Write emoji",
       "confirmClear": "Remove emoji",
@@ -489,10 +518,14 @@
     "copiedHighlights": "Copied {{count}} highlights to clipboard",
     "noHighlightsToCopy": "No highlights to copy",
     "copyFailed": "Failed to copy to clipboard",
+    "colorWritebackFailed": "Failed to write changes to note text. Sidebar color was reverted.",
     "highlightRemoved": "Highlight removed",
     "highlightColorCleared": "Highlight color cleared",
     "commentsRemoved": "Comments removed",
     "highlightAndCommentsRemoved": "Highlight and comments removed",
-    "emojiWritebackApplied": "Updated {{count}} highlights with emoji {{emoji}}"
+    "emojiWritebackApplied": "Updated {{count}} highlights with emoji {{emoji}}",
+    "liteModeEnabled": "Lite mode enabled. Sidebar now focuses on the current note only.",
+    "liteModeDisabled": "Lite mode disabled. Full vault features are available again.",
+    "globalDataCleared": "Global highlights and collections data cleared."
   }
 }
