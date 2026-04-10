@@ -163,6 +163,7 @@ Sidebar Highlights now supports emoji-prefixed colored highlights when enabled i
 
 - The first matching emoji inside `==...==` determines the highlight color.
 - Sidebar text can ignore the emoji prefix for cleaner reading.
+- Reading View `mark` highlights also follow emoji colors and hide the matched emoji prefix (configurable).
 - Emoji aliases are configurable per color (comma-separated list).
 
 #### Typical Workflow
@@ -171,6 +172,7 @@ Sidebar Highlights now supports emoji-prefixed colored highlights when enabled i
 2. Enable **Emoji prefixed highlights**
 3. Configure **Emoji to color mapping** (e.g. `🟥,🔴,🍓`)
 4. Optionally choose a **Default highlight color** (this color removes emoji prefix)
+5. Keep **Decorate highlights in Reading View** enabled (default ON) to apply emoji colors in Reading Mode
 
 #### Common Operations
 

@@ -8,6 +8,7 @@ import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { i18n, t } from './src/i18n';
 import { createEmojiHighlightExtension } from './src/extensions/emoji-highlight-extension';
+import { buildEmojiToColorSlotMap, detectEmojiPrefix } from './src/utils/emoji-utils';
 import type { Extension } from '@codemirror/state';
 
 declare module 'obsidian' {
@@ -144,6 +145,7 @@ export interface CommentPluginSettings {
     showAllColorsInMenu: boolean; // Show all colors in menu, including default/current color
     emojiEditorDecorator: boolean; // Decorate emoji highlights in editor with background color and hide emoji when not editing
     emojiEditorColorOpacity: number; // Background color mix percentage for editor emoji highlight decorations (30–100)
+    emojiReadingModeRenderer: boolean; // Render emoji highlight colors in Reading View and hide emoji prefix
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
     customColors: {
         yellow: string;
@@ -220,6 +222,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showAllColorsInMenu: false,
     emojiEditorDecorator: true,
     emojiEditorColorOpacity: 60,
+    emojiReadingModeRenderer: true,
     customPatterns: [], // Empty array by default
     customColors: {
         yellow: '#ffd700',
@@ -263,6 +266,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private sidebarView: HighlightsSidebarView | null = null;
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
+    private readingModeRefreshTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
     public collectionCommands: Set<string> = new Set(); // Track registered collection commands
     private isScanningFiles: boolean = false; // Prevent concurrent scans
@@ -305,6 +309,101 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Update the CSS variable so styles.css picks up the current opacity
         document.body.style.setProperty('--sh-editor-highlight-opacity', `${this.settings.emojiEditorColorOpacity}%`);
         this.app.workspace.updateOptions();
+    }
+
+    /**
+     * Apply emoji-based highlight coloring in Reading Mode (<mark> nodes).
+     * Mirrors editor emoji logic: emoji-prefixed highlights use mapped color,
+     * and plain highlights use the configured default color slot when set.
+     */
+    private applyReadingModeEmojiHighlights(rootEl: HTMLElement) {
+        if (!rootEl) {
+            return;
+        }
+
+        const marks = rootEl.querySelectorAll('mark');
+        if (marks.length === 0) {
+            return;
+        }
+
+        const slots: ColorSlotKey[] = ['yellow', 'red', 'teal', 'blue', 'green'];
+        const shouldApply = this.settings.emojiHighlightsEnabled && this.settings.emojiReadingModeRenderer;
+        const emojiMap = shouldApply ? buildEmojiToColorSlotMap(this.settings.emojiColorMappings) : null;
+        const defaultSlot = this.settings.emojiDefaultColorSlot !== 'none'
+            ? this.settings.emojiDefaultColorSlot
+            : undefined;
+
+        marks.forEach((mark) => {
+            const markEl = mark as HTMLElement;
+            const hasInlineChildren = markEl.children.length > 0;
+
+            for (const slot of slots) {
+                markEl.classList.remove(`sh-reading-highlight-${slot}`);
+            }
+
+            const storedOriginalText = markEl.dataset.shEmojiOriginalText;
+            if (storedOriginalText !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
+                markEl.textContent = storedOriginalText;
+                delete markEl.dataset.shEmojiTextMutated;
+            }
+
+            if (!shouldApply) {
+                if (storedOriginalText !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
+                    markEl.textContent = storedOriginalText;
+                }
+                delete markEl.dataset.shEmojiOriginalText;
+                delete markEl.dataset.shEmojiTextMutated;
+                return;
+            }
+
+            const originalText = storedOriginalText ?? (markEl.textContent ?? '');
+            if (!storedOriginalText && !hasInlineChildren) {
+                markEl.dataset.shEmojiOriginalText = originalText;
+            }
+
+            const { slot, strippedText, emojiLength } = detectEmojiPrefix(originalText, emojiMap!);
+            const effectiveSlot = slot ?? defaultSlot;
+            if (effectiveSlot) {
+                markEl.classList.add(`sh-reading-highlight-${effectiveSlot}`);
+            }
+
+            if (slot && emojiLength > 0 && !hasInlineChildren) {
+                markEl.textContent = strippedText;
+                markEl.dataset.shEmojiTextMutated = '1';
+            }
+        });
+    }
+
+    private clearReadingModeEmojiDecorations() {
+        const previewRoots = document.querySelectorAll('.markdown-preview-view');
+        const slots: ColorSlotKey[] = ['yellow', 'red', 'teal', 'blue', 'green'];
+
+        previewRoots.forEach((root) => {
+            const marks = (root as HTMLElement).querySelectorAll('mark');
+            marks.forEach((mark) => {
+                const markEl = mark as HTMLElement;
+                const storedOriginalText = markEl.dataset.shEmojiOriginalText;
+                const wasMutated = markEl.dataset.shEmojiTextMutated === '1';
+
+                for (const slot of slots) {
+                    markEl.classList.remove(`sh-reading-highlight-${slot}`);
+                }
+
+                if (storedOriginalText !== undefined && wasMutated) {
+                    markEl.textContent = storedOriginalText;
+                }
+
+                delete markEl.dataset.shEmojiOriginalText;
+                delete markEl.dataset.shEmojiTextMutated;
+            });
+        });
+    }
+
+    refreshReadingModeEmojiHighlights() {
+        const previewRoots = document.querySelectorAll('.markdown-preview-view');
+        previewRoots.forEach((root) => {
+            this.applyReadingModeEmojiHighlights(root as HTMLElement);
+        });
     }
 
     async onload() {
@@ -440,6 +539,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                         this.sidebarView.updateContent(); // Content update instead of full refresh
                     }
                 }
+
+                this.refreshReadingModeEmojiHighlights();
             })
         );
 
@@ -454,6 +555,20 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.addStyles();
+
+        this.registerMarkdownPostProcessor((element) => {
+            this.applyReadingModeEmojiHighlights(element);
+        });
+
+        this.registerEvent(this.app.workspace.on('layout-change', () => {
+            if (this.readingModeRefreshTimeout !== null) {
+                window.clearTimeout(this.readingModeRefreshTimeout);
+            }
+            this.readingModeRefreshTimeout = window.setTimeout(() => {
+                this.readingModeRefreshTimeout = null;
+                this.refreshReadingModeEmojiHighlights();
+            }, 120);
+        }));
 
         // Register CM6 editor extension for emoji highlight decorations
         this.rebuildEmojiEditorExtensions();
@@ -478,6 +593,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
+            this.refreshReadingModeEmojiHighlights();
 
             if (!this.settings.liteMode) {
                 // Register vault events after layout is ready
@@ -514,6 +630,13 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.ribbonIconEl.remove();
             this.ribbonIconEl = null;
         }
+
+        if (this.readingModeRefreshTimeout !== null) {
+            window.clearTimeout(this.readingModeRefreshTimeout);
+            this.readingModeRefreshTimeout = null;
+        }
+
+        this.clearReadingModeEmojiDecorations();
 
         // Cleanup is mostly automatic due to using registerEvent() and addCommand()
         // The sidebar view's onClose() method will handle its own cleanup
@@ -620,6 +743,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (loadedData.showAllColorsInMenu !== undefined) {
             merged.showAllColorsInMenu = loadedData.showAllColorsInMenu;
         }
+        if (loadedData.emojiReadingModeRenderer !== undefined) {
+            merged.emojiReadingModeRenderer = loadedData.emojiReadingModeRenderer;
+        }
 
         return merged;
     }
@@ -632,6 +758,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         await this.saveData(this.settings);
         this.updateStyles();
+        this.refreshReadingModeEmojiHighlights();
     }
 
     async clearGlobalStoredData() {
@@ -884,6 +1011,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Refresh sidebar to reflect changes
         this.refreshSidebar();
+        this.refreshReadingModeEmojiHighlights();
     }
 
     async createBackup(reason: string) {
@@ -1803,6 +1931,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
             if (oldSettings.showAllColorsInMenu !== undefined) {
                 this.settings.showAllColorsInMenu = oldSettings.showAllColorsInMenu;
+            }
+            if (oldSettings.emojiReadingModeRenderer !== undefined) {
+                this.settings.emojiReadingModeRenderer = oldSettings.emojiReadingModeRenderer;
             }
             if (oldSettings.liteMode !== undefined) {
                 this.settings.liteMode = oldSettings.liteMode;
@@ -4531,6 +4662,17 @@ class HighlightSettingTab extends PluginSettingTab {
                         this.plugin.settings.emojiEditorDecorator = value;
                         await this.plugin.saveSettings();
                         this.plugin.rebuildEmojiEditorExtensions();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.readingModeRenderer.name'))
+                .setDesc(t('settings.detection.emojiHighlights.readingModeRenderer.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.emojiReadingModeRenderer)
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiReadingModeRenderer = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.refreshReadingModeEmojiHighlights();
                     }));
 
             new Setting(emojiSettingsContainer)

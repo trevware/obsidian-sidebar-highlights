@@ -5,6 +5,24 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.2] - 2026-04-10
+
+### Added
+- **Reading View emoji decorations**: Added an independent toggle (default ON) to apply emoji highlight colors in Reading View `mark` nodes and hide matched emoji prefixes.
+
+### Fixed
+- **Reading View inline formatting safety**: Prevented nested inline elements inside highlighted `mark` nodes from being flattened when toggling Reading View emoji rendering.
+- **Reading View refresh performance**: Added debounce for layout-change-triggered Reading View decoration refresh.
+- **Plugin unload cleanup**: Reading View emoji decoration classes/data are now cleaned when the plugin unloads.
+
+---
+
+**阅读视图 emoji 装饰**：新增独立开关（默认开启），让阅读视图中的 `mark` 按 emoji 颜色渲染，并隐藏匹配到的 emoji 前缀。
+
+**阅读视图内联格式安全性**：修复切换阅读视图 emoji 渲染时，`mark` 内嵌套的内联格式节点可能被展平成纯文本的问题。
+
+**阅读视图刷新性能与卸载清理**：为 layout-change 触发的刷新加入防抖，并在插件卸载时清理阅读视图的 emoji 装饰类与临时数据。
+
 ## [1.38.1] - 2026-04-10
 
 ### Added

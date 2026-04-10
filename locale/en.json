@@ -202,6 +202,10 @@
           "name": "Decorate highlights in editor",
           "desc": "Show colored background on emoji highlights in the editor. Hide the emoji prefix until you click to edit the text."
         },
+        "readingModeRenderer": {
+          "name": "Decorate highlights in Reading View",
+          "desc": "Default on. Apply emoji-based highlight colors in Reading View and hide matched emoji prefix from rendered text."
+        },
         "editorColorOpacity": {
           "name": "Editor highlight color intensity",
           "desc": "Background color mix percentage for highlight decorations in the editor (30–100%)."

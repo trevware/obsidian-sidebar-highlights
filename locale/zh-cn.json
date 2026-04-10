@@ -202,6 +202,10 @@
           "name": "在编辑器中装饰高亮",
           "desc": "在编辑器中为 emoji 高亮显示对应的彩色背景。未编辑时隐藏 emoji 前缀，点击编辑时才显示。"
         },
+        "readingModeRenderer": {
+          "name": "在阅读视图中装饰高亮",
+          "desc": "默认开启。在阅读视图中应用 emoji 高亮颜色，并隐藏匹配到的 emoji 前缀。"
+        },
         "editorColorOpacity": {
           "name": "编辑器高亮颜色浓度",
           "desc": "编辑器中高亮装饰的背景色混合比例（30–100%）。"

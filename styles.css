@@ -39,6 +39,25 @@
 .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
 .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green)  { background-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent); }
 
+/* ── Reading Mode emoji highlight decorations ──
+ * Reading View renders markdown highlights as <mark> elements. We attach
+ * sh-reading-highlight-{slot} classes from a markdown post-processor.
+ */
+.markdown-preview-view mark.sh-reading-highlight-yellow,
+.markdown-rendered mark.sh-reading-highlight-yellow { background-color: color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
+.markdown-preview-view mark.sh-reading-highlight-red,
+.markdown-rendered mark.sh-reading-highlight-red { background-color: color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
+.markdown-preview-view mark.sh-reading-highlight-teal,
+.markdown-rendered mark.sh-reading-highlight-teal { background-color: color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
+.markdown-preview-view mark.sh-reading-highlight-blue,
+.markdown-rendered mark.sh-reading-highlight-blue { background-color: color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
+.markdown-preview-view mark.sh-reading-highlight-green,
+.markdown-rendered mark.sh-reading-highlight-green { background-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
 /* Sidebar highlights in tasks - use same styling as editor */
 .task-text-content .cm-highlight,
 .task-context .cm-highlight {
