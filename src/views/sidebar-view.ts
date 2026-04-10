@@ -5841,8 +5841,17 @@ export class HighlightsSidebarView extends ItemView {
         const defaultColor = this.plugin.settings.highlightColor.trim().toLowerCase();
 
         // Highlights with no explicit color use the default highlight color.
-        // Show "Default" instead of a hex code.
+        // If a default color slot is configured, treat them as that color;
+        // otherwise show "Default".
         if (normalized === defaultColor) {
+            const defaultSlot = this.plugin.settings.emojiDefaultColorSlot;
+            if (this.plugin.settings.emojiHighlightsEnabled && defaultSlot !== 'none') {
+                const slotColor = colors[defaultSlot].toLowerCase();
+                if (normalized === slotColor) {
+                    const slotName = customNames[defaultSlot]?.trim();
+                    return slotName && slotName.length > 0 ? slotName : hex.toUpperCase();
+                }
+            }
             return t('emptyStates.default');
         }
 

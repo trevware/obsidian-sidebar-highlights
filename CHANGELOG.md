@@ -5,7 +5,7 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.38.0] - 2026-04-10
+## [1.38.1] - 2026-04-10
 
 ### Added
 - **Editor highlight decorations**: Emoji-prefixed highlights (e.g. `==🟥text==`) now display their configured background color directly in the editor. The emoji prefix is hidden when the cursor is outside the highlight and revealed when editing, matching Obsidian's native `==` marker behavior.
@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Editor context menu**: Highlight color actions now always appear in editor right-click by using unconditional cursor fallback when no text is selected.
 - **Comment separator**: Only shows comment separator in sidebar when comments actually exist.
+- **Color group label for default slot**: When emoji highlights are enabled and a default color slot is set, default-colored highlights now show the custom color name in group headers instead of generic "Default".
 
 ---
 
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **默认颜色高亮**：配置了默认 emoji 颜色后（如黄色），无 emoji 的普通 `==高亮==` 也会在编辑器中显示对应背景色。
 
 **颜色浓度滑块**：新增设置滑块（30–100%），控制编辑器高亮装饰的背景色透明度。
+
+**颜色分组标签修复**：配置了默认颜色 slot 时，分组标题现在显示自定义颜色名称而非通用的"Default"。
 
 ## [1.37.0] - 2026-04-10
 
