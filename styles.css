@@ -39,6 +39,20 @@
 .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
 .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green)  { background-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent); }
 
+/* Fade-in for visible emoji prefix in editor highlight while cursor is inside. */
+.cm-s-obsidian .sh-editor-emoji-prefix-fade {
+    animation: sh-emoji-prefix-fade-in var(--anim-duration-moderate, 320ms) ease-out;
+}
+
+@keyframes sh-emoji-prefix-fade-in {
+    from {
+        opacity: 0.3;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
 /* ── Reading Mode emoji highlight decorations ──
  * Reading View renders markdown highlights as <mark> elements. We attach
  * sh-reading-highlight-{slot} classes from a markdown post-processor.
@@ -57,6 +71,201 @@
 
 .markdown-preview-view mark.sh-reading-highlight-green,
 .markdown-rendered mark.sh-reading-highlight-green { background-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent); }
+
+/* Reading + Live Preview highlight style variants */
+
+/* Half-strike */
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-yellow),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-yellow) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-red),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-red) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-teal),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-teal) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-blue),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-blue) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="half-strike"] .markdown-preview-view mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="half-strike"] .markdown-rendered mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian span.cm-highlight:not(:has([class*="sh-editor-highlight-"])),
+body[data-sh-reading-highlight-style="half-strike"] .cm-s-obsidian .cm-highlight:not(:has([class*="sh-editor-highlight-"])) {
+    background: linear-gradient(transparent 50%, color-mix(in srgb, var(--text-highlight-bg, rgba(var(--text-highlight-bg-rgb), 0.4)) var(--sh-editor-highlight-opacity, 60%), transparent) 50%);
+}
+
+/* Double-strike: full background + half-strike overlay */
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:not(:has([class*="sh-editor-highlight-"])),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:not(:has([class*="sh-editor-highlight-"])) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--text-highlight-bg, rgba(var(--text-highlight-bg-rgb), 0.4)) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--text-highlight-bg, rgba(var(--text-highlight-bg-rgb), 0.4)) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--text-highlight-bg, rgba(var(--text-highlight-bg-rgb), 0.4)) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-yellow),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-yellow) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-red),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-red) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-teal),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-teal) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-blue),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-blue) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+body[data-sh-reading-highlight-style="double-strike"] .markdown-preview-view mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="double-strike"] .markdown-rendered mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
+body[data-sh-reading-highlight-style="double-strike"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green) {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent), color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-editor-highlight-opacity, 60%), transparent)),
+        linear-gradient(transparent 50%, color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-reading-underline-opacity, 85%), transparent) 50%);
+}
+
+/* Underline variants */
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight {
+    background: transparent;
+    text-decoration: underline;
+    text-decoration-thickness: 3px;
+    text-decoration-skip-ink: none;
+}
+
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight {
+    text-decoration: underline;
+    text-decoration-thickness: 3px;
+    text-decoration-skip-ink: none;
+}
+
+/* Keep underline color stable while selecting text (avoid browser fallback to black). */
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark::selection,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark::selection,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark::selection,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark::selection {
+    text-decoration-color: inherit;
+}
+
+/* Default underline color (plain highlights). */
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:not(:has([class*="sh-editor-highlight-"])),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:not(:has([class*="sh-editor-highlight-"])),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark:not([class*="sh-reading-highlight-"]),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:not(:has([class*="sh-editor-highlight-"])),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:not(:has([class*="sh-editor-highlight-"])) {
+    text-decoration-color: color-mix(in srgb, var(--text-highlight-bg, rgba(var(--text-highlight-bg-rgb), 0.4)) var(--sh-reading-underline-opacity, 85%), transparent);
+}
+
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-yellow),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-yellow),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark.sh-reading-highlight-yellow,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-yellow),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-yellow) {
+    text-decoration-color: color-mix(in srgb, var(--sh-highlight-yellow, #ffd700) var(--sh-reading-underline-opacity, 85%), transparent);
+}
+
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-red),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-red),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark.sh-reading-highlight-red,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-red),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-red) {
+    text-decoration-color: color-mix(in srgb, var(--sh-highlight-red, #ff6b6b) var(--sh-reading-underline-opacity, 85%), transparent);
+}
+
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-teal),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-teal),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark.sh-reading-highlight-teal,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-teal),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-teal) {
+    text-decoration-color: color-mix(in srgb, var(--sh-highlight-teal, #4ecdc4) var(--sh-reading-underline-opacity, 85%), transparent);
+}
+
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-blue),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-blue),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark.sh-reading-highlight-blue,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-blue),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-blue) {
+    text-decoration-color: color-mix(in srgb, var(--sh-highlight-blue, #45b7d1) var(--sh-reading-underline-opacity, 85%), transparent);
+}
+
+body[data-sh-reading-highlight-style="underline-only"] .markdown-preview-view mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="underline-only"] .markdown-rendered mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
+body[data-sh-reading-highlight-style="underline-only"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green),
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-preview-view mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="underline-with-bg"] .markdown-rendered mark.sh-reading-highlight-green,
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian span.cm-highlight:has(.sh-editor-highlight-green),
+body[data-sh-reading-highlight-style="underline-with-bg"] .cm-s-obsidian .cm-highlight:has(.sh-editor-highlight-green) {
+    text-decoration-color: color-mix(in srgb, var(--sh-highlight-green, #96ceb4) var(--sh-reading-underline-opacity, 85%), transparent);
+}
 
 /* Sidebar highlights in tasks - use same styling as editor */
 .task-text-content .cm-highlight,
