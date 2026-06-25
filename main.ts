@@ -144,6 +144,7 @@ export interface CommentPluginSettings {
     showEmojiColorActionsInContextMenu: boolean; // Show emoji color action menu items in context menus
     showAllColorsInMenu: boolean; // Show all colors in menu, including default/current color
     emojiEditorDecorator: boolean; // Decorate emoji highlights in editor with background color and hide emoji when not editing
+    emojiShowPrefixInSourceMode: boolean; // Keep emoji prefix visible in Source mode editor decorations
     emojiEditorColorOpacity: number; // Background color mix percentage for editor emoji highlight decorations (30–100)
     emojiReadingModeRenderer: boolean; // Render emoji highlight colors in Reading View and hide emoji prefix
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
@@ -221,6 +222,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showEmojiColorActionsInContextMenu: true,
     showAllColorsInMenu: false,
     emojiEditorDecorator: true,
+    emojiShowPrefixInSourceMode: true,
     emojiEditorColorOpacity: 60,
     emojiReadingModeRenderer: true,
     customPatterns: [], // Empty array by default
@@ -303,6 +305,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     emojiColorMappings: { ...this.settings.emojiColorMappings },
                     customColors: { ...this.settings.customColors },
                     defaultColorSlot: this.settings.emojiDefaultColorSlot,
+                    showPrefixInSourceMode: this.settings.emojiShowPrefixInSourceMode,
                 })
             );
         }
@@ -342,16 +345,29 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
 
             const storedOriginalText = markEl.dataset.shEmojiOriginalText;
+            const storedOriginalFirstNode = markEl.dataset.shEmojiOriginalFirstNode;
             if (storedOriginalText !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
                 markEl.textContent = storedOriginalText;
+                delete markEl.dataset.shEmojiTextMutated;
+            } else if (storedOriginalFirstNode !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
+                const firstChild = markEl.firstChild;
+                if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+                    firstChild.nodeValue = storedOriginalFirstNode;
+                }
                 delete markEl.dataset.shEmojiTextMutated;
             }
 
             if (!shouldApply) {
                 if (storedOriginalText !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
                     markEl.textContent = storedOriginalText;
+                } else if (storedOriginalFirstNode !== undefined && markEl.dataset.shEmojiTextMutated === '1') {
+                    const firstChild = markEl.firstChild;
+                    if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+                        firstChild.nodeValue = storedOriginalFirstNode;
+                    }
                 }
                 delete markEl.dataset.shEmojiOriginalText;
+                delete markEl.dataset.shEmojiOriginalFirstNode;
                 delete markEl.dataset.shEmojiTextMutated;
                 return;
             }
@@ -370,6 +386,21 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (slot && emojiLength > 0 && !hasInlineChildren) {
                 markEl.textContent = strippedText;
                 markEl.dataset.shEmojiTextMutated = '1';
+            } else if (slot && emojiLength > 0 && hasInlineChildren) {
+                // When mark has child elements (e.g. <strong>), modify only the first
+                // text node to strip the emoji prefix without destroying child elements.
+                const firstChild = markEl.firstChild;
+                if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+                    const nodeText = firstChild.nodeValue ?? '';
+                    const { emojiLength: nodeEmojiLen } = detectEmojiPrefix(nodeText, emojiMap!);
+                    if (nodeEmojiLen > 0) {
+                        if (!markEl.dataset.shEmojiOriginalFirstNode) {
+                            markEl.dataset.shEmojiOriginalFirstNode = nodeText;
+                        }
+                        firstChild.nodeValue = nodeText.slice(nodeEmojiLen);
+                        markEl.dataset.shEmojiTextMutated = '1';
+                    }
+                }
             }
         });
     }
@@ -391,9 +422,18 @@ export default class HighlightCommentsPlugin extends Plugin {
 
                 if (storedOriginalText !== undefined && wasMutated) {
                     markEl.textContent = storedOriginalText;
+                } else if (wasMutated) {
+                    const storedFirstNode = markEl.dataset.shEmojiOriginalFirstNode;
+                    if (storedFirstNode !== undefined) {
+                        const firstChild = markEl.firstChild;
+                        if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+                            firstChild.nodeValue = storedFirstNode;
+                        }
+                    }
                 }
 
                 delete markEl.dataset.shEmojiOriginalText;
+                delete markEl.dataset.shEmojiOriginalFirstNode;
                 delete markEl.dataset.shEmojiTextMutated;
             });
         });
@@ -4660,6 +4700,17 @@ class HighlightSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.emojiEditorDecorator)
                     .onChange(async (value) => {
                         this.plugin.settings.emojiEditorDecorator = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.rebuildEmojiEditorExtensions();
+                    }));
+
+            new Setting(emojiSettingsContainer)
+                .setName(t('settings.detection.emojiHighlights.showPrefixInSourceMode.name'))
+                .setDesc(t('settings.detection.emojiHighlights.showPrefixInSourceMode.desc'))
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.emojiShowPrefixInSourceMode)
+                    .onChange(async (value) => {
+                        this.plugin.settings.emojiShowPrefixInSourceMode = value;
                         await this.plugin.saveSettings();
                         this.plugin.rebuildEmojiEditorExtensions();
                     }));

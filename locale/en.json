@@ -200,7 +200,11 @@
         },
         "editorDecorator": {
           "name": "Decorate highlights in editor",
-          "desc": "Show colored background on emoji highlights in the editor. Hide the emoji prefix until you click to edit the text."
+          "desc": "Show colored background on emoji highlights in the editor. Live Preview still hides the emoji prefix until you click to edit the text."
+        },
+        "showPrefixInSourceMode": {
+          "name": "Show emoji prefix in Source mode",
+          "desc": "Default on. When enabled, only Source mode keeps emoji prefixes visible while editor highlight decoration is active."
         },
         "readingModeRenderer": {
           "name": "Decorate highlights in Reading View",

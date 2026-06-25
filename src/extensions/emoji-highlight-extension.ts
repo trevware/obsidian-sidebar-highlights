@@ -3,8 +3,8 @@
  * (e.g. ==🟥Important text==) with:
  *
  * 1. A background-color mark matching the configured color slot.
- * 2. A Decoration.replace that hides the emoji character — unless the
- *    cursor is currently inside that highlight range, mirroring how
+ * 2. An optional Decoration.replace that hides the emoji character — unless
+ *    the cursor is currently inside that highlight range, mirroring how
  *    Obsidian's live preview hides `==` markers until focused.
  * 3. Plain ==highlights== without emoji get the default color slot's
  *    background when a default color is configured.
@@ -31,6 +31,8 @@ export interface EmojiHighlightConfig {
     customColors: Record<ColorSlotKey, string>;
     /** slot whose color is "default" — plain ==text== without emoji gets this color */
     defaultColorSlot: 'none' | ColorSlotKey;
+    /** when true, source-mode editor text keeps the emoji prefix visible */
+    showPrefixInSourceMode: boolean;
 }
 
 // ── Pre-built decoration marks (one per color slot) ─────────────────
@@ -50,10 +52,18 @@ const hideEmoji = Decoration.replace({});
 
 const HIGHLIGHT_RE = /==((?:[^=]|=[^=])+?)==/g;
 
+function isSourceMode(view: EditorView): boolean {
+    return view.dom.closest('.markdown-source-view')?.classList.contains('is-live-preview') === false;
+}
+
 // ── Build decorations ───────────────────────────────────────────────
 
-function buildDecorations(view: EditorView, config: EmojiHighlightConfig): DecorationSet {
+function buildDecorations(
+    view: EditorView,
+    config: EmojiHighlightConfig
+): DecorationSet {
     const emojiMap = buildEmojiToColorSlotMap(config.emojiColorMappings);
+    const showEmojiPrefix = config.showPrefixInSourceMode && isSourceMode(view);
 
     const ranges: Range<Decoration>[] = [];
 
@@ -88,8 +98,8 @@ function buildDecorations(view: EditorView, config: EmojiHighlightConfig): Decor
                 // Cover the full ==...== range including markers
                 ranges.push(colorMarkDecos[slot].range(matchStart, matchEnd));
 
-                // Hide emoji when cursor is NOT inside this highlight
-                if (emojiLength > 0) {
+                // Hide emoji when configured and cursor is NOT inside this highlight
+                if (!showEmojiPrefix && emojiLength > 0) {
                     const emojiFrom = innerStart;
                     const emojiTo = innerStart + emojiLength;
                     const cursorInside = selRanges.some(

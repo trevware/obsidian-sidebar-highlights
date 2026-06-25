@@ -33,3 +33,5 @@ test-*.js
 
 # Local hot-reload marker (not for distribution)
 .hotreload
+coverage/
+.omo/

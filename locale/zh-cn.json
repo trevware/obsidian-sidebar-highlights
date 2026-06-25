@@ -200,7 +200,11 @@
         },
         "editorDecorator": {
           "name": "在编辑器中装饰高亮",
-          "desc": "在编辑器中为 emoji 高亮显示对应的彩色背景。未编辑时隐藏 emoji 前缀，点击编辑时才显示。"
+          "desc": "在编辑器中为 emoji 高亮显示对应的彩色背景。实时预览仍会隐藏 emoji 前缀，点击编辑时才显示。"
+        },
+        "showPrefixInSourceMode": {
+          "name": "在源码模式中显示 emoji 前缀",
+          "desc": "默认开启。启用后，仅在源码模式中保持显示 emoji 前缀，同时不影响实时预览的隐藏行为。"
         },
         "readingModeRenderer": {
           "name": "在阅读视图中装饰高亮",
