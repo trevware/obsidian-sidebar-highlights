@@ -6,6 +6,30 @@
 export {};
 
 describe('Highlight Detection Patterns', () => {
+    describe('Code range filtering', () => {
+        const isInsideCodeBlock = (
+            start: number,
+            end: number,
+            codeBlockRanges: Array<{ start: number; end: number }>
+        ) => codeBlockRanges.some(range => start >= range.start && end <= range.end);
+
+        it('does not exclude a highlight that contains an inline code span', () => {
+            const highlightStart = 0;
+            const highlightEnd = 30;
+            const inlineCodeRange = [{ start: 8, end: 18 }];
+
+            expect(isInsideCodeBlock(highlightStart, highlightEnd, inlineCodeRange)).toBe(false);
+        });
+
+        it('continues to exclude a highlight fully contained in a code span', () => {
+            const highlightStart = 10;
+            const highlightEnd = 16;
+            const inlineCodeRange = [{ start: 8, end: 18 }];
+
+            expect(isInsideCodeBlock(highlightStart, highlightEnd, inlineCodeRange)).toBe(true);
+        });
+    });
+
     describe('Markdown highlight regex', () => {
         const markdownHighlightRegex = /==([^=\n](?:[^=\n]|=[^=\n])*?[^=\n])==/g;
 

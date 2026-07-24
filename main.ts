@@ -2751,13 +2751,14 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     /**
-     * Check if a range overlaps with any of the provided code block ranges
-     * Returns true if the range is fully inside, partially overlaps, or spans across a code block
+     * Check if a range is fully contained by any of the provided code block ranges.
+     *
+     * A highlight may legitimately contain inline code, so partial overlap must
+     * not exclude the entire highlight. Only ranges fully inside code are ignored.
      */
     private isInsideCodeBlock(start: number, end: number, codeBlockRanges: Array<{start: number, end: number}>): boolean {
         return codeBlockRanges.some(range => {
-            // Check for any overlap: ranges overlap if start < range.end AND end > range.start
-            return start < range.end && end > range.start;
+            return start >= range.start && end <= range.end;
         });
     }
 
