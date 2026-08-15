@@ -238,6 +238,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Migrate any existing backup files to the backups folder
         await this.migrateBackupFilesToFolder();
 
+        // Recover backups left behind by the old hardcoded ".obsidian" path
+        await this.recoverBackupsFromLegacyConfigDir();
+
         this.highlights = new Map(Object.entries(this.settings.highlights || {}));
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
@@ -684,6 +687,18 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.refreshSidebar();
     }
 
+    // Resolve the plugin folder from the manifest so vaults that override the
+    // config folder (Settings > About > Override config folder, e.g. ".pure")
+    // read and write in the right place. Never hardcode ".obsidian" — the
+    // fallback composes the path from the vault's actual config folder name.
+    getPluginDir(): string {
+        return this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+    }
+
+    getBackupsDir(): string {
+        return `${this.getPluginDir()}/backups`;
+    }
+
     // Build a stable fingerprint of the data a backup actually protects, ignoring
     // per-write metadata (reason, timestamps). Two backups with the same signature
     // are interchangeable as restore points.
@@ -724,7 +739,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
 
             // Ensure backups folder exists
-            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            const backupsDir = this.getBackupsDir();
             try {
                 await this.app.vault.adapter.mkdir(backupsDir);
             } catch (e) {
@@ -755,7 +770,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async listBackups(): Promise<Array<{ path: string; filename: string; data: any }>> {
         try {
-            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            const backupsDir = this.getBackupsDir();
             const files = await this.app.vault.adapter.list(backupsDir);
 
             const backups: Array<{ path: string; filename: string; data: any }> = [];
@@ -1160,7 +1175,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async writeRestoreLog(logContent: string): Promise<void> {
         try {
-            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            const logPath = `${this.getPluginDir()}/restore-log.txt`;
             await this.app.vault.adapter.write(logPath, logContent);
         } catch (error) {
             console.error('Failed to write restore log:', error);
@@ -1169,7 +1184,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async getRestoreLog(): Promise<string | null> {
         try {
-            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            const logPath = `${this.getPluginDir()}/restore-log.txt`;
             const exists = await this.app.vault.adapter.exists(logPath);
             if (!exists) {
                 return null;
@@ -1314,7 +1329,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async migrateBackupFilesToFolder() {
         try {
-            const pluginDir = '.obsidian/plugins/sidebar-highlights';
+            const pluginDir = this.getPluginDir();
             const backupsDir = `${pluginDir}/backups`;
 
             // Ensure backups folder exists
@@ -1360,6 +1375,62 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         } catch (error) {
             console.error('Failed to migrate backup files:', error);
+        }
+    }
+
+    // Earlier versions wrote backups to a hardcoded ".obsidian/..." path, so vaults
+    // that override the config folder ended up with backups stranded outside the
+    // folder the plugin actually reads. Recover them once, on load. Copies rather
+    // than moves — the legacy folder may belong to a different, still-valid profile.
+    async recoverBackupsFromLegacyConfigDir() {
+        const LEGACY_BACKUPS_DIR = `.obsidian/plugins/${this.manifest.id}/backups`;
+        const backupsDir = this.getBackupsDir();
+
+        // No-op for the overwhelming majority of vaults, which use ".obsidian".
+        if (LEGACY_BACKUPS_DIR === backupsDir) {
+            return;
+        }
+
+        try {
+            if (!(await this.app.vault.adapter.exists(LEGACY_BACKUPS_DIR))) {
+                return;
+            }
+
+            const legacy = await this.app.vault.adapter.list(LEGACY_BACKUPS_DIR);
+            let recoveredCount = 0;
+
+            await this.app.vault.adapter.mkdir(backupsDir).catch(() => {});
+
+            for (const oldPath of legacy.files) {
+                if (!oldPath.endsWith('.json') || !oldPath.includes('data-backup-')) {
+                    continue;
+                }
+
+                const filename = oldPath.split('/').pop();
+                const newPath = `${backupsDir}/${filename}`;
+
+                try {
+                    // Never clobber a backup that already exists in the live folder.
+                    if (await this.app.vault.adapter.exists(newPath)) {
+                        continue;
+                    }
+
+                    await this.app.vault.adapter.write(
+                        newPath,
+                        await this.app.vault.adapter.read(oldPath)
+                    );
+                    recoveredCount++;
+                } catch (error) {
+                    console.error(`Failed to recover legacy backup ${oldPath}:`, error);
+                }
+            }
+
+            if (recoveredCount > 0) {
+                console.log(`Recovered ${recoveredCount} backup(s) from ${LEGACY_BACKUPS_DIR}`);
+                new Notice(`Recovered ${recoveredCount} Sidebar Highlights backup(s) from your previous config folder.`);
+            }
+        } catch (error) {
+            console.error('Failed to recover backups from legacy config folder:', error);
         }
     }
 
