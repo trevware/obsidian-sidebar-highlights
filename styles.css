@@ -433,11 +433,8 @@
 }
 
 /* Current note tasks section styles */
-.current-note-group-header {
-    margin-bottom: 8px !important;
-    border-bottom: none !important;
-    padding-bottom: 0 !important;
-}
+/* The current-note header deliberately carries no overrides — it inherits
+   .highlight-group-header so it matches Overdue and the other group headings. */
 
 .current-note-tasks-card {
     background-color: var(--background-modifier-active-hover);
@@ -2157,6 +2154,12 @@
 
 /* Adjust spacing for highlight items after group headers */
 .highlight-group-header + .highlight-item-card {
+    margin-top: 10px;
+}
+
+/* Same spacing for the current note tasks card, so it sits like any other
+   content following a group heading */
+.highlight-group-header + .current-note-tasks-card {
     margin-top: 10px;
 }
 

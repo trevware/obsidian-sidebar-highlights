@@ -6,7 +6,10 @@ import {
     CHECKBOX_REGEX_WITH_PREFIX,
     checkboxStateToStatus,
     statusToCheckboxState,
-    isResolvedStatus
+    isResolvedStatus,
+    createTaskNestingState,
+    resetTaskNesting,
+    resolveTaskNesting
 } from '../utils/task-status';
 
 export {
@@ -207,8 +210,9 @@ export class TaskManager {
         // Track the current section header
         let currentSection: string | undefined = undefined;
 
-        // Track parent task for date inheritance
-        let parentTask: Task | undefined = undefined;
+        // Structural parent tracking for nesting. Deliberately not a Task object:
+        // hidden tasks must advance it too, and they never build one.
+        const nesting = createTaskNestingState();
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -217,7 +221,7 @@ export class TaskManager {
             const headerMatch = line.match(headerRegex);
             if (headerMatch) {
                 currentSection = headerMatch[2].trim();
-                parentTask = undefined; // Reset parent when entering new section
+                resetTaskNesting(nesting); // Reset parent when entering new section
                 continue;
             }
 
@@ -243,15 +247,15 @@ export class TaskManager {
                 const indentSpaces = indent.replace(/\t/g, '    ').length;
                 let indentLevel = Math.floor(indentSpaces / 4);
 
-                // FIX: If this task has indentLevel > 0 but no parent task exists,
-                // treat it as a top-level task (orphaned sub-task)
-                if (indentLevel > 0 && !parentTask) {
-                    indentLevel = 0;
-                }
+                // Resolved tasks are hidden when completed tasks are hidden. Cancelled
+                // counts as resolved; in-progress and question still need action.
+                const isVisible = !(isResolvedStatus(status) && !showCompleted);
 
-                // Skip resolved tasks if not showing them. Cancelled counts as resolved;
-                // in-progress and question stay visible since they still need action.
-                if (isResolvedStatus(status) && !showCompleted) {
+                // Runs for every task line, including hidden ones, so nesting follows
+                // the file rather than whatever survived filtering.
+                indentLevel = resolveTaskNesting(indentLevel, isVisible, nesting);
+
+                if (!isVisible) {
                     continue;
                 }
 
@@ -307,27 +311,12 @@ export class TaskManager {
                 };
 
                 tasks.push(task);
-
-                // Update parent task reference
-                // This task becomes the potential parent for subsequent indented tasks
-                if (indentLevel === 0) {
-                    // Top-level task - set as new parent
-                    parentTask = task;
-                } else if (parentTask && indentLevel <= parentTask.indentLevel) {
-                    // Same or lower indent than current parent - this is not a child
-                    // Reset parent to this task if it's at the same level
-                    if (indentLevel === 0) {
-                        parentTask = task;
-                    } else {
-                        // Keep looking for parent at this level, but this could be a new parent for deeper nesting
-                        parentTask = task;
-                    }
-                }
-                // If indentLevel > parentTask.indentLevel, keep current parent
+                // Parent tracking already happened above, before the visibility check,
+                // so that hidden tasks still contribute to the structure.
             } else {
                 // Non-task line - reset parent task if we encounter a non-empty line at indent 0
                 if (line.trim() !== '' && !line.match(/^[\s]/)) {
-                    parentTask = undefined;
+                    resetTaskNesting(nesting);
                 }
             }
         }

@@ -52,3 +52,56 @@ export function statusToCheckboxState(status: TaskStatus): string {
 export function isResolvedStatus(status: TaskStatus): boolean {
     return status === 'done' || status === 'cancelled';
 }
+
+/** Running parent state while scanning a file's task lines top to bottom. */
+export interface TaskNestingState {
+    parentIndentLevel: number | undefined;
+    parentIsVisible: boolean;
+}
+
+export function createTaskNestingState(): TaskNestingState {
+    return { parentIndentLevel: undefined, parentIsVisible: false };
+}
+
+/** Clear parent tracking, e.g. at a heading or an unindented non-task line. */
+export function resetTaskNesting(state: TaskNestingState): void {
+    state.parentIndentLevel = undefined;
+    state.parentIsVisible = false;
+}
+
+/**
+ * Resolve a task's effective indent level and advance parent tracking.
+ *
+ * Two rules matter here:
+ *
+ * 1. Every task line advances the state, including ones hidden by the
+ *    completed-task filter, so nesting follows the file's real structure.
+ * 2. A sub-task only stays nested if its parent is actually rendered. If the
+ *    parent is absent or hidden, the sub-task is promoted to top level rather
+ *    than attaching to whichever task happened to be the previous visible one —
+ *    which could be an unrelated task much earlier in the file.
+ *
+ * @param rawIndentLevel Indent level derived from leading whitespace
+ * @param isVisible Whether this task will actually be rendered
+ * @param state Running state, mutated in place
+ * @returns The effective indent level to store on the task
+ */
+export function resolveTaskNesting(
+    rawIndentLevel: number,
+    isVisible: boolean,
+    state: TaskNestingState
+): number {
+    let indentLevel = rawIndentLevel;
+
+    if (indentLevel > 0 && (state.parentIndentLevel === undefined || !state.parentIsVisible)) {
+        indentLevel = 0;
+    }
+
+    if (indentLevel === 0 ||
+        (state.parentIndentLevel !== undefined && indentLevel <= state.parentIndentLevel)) {
+        state.parentIndentLevel = indentLevel;
+        state.parentIsVisible = isVisible;
+    }
+
+    return indentLevel;
+}

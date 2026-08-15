@@ -10,7 +10,10 @@ import {
     CHECKBOX_REGEX_WITH_PREFIX,
     checkboxStateToStatus,
     statusToCheckboxState,
-    isResolvedStatus
+    isResolvedStatus,
+    createTaskNestingState,
+    resetTaskNesting,
+    resolveTaskNesting
 } from './task-status';
 
 describe('task checkbox parsing', () => {
@@ -117,6 +120,59 @@ describe('task checkbox parsing', () => {
             expect(isResolvedStatus('in-progress')).toBe(false);
             expect(isResolvedStatus('question')).toBe(false);
             expect(isResolvedStatus('todo')).toBe(false);
+        });
+    });
+
+    describe('nesting', () => {
+        /** Run a list of [rawIndentLevel, isVisible] through the resolver in order. */
+        const run = (rows: Array<[number, boolean]>): number[] => {
+            const state = createTaskNestingState();
+            return rows.map(([level, visible]) => resolveTaskNesting(level, visible, state));
+        };
+
+        it('should nest a sub-task under a visible parent', () => {
+            expect(run([[0, true], [1, true]])).toEqual([0, 1]);
+        });
+
+        it('should promote a sub-task that has no parent at all', () => {
+            expect(run([[1, true]])).toEqual([0]);
+        });
+
+        it('should promote a visible sub-task whose parent is hidden', () => {
+            // The regression from Excerpta.md: a visible sub-task under a completed
+            // parent must not attach to an unrelated earlier visible task.
+            expect(run([
+                [0, true],   // an unrelated visible task, much earlier
+                [0, false],  // the real parent, hidden by the completed filter
+                [1, true]    // the sub-task — belongs to the hidden parent
+            ])).toEqual([0, 0, 0]);
+        });
+
+        it('should keep nesting when both parent and child are hidden', () => {
+            expect(run([[0, false], [1, false]])).toEqual([0, 0]);
+        });
+
+        it('should let a hidden parent still shape structure for a later visible one', () => {
+            // Hidden tasks advance parent tracking, so the visible sibling that
+            // follows resolves against the correct structural level.
+            expect(run([
+                [0, true],   // visible parent
+                [1, false],  // hidden child
+                [1, true]    // visible child — still a child of the visible parent
+            ])).toEqual([0, 1, 1]);
+        });
+
+        it('should reset parent tracking at a section boundary', () => {
+            const state = createTaskNestingState();
+
+            expect(resolveTaskNesting(0, true, state)).toBe(0);
+            resetTaskNesting(state);
+            // With tracking cleared, an indented task has no parent to attach to
+            expect(resolveTaskNesting(1, true, state)).toBe(0);
+        });
+
+        it('should treat a following same-level task as the new parent', () => {
+            expect(run([[0, true], [1, true], [1, true]])).toEqual([0, 1, 1]);
         });
     });
 });
