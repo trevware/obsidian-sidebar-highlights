@@ -203,6 +203,10 @@
         "desc": "创建您收藏的备份。",
         "button": "创建"
       },
+      "maxBackups": {
+        "name": "保留的自动备份数量",
+        "desc": "保留多少个自动备份。超出限制时，最早的自动备份将被删除。手动备份永远不会被删除。"
+      },
       "noBackups": "未找到备份。备份会在设置迁移或检测到外部更改时自动创建。",
       "emptyBackup": "最新备份不包含任何收藏。",
       "unknownDate": "未知日期",
@@ -213,7 +217,8 @@
       "restoreSuccess": "成功恢复 {{collections}} 个收藏（包含 {{highlights}} 个高亮）。",
       "orphanedCleaned": "已移除 {{count}} 个已删除高亮的引用。",
       "restoreFailed": "从备份恢复失败。请查看控制台了解详情。",
-      "manualBackupCreated": "手动备份创建成功"
+      "manualBackupCreated": "手动备份创建成功",
+      "manualBackupSkipped": "已跳过备份 — 最近的备份内容完全相同。"
     }
   },
   "sidebar": {

@@ -144,6 +144,7 @@ export interface CommentPluginSettings {
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
+    maxAutomaticBackups: number; // How many automatic backups to retain (manual backups are never deleted)
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -201,8 +202,13 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
     displayModes: [], // Empty array by default
-    currentDisplayModeId: null // No active display mode by default
+    currentDisplayModeId: null, // No active display mode by default
+    maxAutomaticBackups: 20 // Keep the 20 most recent automatic backups by default
 }
+
+// Bounds for the automatic backup retention setting
+const MIN_AUTOMATIC_BACKUPS = 1;
+const MAX_AUTOMATIC_BACKUPS = 200;
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
@@ -678,7 +684,20 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.refreshSidebar();
     }
 
-    async createBackup(reason: string) {
+    // Build a stable fingerprint of the data a backup actually protects, ignoring
+    // per-write metadata (reason, timestamps). Two backups with the same signature
+    // are interchangeable as restore points.
+    getBackupSignature(data: any): string {
+        return JSON.stringify({
+            settingsVersion: data?.settingsVersion ?? null,
+            collections: data?.collections ?? {},
+            customColorNames: data?.customColorNames ?? {},
+            highlights: data?.highlights ?? {}
+        });
+    }
+
+    // Returns true if a backup file was written, false if it was skipped or failed.
+    async createBackup(reason: string): Promise<boolean> {
         try {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `data-backup-${reason}-${timestamp}.json`;
@@ -694,6 +713,16 @@ export default class HighlightCommentsPlugin extends Plugin {
                 retentionManaged: true // Mark new backups as subject to retention policy
             };
 
+            // Skip writing a byte-for-byte duplicate of the most recent backup.
+            // Sync echo can fire onExternalSettingsChange several times in a row, and
+            // repeated manual clicks are exempt from retention, so both would otherwise
+            // pile up identical snapshots that protect nothing.
+            const existingBackups = await this.listBackups();
+            if (existingBackups.length > 0 &&
+                this.getBackupSignature(existingBackups[0].data) === this.getBackupSignature(criticalData)) {
+                return false;
+            }
+
             // Ensure backups folder exists
             const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
             try {
@@ -708,16 +737,19 @@ export default class HighlightCommentsPlugin extends Plugin {
                 JSON.stringify(criticalData, null, 2)
             );
 
-            // Only show notice for important backups (not routine ones)
-            if (reason === 'migration' || reason === 'manual') {
+            // Only show notice for important backups (not routine ones).
+            // 'manual' is handled by its caller so it can report skipped duplicates.
+            if (reason === 'migration') {
                 new Notice(`Settings backup created: ${filename}`);
             }
 
             // Clean up old backups (only retention-managed ones)
             await this.cleanupOldBackups();
+            return true;
         } catch (error) {
             console.error('Failed to create backup:', error);
             new Notice('Warning: Could not create settings backup');
+            return false;
         }
     }
 
@@ -1250,10 +1282,17 @@ export default class HighlightCommentsPlugin extends Plugin {
                 b.data.backupReason !== 'manual'
             );
 
-            // Only delete automatic backups if we have more than 20
-            if (automaticBackups.length > 20) {
-                // Keep the 20 most recent, delete the rest
-                const toDelete = automaticBackups.slice(20);
+            // User-configurable retention limit, clamped to a safe range in case
+            // data.json was hand-edited or synced from an older/newer schema.
+            const configured = this.settings.maxAutomaticBackups ?? DEFAULT_SETTINGS.maxAutomaticBackups;
+            const keepCount = Number.isFinite(configured)
+                ? Math.max(MIN_AUTOMATIC_BACKUPS, Math.min(MAX_AUTOMATIC_BACKUPS, Math.floor(configured)))
+                : DEFAULT_SETTINGS.maxAutomaticBackups;
+
+            // Only delete automatic backups if we have more than the limit
+            if (automaticBackups.length > keepCount) {
+                // Keep the most recent, delete the rest
+                const toDelete = automaticBackups.slice(keepCount);
 
                 for (const backup of toDelete) {
                     try {
@@ -3040,6 +3079,14 @@ class HighlightSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    hide(): void {
+        super.hide();
+        // Apply the backup retention limit once the user is done editing it.
+        // Pruning on every keystroke would be destructive — typing "15" passes
+        // through "1" — so this waits until the settings tab closes.
+        void this.plugin.cleanupOldBackups();
+    }
+
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
@@ -3899,8 +3946,28 @@ class HighlightSettingTab extends PluginSettingTab {
             .addButton(button => button
                 .setButtonText(t('settings.backupRestore.createManual.button'))
                 .onClick(async () => {
-                    await this.plugin.createBackup('manual');
-                    new Notice(t('settings.backupRestore.manualBackupCreated'));
+                    const created = await this.plugin.createBackup('manual');
+                    new Notice(created
+                        ? t('settings.backupRestore.manualBackupCreated')
+                        : t('settings.backupRestore.manualBackupSkipped'));
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.backupRestore.maxBackups.name'))
+            .setDesc(t('settings.backupRestore.maxBackups.desc'))
+            .addText(text => text
+                .setPlaceholder(DEFAULT_SETTINGS.maxAutomaticBackups.toString())
+                .setValue((this.plugin.settings.maxAutomaticBackups ?? DEFAULT_SETTINGS.maxAutomaticBackups).toString())
+                .onChange(async (value) => {
+                    const parsed = parseInt(value, 10);
+                    if (isNaN(parsed)) {
+                        return;
+                    }
+                    this.plugin.settings.maxAutomaticBackups = Math.max(
+                        MIN_AUTOMATIC_BACKUPS,
+                        Math.min(MAX_AUTOMATIC_BACKUPS, parsed)
+                    );
+                    await this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)
