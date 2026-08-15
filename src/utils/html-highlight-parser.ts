@@ -83,11 +83,8 @@ export class HtmlHighlightParser {
 
                 if (style && /background\s*:/i.test(style)) {
                     // Extract background color from style
-                    const bgMatch = style.match(/background\s*:\s*([^;]+)/i);
-                    if (bgMatch) {
-                        color = this.parseHtmlColor(bgMatch[1]);
-                        tagType = 'span-background';
-                    }
+                    color = this.extractStyleBackground(style);
+                    tagType = 'span-background';
                 } else if (className) {
                     // Extract color from CSS class
                     color = this.getCssClassColor(className);
@@ -100,7 +97,21 @@ export class HtmlHighlightParser {
                     tagType = 'font-color';
                 }
             } else if (tagName === 'mark') {
-                color = '#ffff00'; // Default yellow for <mark>
+                // Highlightr writes <mark style="background: ..."> in inline-styles
+                // mode and <mark class="hltr-..."> in css-classes mode. Resolve both
+                // so the sidebar shows the real colour, not a blanket yellow.
+                const style = element.getAttribute('style');
+                const className = element.getAttribute('class');
+
+                if (style) {
+                    color = this.extractStyleBackground(style);
+                }
+
+                if (!color && className) {
+                    color = this.getCssClassColor(className, 'mark');
+                }
+
+                color = color || '#ffff00'; // Default yellow for a bare <mark>
                 tagType = 'mark';
             }
 
@@ -170,6 +181,15 @@ export class HtmlHighlightParser {
     }
 
     /**
+     * Extract and normalise the background colour from a style attribute.
+     * Shared by the span and mark branches so the regex lives in one place.
+     */
+    private static extractStyleBackground(style: string): string | null {
+        const bgMatch = style.match(/background\s*:\s*([^;]+)/i);
+        return bgMatch ? this.parseHtmlColor(bgMatch[1]) : null;
+    }
+
+    /**
      * Parse HTML color value to hex format
      */
     private static parseHtmlColor(colorValue: string): string | null {
@@ -199,11 +219,17 @@ export class HtmlHighlightParser {
             return namedColors[color];
         }
 
-        // Check if it's already a hex color
-        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) {
+        // Check if it's already a hex color (3-, 6-, or 8-digit)
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) {
             // Convert 3-digit hex to 6-digit
             if (color.length === 4) {
                 return '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+            }
+            // Drop the alpha channel from 8-digit hex (#RRGGBBAA). Highlightr's whole
+            // palette carries an alpha suffix, and the sidebar stores 6-digit colours
+            // and applies its own opacity in CSS.
+            if (color.length === 9) {
+                return color.slice(0, 7);
             }
             return color;
         }
@@ -225,12 +251,14 @@ export class HtmlHighlightParser {
     }
 
     /**
-     * Get color from CSS class by creating a temporary element
+     * Get color from CSS class by creating a temporary element.
+     * @param tagName Element to test with — themes and plugins often scope rules to
+     *                a tag (Highlightr ships `mark.hltr-blue`), so match the source tag.
      */
-    private static getCssClassColor(className: string): string | null {
+    private static getCssClassColor(className: string, tagName: string = 'span'): string | null {
         try {
             // Create temporary element to test the class
-            const tempEl = document.createElement('span');
+            const tempEl = document.createElement(tagName);
             tempEl.className = className;
             tempEl.style.visibility = 'hidden';
             tempEl.style.position = 'absolute';
