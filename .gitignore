@@ -23,6 +23,7 @@ data.json
 
 # Claude AI development files
 CLAUDE.md
+CLAUDE_*.md
 CHECKLIST.md
 .claude
 
@@ -30,6 +31,9 @@ CHECKLIST.md
 TESTING.md
 backups/
 test-*.js
+
+# Runtime restore audit log (rewritten by the plugin on every restore)
+restore-log.txt
 
 # Local hot-reload marker (not for distribution)
 .hotreload
