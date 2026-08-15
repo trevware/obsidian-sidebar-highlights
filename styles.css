@@ -1698,6 +1698,29 @@
     color: var(--text-muted);
 }
 
+/* Cancelled tasks read as resolved, like completed ones */
+.task-item-card.task-status-cancelled {
+    opacity: 0.6;
+}
+
+.task-item-card.task-status-cancelled .task-quote {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+/* In-progress and question tasks stay fully legible — they still need action */
+.task-checkbox[data-task-status="in-progress"] {
+    color: var(--color-accent);
+}
+
+.task-checkbox[data-task-status="question"] {
+    color: var(--text-accent);
+}
+
+.task-checkbox[data-task-status="cancelled"] {
+    color: var(--text-faint);
+}
+
 /* Task checkbox */
 .task-checkbox-container {
     flex-shrink: 0;

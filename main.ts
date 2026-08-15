@@ -39,10 +39,20 @@ export interface FileFilter {
     mode: 'exclude' | 'include';
 }
 
+/**
+ * Checkbox state of a task. `completed` is kept alongside this for backwards
+ * compatibility and is true only for 'done'.
+ *
+ * Note: status and priority share the same brackets in markdown, so a task
+ * cannot carry both — setting one clears the other.
+ */
+export type TaskStatus = 'todo' | 'in-progress' | 'cancelled' | 'question' | 'done';
+
 export interface Task {
     id: string;
     text: string;
     completed: boolean;
+    status: TaskStatus; // Checkbox state: [ ] [/] [-] [?] [x]
     flagged: boolean; // Task is flagged with [!] (deprecated - use priority instead)
     priority?: 1 | 2 | 3; // Priority level: 1 (red/high), 2 (yellow/medium), 3 (blue/low)
     filePath: string;

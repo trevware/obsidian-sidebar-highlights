@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import type { Highlight, Collection, CommentPluginSettings, Task } from '../../main';
+import type { Highlight, Collection, CommentPluginSettings, Task, TaskStatus } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
@@ -2921,6 +2921,38 @@ export class HighlightsSidebarView extends ItemView {
     private async handleFlagToggle(task: Task, event?: MouseEvent) {
         const menu = new Menu();
 
+        // Checkbox status. Status and priority share the same brackets in markdown,
+        // so they live in one menu — choosing either necessarily clears the other.
+        const statusOptions: Array<{ status: TaskStatus; title: string; icon: string }> = [
+            { status: 'todo', title: t('tasks.status.todo'), icon: 'square' },
+            { status: 'in-progress', title: t('tasks.status.inProgress'), icon: 'circle-slash' },
+            { status: 'question', title: t('tasks.status.question'), icon: 'circle-help' },
+            { status: 'cancelled', title: t('tasks.status.cancelled'), icon: 'circle-minus' }
+        ];
+
+        for (const option of statusOptions) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(option.title)
+                    .setIcon(option.icon)
+                    .setChecked((task.status ?? 'todo') === option.status)
+                    .onClick(async () => {
+                        try {
+                            this.updateTaskStatusInCache(task, option.status);
+                            this.renderContent();
+
+                            await this.taskManager.setTaskStatus(task, option.status);
+                        } catch (error) {
+                            new Notice(`Failed to set status: ${error.message}`);
+                            this.cachedAllTasks = null;
+                            this.renderContent();
+                        }
+                    })
+            );
+        }
+
+        menu.addSeparator();
+
         // Priority 1 - Red/High
         menu.addItem((item) =>
             item
@@ -3021,6 +3053,29 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             menu.showAtPosition({ x: 0, y: 0 });
         }
+    }
+
+    /**
+     * Update task status in cache for optimistic UI updates.
+     * Mirrors updateTaskPriorityInCache, and clears priority for the same reason
+     * setTaskStatus does: the status and priority markers occupy the same brackets.
+     */
+    private updateTaskStatusInCache(task: Task, status: TaskStatus) {
+        const apply = (target: Task) => {
+            target.status = status;
+            target.completed = status === 'done';
+            target.priority = undefined;
+            target.flagged = false;
+        };
+
+        if (this.cachedAllTasks) {
+            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
+            if (cachedTask) {
+                apply(cachedTask);
+            }
+        }
+
+        apply(task);
     }
 
     /**

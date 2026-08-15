@@ -187,7 +187,7 @@
       },
       "showCompletedTasks": {
         "name": "Show completed tasks",
-        "desc": "Include completed tasks (- [x]) in the Tasks tab."
+        "desc": "Include completed and cancelled tasks (- [x], - [-]) in the Tasks tab."
       },
       "showCurrentNoteSection": {
         "name": "Show current note tasks",
@@ -373,7 +373,13 @@
     "sunday": "Sunday"
   },
   "tasks": {
-    "currentNote": "Current Note"
+    "currentNote": "Current Note",
+    "status": {
+      "todo": "To do",
+      "inProgress": "In progress",
+      "question": "Question",
+      "cancelled": "Cancelled"
+    }
   },
   "modals": {
     "collection": {

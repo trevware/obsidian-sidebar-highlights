@@ -1,6 +1,22 @@
 import { App, TFile, Vault, moment } from 'obsidian';
-import { Task } from '../../main';
+import { Task, TaskStatus } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
+import {
+    CHECKBOX_REGEX,
+    CHECKBOX_REGEX_WITH_PREFIX,
+    checkboxStateToStatus,
+    statusToCheckboxState,
+    isResolvedStatus
+} from '../utils/task-status';
+
+export {
+    CHECKBOX_PATTERN,
+    CHECKBOX_REGEX,
+    CHECKBOX_REGEX_WITH_PREFIX,
+    checkboxStateToStatus,
+    statusToCheckboxState,
+    isResolvedStatus
+} from '../utils/task-status';
 
 export class TaskManager {
     private app: App;
@@ -183,10 +199,7 @@ export class TaskManager {
         const content = await this.vault.read(file);
         const lines = content.split('\n');
 
-        // Regex to match checkbox syntax: - [ ] or - [x] or - [!] or - [!1] or - [!2] or - [!3]
-        // Supports tasks in callouts (lines starting with >)
-        // Captures leading whitespace, checkbox state, and task text
-        const checkboxRegex = /^(?:>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX;
 
         // Regex to match markdown headers: # Header
         const headerRegex = /^(#{1,6})\s+(.+)$/;
@@ -212,7 +225,8 @@ export class TaskManager {
 
             if (match) {
                 const [, indent, checkboxState, taskText] = match;
-                const isCompleted = checkboxState.toLowerCase() === 'x';
+                const status = checkboxStateToStatus(checkboxState);
+                const isCompleted = status === 'done';
                 const isFlagged = checkboxState.startsWith('!');
 
                 // Extract priority from checkbox state: [!1], [!2], [!3]
@@ -235,8 +249,9 @@ export class TaskManager {
                     indentLevel = 0;
                 }
 
-                // Skip completed tasks if not showing them
-                if (isCompleted && !showCompleted) {
+                // Skip resolved tasks if not showing them. Cancelled counts as resolved;
+                // in-progress and question stay visible since they still need action.
+                if (isResolvedStatus(status) && !showCompleted) {
                     continue;
                 }
 
@@ -279,6 +294,7 @@ export class TaskManager {
                     id: `${file.path}:${i}:${taskText}`, // Unique ID based on file, line, and text
                     text: taskText,
                     completed: isCompleted,
+                    status: status,
                     flagged: isFlagged,
                     priority: priority,
                     filePath: file.path,
@@ -343,8 +359,7 @@ export class TaskManager {
 
         // Toggle the checkbox state - handle all checkbox types including priority markers
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
-        const match = currentLine.match(checkboxRegex);
+        const match = currentLine.match(CHECKBOX_REGEX_WITH_PREFIX);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
@@ -352,9 +367,11 @@ export class TaskManager {
 
         const [, calloutPrefix, indent, currentState, taskText] = match;
 
-        // Toggle logic:
-        // [!], [!1], [!2], [!3], [ ] -> [x] (completing removes priority)
+        // Toggle logic (deliberately two-state):
+        // [ ], [/], [-], [?], [!], [!1], [!2], [!3] -> [x] (completing removes priority)
         // [x] -> [ ] (uncompleting gives normal checkbox)
+        // In-progress and the other states are set from the context menu, not by
+        // clicking, so completing a task stays a single click for everyone.
         const newState = currentState.toLowerCase() === 'x' ? ' ' : 'x';
         const newLine = `${calloutPrefix || ''}${indent}- [${newState}] ${taskText}`;
 
@@ -369,9 +386,54 @@ export class TaskManager {
         const updatedTask = {
             ...task,
             completed: newState === 'x',
+            status: checkboxStateToStatus(newState),
             flagged: false // Flag is removed when task is toggled
         };
         return updatedTask;
+    }
+
+    /**
+     * Set an explicit checkbox status on a task ([ ], [/], [-], [?], [x]).
+     *
+     * Status and priority share the same brackets in markdown, so applying a status
+     * necessarily clears any priority marker on that task.
+     *
+     * @param task The task to update
+     * @param status The status to apply
+     * @returns Updated task object
+     */
+    async setTaskStatus(task: Task, status: TaskStatus): Promise<Task> {
+        const file = this.vault.getAbstractFileByPath(task.filePath);
+        if (!(file instanceof TFile)) {
+            throw new Error(`File not found: ${task.filePath}`);
+        }
+
+        const content = await this.vault.read(file);
+        const lines = content.split('\n');
+        const currentLine = lines[task.lineNumber];
+
+        if (!currentLine) {
+            throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
+        }
+
+        const match = currentLine.match(CHECKBOX_REGEX_WITH_PREFIX);
+        if (!match) {
+            throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
+        }
+
+        const [, calloutPrefix, indent, , taskText] = match;
+        const newState = statusToCheckboxState(status);
+
+        lines[task.lineNumber] = `${calloutPrefix || ''}${indent}- [${newState}] ${taskText}`;
+        await this.vault.modify(file, lines.join('\n'));
+
+        return {
+            ...task,
+            completed: status === 'done',
+            status,
+            flagged: false,
+            priority: undefined // Priority shares the brackets, so it cannot survive
+        };
     }
 
     /**
@@ -397,7 +459,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -456,7 +518,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -520,7 +582,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {

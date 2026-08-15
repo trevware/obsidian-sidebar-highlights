@@ -172,7 +172,7 @@
       },
       "showCompletedTasks": {
         "name": "显示已完成的任务",
-        "desc": "在【任务】标签页中包含已完成的任务 (- [x])。"
+        "desc": "在【任务】标签页中包含已完成和已取消的任务 (- [x]、- [-])。"
       },
       "showCurrentNoteSection": {
         "name": "显示当前笔记任务",
@@ -358,7 +358,13 @@
     "sunday": "周日"
   },
   "tasks": {
-    "currentNote": "当前笔记"
+    "currentNote": "当前笔记",
+    "status": {
+      "todo": "待办",
+      "inProgress": "进行中",
+      "question": "疑问",
+      "cancelled": "已取消"
+    }
   },
   "modals": {
     "collection": {

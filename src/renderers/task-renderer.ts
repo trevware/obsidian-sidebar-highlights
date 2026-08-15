@@ -1,5 +1,5 @@
 import { setIcon, Menu, Notice, moment } from 'obsidian';
-import type { Task } from '../../main';
+import type { Task, TaskStatus } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
 
 export interface TaskRenderOptions {
@@ -17,6 +17,34 @@ export interface TaskRenderOptions {
 export class TaskRenderer {
     constructor(private plugin: HighlightCommentsPlugin) {}
 
+    /** Status of a task, tolerating older objects that only carried `completed`. */
+    private getStatus(task: Task): TaskStatus {
+        return task.status ?? (task.completed ? 'done' : 'todo');
+    }
+
+    /**
+     * Lucide icon for a task's checkbox. Sub-tasks use the circle family and
+     * top-level tasks the square family.
+     *
+     * Note: Lucide has no `square-help`, so the question state uses `circle-help`
+     * in both families rather than falling back to a blank icon.
+     */
+    private getCheckboxIcon(task: Task, isSubTask: boolean): string {
+        const status = this.getStatus(task);
+
+        if (status === 'question') {
+            return 'circle-help';
+        }
+
+        const family = isSubTask ? 'circle' : 'square';
+        switch (status) {
+            case 'done': return `${family}-check`;
+            case 'in-progress': return `${family}-slash`;
+            case 'cancelled': return `${family}-minus`;
+            default: return family;
+        }
+    }
+
     /**
      * Create a task item element
      * @param container Container to append the task item to
@@ -30,7 +58,7 @@ export class TaskRenderer {
         options: TaskRenderOptions = {}
     ): HTMLElement {
         const item = container.createDiv({
-            cls: `task-item-card${task.completed ? ' task-completed' : ''}${options.hideFilename !== undefined ? ' task-grouped' : ''}`,
+            cls: `task-item-card${task.completed ? ' task-completed' : ''} task-status-${this.getStatus(task)}${options.hideFilename !== undefined ? ' task-grouped' : ''}`,
             attr: { 'data-task-id': task.id }
         });
 
@@ -65,13 +93,9 @@ export class TaskRenderer {
 
         // Use different icons for top-level vs sub-tasks
         // Treat as top-level if has parentTask (sub-task rendered as standalone)
-        if (task.indentLevel > 0 && !options.parentTask) {
-            // Sub-tasks: circle and circle-check
-            setIcon(checkboxIcon, task.completed ? 'circle-check' : 'circle');
-        } else {
-            // Top-level tasks: square and square-check
-            setIcon(checkboxIcon, task.completed ? 'square-check' : 'square');
-        }
+        const isSubTask = task.indentLevel > 0 && !options.parentTask;
+        setIcon(checkboxIcon, this.getCheckboxIcon(task, isSubTask));
+        checkboxIcon.dataset.taskStatus = this.getStatus(task);
 
         // Add priority class to checkbox if priority is set
         if (task.priority) {
