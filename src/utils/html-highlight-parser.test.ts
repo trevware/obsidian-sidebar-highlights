@@ -192,6 +192,56 @@ describe('HtmlHighlightParser', () => {
             });
         });
 
+        describe('Class colour resolver', () => {
+            // Highlightr injects its stylesheet on onLayoutReady, the same hook the
+            // sidebar scans on, so the stylesheet may not exist when we parse. A
+            // resolver lets the host look the colour up directly instead of racing CSS.
+            afterEach(() => {
+                HtmlHighlightParser.setClassColorResolver(null);
+            });
+
+            it('should use the resolver when no stylesheet is present', () => {
+                HtmlHighlightParser.setClassColorResolver((className) =>
+                    className === 'hltr-blue' ? '#ADCCFFA6' : null
+                );
+
+                const content = '<mark class="hltr-blue">Dynamic Island</mark>';
+                const highlights = HtmlHighlightParser.parseHighlights(content);
+
+                expect(highlights).toHaveLength(1);
+                expect(highlights[0].color).toBe('#adccff');
+            });
+
+            it('should fall back to computed style when the resolver returns null', () => {
+                HtmlHighlightParser.setClassColorResolver(() => null);
+
+                const style = document.createElement('style');
+                style.textContent = 'mark.hltr-green { background: #BBFABBA6; }';
+                document.head.appendChild(style);
+
+                try {
+                    const content = '<mark class="hltr-green">text</mark>';
+                    const highlights = HtmlHighlightParser.parseHighlights(content);
+
+                    expect(highlights[0].color).toBe('#bbfabb');
+                } finally {
+                    document.head.removeChild(style);
+                }
+            });
+
+            it('should survive a resolver that throws', () => {
+                HtmlHighlightParser.setClassColorResolver(() => {
+                    throw new Error('plugin not loaded');
+                });
+
+                const content = '<mark class="hltr-blue">text</mark>';
+                const highlights = HtmlHighlightParser.parseHighlights(content);
+
+                expect(highlights).toHaveLength(1);
+                expect(highlights[0].color).toBe('#ffff00');
+            });
+        });
+
         describe('Multiple highlights', () => {
             it('should parse multiple highlights of same type', () => {
                 const content = '<font color="red">first</font> and <font color="blue">second</font>';

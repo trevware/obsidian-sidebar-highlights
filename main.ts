@@ -228,6 +228,10 @@ export default class HighlightCommentsPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
+        // Resolve highlight classes from the owning plugin's settings rather than
+        // its stylesheet, which may not be injected yet when we scan (see method).
+        HtmlHighlightParser.setClassColorResolver((className) => this.resolveClassColor(className));
+
         // Initialize i18n system
         try {
             await i18n.init();
@@ -685,6 +689,38 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Refresh sidebar to reflect changes
         this.refreshSidebar();
+    }
+
+    // Resolve a highlight class (currently Highlightr's "hltr-<colour>") to its colour
+    // by reading that plugin's settings directly.
+    //
+    // Highlightr injects its stylesheet inside onLayoutReady — the same hook this
+    // plugin scans the vault on — so whether ".hltr-blue" is resolvable via computed
+    // style depends on plugin load order. Losing that race meant caching a fallback
+    // yellow into data.json, which then persisted until the file was re-parsed.
+    // Reading settings is deterministic and order-independent.
+    resolveClassColor(className: string): string | null {
+        try {
+            const hltrClass = className.split(/\s+/).find(c => c.toLowerCase().startsWith('hltr-'));
+            if (!hltrClass) {
+                return null;
+            }
+
+            const highlighters = (this.app as any).plugins?.plugins?.['highlightr-plugin']?.settings?.highlighters;
+            if (!highlighters) {
+                return null;
+            }
+
+            // Highlightr keys its palette by display name ("Blue") and lowercases it
+            // for the class name ("hltr-blue").
+            const colorName = hltrClass.slice('hltr-'.length).toLowerCase();
+            const key = Object.keys(highlighters).find(k => k.toLowerCase() === colorName);
+
+            return key ? highlighters[key] : null;
+        } catch (error) {
+            console.warn('Failed to resolve highlight class colour:', error);
+            return null;
+        }
     }
 
     // Resolve the plugin folder from the manifest so vaults that override the
@@ -1983,8 +2019,11 @@ export default class HighlightCommentsPlugin extends Plugin {
                 const newHighlights = this.highlights.get(file.path) || [];
                 
                 // Check if any highlights were found or changed (more thorough than just count)
-                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
-                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                // Include color so a colour-only change (e.g. a highlight plugin's
+                // palette resolving differently) still counts as a change, matching
+                // the per-file comparison in detectAndStoreMarkdownHighlights.
+                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
+                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
                 
                 if (oldHighlightsJSON !== newHighlightsJSON) {
                     hasChanges = true;

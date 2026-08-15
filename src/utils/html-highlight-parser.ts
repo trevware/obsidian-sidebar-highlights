@@ -14,7 +14,27 @@ export interface HtmlHighlight {
     fullMatch: string;
 }
 
+/**
+ * Resolves a class attribute to a colour without going through the DOM.
+ * Returns any format parseHtmlColor understands, or null if unknown.
+ */
+export type ClassColorResolver = (className: string) => string | null;
+
 export class HtmlHighlightParser {
+    /**
+     * Optional host-supplied resolver, consulted before computed style.
+     *
+     * Colour-providing plugins commonly inject their stylesheet on
+     * `onLayoutReady` — the same hook the sidebar scans the vault on — so
+     * whether their CSS exists when we parse depends on plugin load order.
+     * A resolver lets the host answer from settings deterministically.
+     */
+    private static classColorResolver: ClassColorResolver | null = null;
+
+    static setClassColorResolver(resolver: ClassColorResolver | null): void {
+        this.classColorResolver = resolver;
+    }
+
     /**
      * Parse HTML highlights from content
      * @param content The markdown content to parse
@@ -256,6 +276,22 @@ export class HtmlHighlightParser {
      *                a tag (Highlightr ships `mark.hltr-blue`), so match the source tag.
      */
     private static getCssClassColor(className: string, tagName: string = 'span'): string | null {
+        // Ask the host first — this does not depend on another plugin's stylesheet
+        // having been injected yet, so it survives plugin load-order races.
+        if (this.classColorResolver) {
+            try {
+                const resolved = this.classColorResolver(className);
+                if (resolved) {
+                    const parsed = this.parseHtmlColor(resolved);
+                    if (parsed) {
+                        return parsed;
+                    }
+                }
+            } catch (error) {
+                console.warn('Class colour resolver failed:', error);
+            }
+        }
+
         try {
             // Create temporary element to test the class
             const tempEl = document.createElement(tagName);
