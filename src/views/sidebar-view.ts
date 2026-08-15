@@ -5245,10 +5245,18 @@ export class HighlightsSidebarView extends ItemView {
 
         const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.tagStartLength);
         const endPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.length - targetMatchInfo.tagEndLength);
-        
+
+        // Reading View has no visible editor, so the CodeMirror calls below would
+        // operate on an offscreen instance and appear to do nothing. offsetToPos
+        // still resolves, so scroll the rendered view to the resolved line instead.
+        if (targetView.getMode() === 'preview') {
+            this.scrollPreviewToLine(targetView, startPos.line);
+            return;
+        }
+
         // Set cursor position first
         targetView.editor.setSelection(startPos, endPos);
-        
+
         // Auto-unfold if setting is enabled
         if (this.plugin.settings.autoToggleFold) {
             try {
@@ -5257,9 +5265,30 @@ export class HighlightsSidebarView extends ItemView {
                 console.warn('Failed to execute toggle fold command:', error);
             }
         }
-        
+
         targetView.editor.scrollIntoView({ from: startPos, to: endPos }, true);
         targetView.editor.focus();
+    }
+
+    /**
+     * Scroll a Reading View to a line. Uses setEphemeralState — the same mechanism
+     * Obsidian uses for internal link navigation — and falls back to the preview
+     * view's own scroll if that is unavailable.
+     *
+     * Scrolling is line-level: Reading View exposes no API for selecting rendered
+     * text, so the highlight is brought into view but not visually marked.
+     */
+    private scrollPreviewToLine(targetView: MarkdownView, line: number): void {
+        try {
+            targetView.setEphemeralState({ line });
+        } catch (error) {
+            console.warn('Failed to scroll preview via ephemeral state:', error);
+            try {
+                targetView.previewMode?.applyScroll(line);
+            } catch (fallbackError) {
+                console.warn('Failed to scroll preview:', fallbackError);
+            }
+        }
     }
 
     focusHighlight(highlightId: string) {
@@ -5373,6 +5402,14 @@ export class HighlightsSidebarView extends ItemView {
 
             if (!bestMatch) {
                 new Notice('Could not find the highlight in the editor.');
+                return;
+            }
+
+            // Reading View has no visible editor, so every positioning branch below
+            // would scroll an offscreen CodeMirror. Scroll the rendered view to the
+            // highlight's line instead — footnote-level precision needs an editor.
+            if (currentView.getMode() === 'preview') {
+                this.scrollPreviewToLine(currentView, editor.offsetToPos(bestMatch.index).line);
                 return;
             }
 
