@@ -2115,6 +2115,49 @@
     opacity: 1;
 }
 
+/* Collapsible groups — chevron affordance matching Sidebar RSS */
+
+/* Group collapse hides via a class while task sections hide via inline display,
+   so the two compose: expanding a group restores each section to its own state
+   instead of revealing everything. */
+.group-collapsed {
+    display: none !important;
+}
+
+.highlight-group-header.highlight-group-collapsible {
+    cursor: pointer;
+}
+
+.highlight-group-header.highlight-group-collapsible:hover {
+    color: var(--text-normal);
+}
+
+.highlight-group-chevron {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--icon-color);
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.highlight-group-chevron .svg-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.highlight-group-header.collapsed .highlight-group-chevron {
+    transform: rotate(-90deg);
+}
+
+/* Collapsed groups keep their header spacing but drop the divider, so the next
+   header does not read as a double rule. */
+.highlight-group-header.collapsed {
+    border-bottom-color: transparent;
+}
+
 /* Task secondary group headers (tag/date/flagged grouping) */
 /* COMMENTED OUT FOR NOW
 .task-secondary-group-header {

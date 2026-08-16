@@ -140,6 +140,10 @@
         "name": "Use inline footnotes by default",
         "desc": "When adding comments via the sidebar, use inline footnotes (^[comment]) instead of standard footnotes ([^ref]: comment)."
       },
+      "removeWithHighlight": {
+        "name": "Remove comments with highlight",
+        "desc": "When removing a highlight from the sidebar, also remove its comments and any footnote definitions left orphaned. Off by default, since comments can hold text you did not intend to delete."
+      },
       "selectTextOnClick": {
         "name": "Select text on click",
         "desc": "When clicking a comment, select the comment instead of positioning the cursor in front of it. Note: Only works for inline footnotes (^[...]) and standard footnotes ([^1]), not HTML comments or custom patterns."
@@ -293,7 +297,13 @@
     "zToA": "Z → A",
     "priority": "Priority",
     "dateEarliestFirst": "Date (Earliest First)",
-    "dateLatestFirst": "Date (Latest First)"
+    "dateLatestFirst": "Date (Latest First)",
+    "noteTitleAsc": "Source note (A → Z)",
+    "noteTitleDesc": "Source note (Z → A)",
+    "noteCreatedNewest": "Note created (newest first)",
+    "noteCreatedOldest": "Note created (oldest first)",
+    "createdNewest": "Highlight created (newest first)",
+    "createdOldest": "Highlight created (oldest first)"
   },
   "emptyStates": {
     "noComments": "No Comments",

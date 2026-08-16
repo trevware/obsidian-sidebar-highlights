@@ -5,6 +5,18 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-08-15
+
+### Added
+- **Collapsible groups**: Group headers now fold their contents, in both the highlight tabs and the Tasks tab, with a rotating chevron showing the state. The current note tasks section at the top of the Tasks tab collapses too. Collapsed groups are remembered across reloads. Task sections keep collapsing independently, so expanding a group restores its sections to whatever state they were in.
+- **Sort by source note and creation date**: Six new sort options — source note title, note creation date and highlight creation date, each in both directions. Sorting on the note title rather than the file path makes a list drawn from several notes readable, since folder structure no longer drives the order. Source-note and note-date sorting are available in every tab. Items with no timestamp sort last rather than appearing as the oldest.
+- **Remove comments with highlight**: New setting, off by default, so removing a highlight also removes its comments and any footnote definitions left orphaned. With it on, the menu entry renames itself to "Remove highlight and comments" so it never understates what it deletes.
+- **Squircle task checkboxes**: Task checkboxes and the Tasks tab icon now use a squircle outline.
+
+### Fixed
+- **Clicking a task or highlight no longer opens a duplicate tab**: A note already open in a left or right sidebar is now reused and focused, rather than being opened again in the main area. This applies to task text, highlight text, comments, and the filename shown on each card. A modifier-click still opens a new tab.
+- **Reading View is centred on the target**: Clicking a highlight, comment or task now centres it in Reading View, matching Editing View, instead of pinning it to the top of the viewport.
+
 ## [1.37.0] - 2026-08-15
 
 ### Added

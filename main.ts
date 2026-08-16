@@ -7,6 +7,7 @@ import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
+import { SortMode } from './src/utils/sort-order';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -92,7 +93,7 @@ export interface DisplayMode {
 
 export interface TabSettings {
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc';
+    sortMode: SortMode;
     commentsExpanded: boolean;
     searchExpanded: boolean;
     selectedTags?: string[]; // Selected tag filters for this tab
@@ -108,7 +109,7 @@ export interface CommentPluginSettings {
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
+    sortMode: SortMode; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
     tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
@@ -117,6 +118,7 @@ export interface CommentPluginSettings {
     autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
     selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
+    removeCommentsWithHighlight: boolean; // Removing a highlight also removes its comments
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
     excludedFiles: string[]; // Legacy: Array of file/folder paths (kept for backward compatibility)
     fileFilters: FileFilter[]; // New: Array of file/folder filters with individual modes
@@ -155,6 +157,7 @@ export interface CommentPluginSettings {
     showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
+    collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
     maxAutomaticBackups: number; // How many automatic backups to retain (manual backups are never deleted)
@@ -177,6 +180,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
     selectTextOnCommentClick: false, // Position to highlight by default
+    removeCommentsWithHighlight: false, // Leave comments in place by default — removing them is not what was asked for
     excludeExcalidraw: true, // Exclude .excalidraw files by default
     excludedFiles: [], // Legacy: Empty array by default
     fileFilters: [], // New: Empty array by default
@@ -215,6 +219,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
+    collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
     maxAutomaticBackups: 20 // Keep the 20 most recent automatic backups by default
@@ -3685,6 +3690,16 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.useInlineFootnotes)
                 .onChange(async (value) => {
                     this.plugin.settings.useInlineFootnotes = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.comments.removeWithHighlight.name'))
+            .setDesc(t('settings.comments.removeWithHighlight.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.removeCommentsWithHighlight)
+                .onChange(async (value) => {
+                    this.plugin.settings.removeCommentsWithHighlight = value;
                     await this.plugin.saveSettings();
                 }));
 

@@ -12,6 +12,8 @@ import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
+import { squircleifyIcon } from '../utils/squircle-icon';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -25,6 +27,12 @@ import { t } from '../i18n';
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
+/**
+ * Group key for the current-note tasks section. A constant rather than the file
+ * name, so its collapsed state is a preference about the section itself.
+ */
+const CURRENT_NOTE_GROUP_KEY = '__current_note__';
+
 export class HighlightsSidebarView extends ItemView {
     plugin: HighlightCommentsPlugin;
     private searchInputEl!: HTMLInputElement;
@@ -33,7 +41,9 @@ export class HighlightsSidebarView extends ItemView {
     private highlightCommentsVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
     private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
-    private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc' = 'none';
+    private sortMode: SortMode = 'none';
+    /** Per-render cache of note creation times; null means the file was not resolvable. */
+    private noteCreatedCache: Map<string, number | null> = new Map();
     private commentsExpanded: boolean = false;
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
@@ -82,6 +92,14 @@ export class HighlightsSidebarView extends ItemView {
     private sortButton!: HTMLElement; // Store sort button reference for state updates
     private taskRefreshTimeout?: number; // Debounce timer for task auto-refresh
     private collapsedSections: Set<string> = new Set(); // Track collapsed task sections
+    /**
+     * Collapsed highlight groups, persisted in settings.
+     *
+     * Deliberately separate from collapsedSections: the task code prunes that set
+     * by prefix-matching group names, which would silently drop highlight entries
+     * whose key happened to match.
+     */
+    private collapsedGroups: Set<string> = new Set();
     private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
 
     // Follow-editor-scroll: scroll the sidebar to track the editor's visible position
@@ -116,6 +134,9 @@ export class HighlightsSidebarView extends ItemView {
         // Load legacy settings as fallback (will be migrated to per-tab on first save)
         this.groupingMode = plugin.settings.groupingMode || 'none';
         this.sortMode = plugin.settings.sortMode || 'none';
+
+        // Restore which highlight groups were left collapsed
+        this.collapsedGroups = new Set(plugin.settings.collapsedGroups || []);
 
         // Load task secondary grouping mode from settings
         this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
@@ -213,10 +234,12 @@ export class HighlightsSidebarView extends ItemView {
             this.collapseAllCommentsInMap();
         }
 
-        // Reset task-specific sort modes when switching to highlights views
+        // Reset sort modes that do not apply to the tab being switched to
         const isTasksView = viewMode === 'tasks';
         const isTaskSpecificSort = this.sortMode === 'priority' || this.sortMode === 'date-asc' || this.sortMode === 'date-desc';
-        if (!isTasksView && isTaskSpecificSort) {
+        // Highlight creation time has no task equivalent
+        const isHighlightSpecificSort = this.sortMode === 'created-asc' || this.sortMode === 'created-desc';
+        if ((!isTasksView && isTaskSpecificSort) || (isTasksView && isHighlightSpecificSort)) {
             this.sortMode = 'none';
         }
 
@@ -676,6 +699,40 @@ export class HighlightsSidebarView extends ItemView {
                         });
                 });
 
+                // Source-note sorting: available in every tab, since a list drawn
+                // from several notes is hard to read in raw file-path order.
+                menu.addSeparator();
+
+                const addSortItem = (title: string, icon: string, mode: SortMode) => {
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(title)
+                            .setIcon(icon)
+                            .setChecked(this.sortMode === mode)
+                            .onClick(() => {
+                                this.sortMode = mode;
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveSortModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+                };
+
+                addSortItem(t('sorting.noteTitleAsc'), 'file-text', 'note-title-asc');
+                addSortItem(t('sorting.noteTitleDesc'), 'file-text', 'note-title-desc');
+
+                menu.addSeparator();
+
+                addSortItem(t('sorting.noteCreatedNewest'), 'calendar', 'note-created-desc');
+                addSortItem(t('sorting.noteCreatedOldest'), 'calendar', 'note-created-asc');
+
+                // A highlight's own creation time only exists for highlights.
+                if (!isTasksView) {
+                    menu.addSeparator();
+                    addSortItem(t('sorting.createdNewest'), 'clock', 'created-desc');
+                    addSortItem(t('sorting.createdOldest'), 'clock', 'created-asc');
+                }
+
                 // Tasks-specific sorting options
                 if (isTasksView) {
                     menu.addSeparator();
@@ -881,7 +938,10 @@ export class HighlightsSidebarView extends ItemView {
             tasksTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
-            setIcon(tasksTab, 'circle-check');
+            // square-check rather than circle-check so squircleifyIcon can swap its
+            // outline, matching the squircle checkboxes the tab leads to.
+            setIcon(tasksTab, 'square-check');
+            squircleifyIcon(tasksTab);
             setTooltip(tasksTab, t('tabs.tasks'));
             if (!defaultActive) {
                 this.viewMode = 'tasks';
@@ -1353,7 +1413,80 @@ export class HighlightsSidebarView extends ItemView {
         return searchInput?.value || '';
     }
 
+    /**
+     * Stable key for a highlight group's collapsed state.
+     *
+     * Scoped by tab and grouping mode so collapsing "Yellow" under colour
+     * grouping does not also collapse a tag of the same name, and so each tab
+     * keeps its own state.
+     */
+    private getHighlightGroupId(groupName: string): string {
+        // The current-note section is not part of the grouping, so its state is
+        // keyed by the tab alone and survives a change of grouping mode.
+        if (groupName === CURRENT_NOTE_GROUP_KEY) {
+            return `${this.viewMode}::${groupName}`;
+        }
+
+        return `${this.viewMode}::${this.groupingMode}::${groupName}`;
+    }
+
+    /**
+     * Make a group header collapse everything rendered beneath it.
+     *
+     * Applies the initial state, wires the click, and persists the change. The
+     * collapsed set is read at render time, so the state survives re-renders
+     * from sorting, filtering and edits.
+     *
+     * @param bodyElements Siblings that make up the group's body. Highlights use
+     *   a single wrapper; task groups render several (a tasks container, plus a
+     *   section header and container per section), so this takes a list.
+     *
+     * Hiding is done with a class rather than inline display, because task
+     * sections collapse themselves via inline display. Using different
+     * mechanisms lets the two compose: expanding a group restores its sections
+     * to whatever state they were in rather than blanket-revealing them.
+     */
+    private makeGroupCollapsible(
+        groupHeader: HTMLElement,
+        bodyElements: HTMLElement[],
+        groupName: string
+    ) {
+        const groupId = this.getHighlightGroupId(groupName);
+        groupHeader.addClass('highlight-group-collapsible');
+        groupHeader.setAttribute('data-group-id', groupId);
+
+        // A leading chevron that rotates when collapsed, matching Sidebar RSS.
+        // Always visible, so the group reads as collapsible before it is clicked —
+        // unlike an indicator that only appears once already collapsed.
+        const headerRow = groupHeader.querySelector('span') ?? groupHeader;
+        const chevron = createDiv({ cls: 'highlight-group-chevron' });
+        setIcon(chevron, 'chevron-down');
+        headerRow.insertBefore(chevron, headerRow.firstChild);
+
+        const apply = (collapsed: boolean) => {
+            groupHeader.toggleClass('collapsed', collapsed);
+            bodyElements.forEach(el => el.toggleClass('group-collapsed', collapsed));
+        };
+
+        apply(this.collapsedGroups.has(groupId));
+
+        groupHeader.addEventListener('click', async () => {
+            const collapsed = !this.collapsedGroups.has(groupId);
+            if (collapsed) {
+                this.collapsedGroups.add(groupId);
+            } else {
+                this.collapsedGroups.delete(groupId);
+            }
+            apply(collapsed);
+
+            this.plugin.settings.collapsedGroups = Array.from(this.collapsedGroups);
+            await this.plugin.saveSettings();
+        });
+    }
+
     private renderContent() {
+        // Note times are cached only for the duration of a render pass
+        this.noteCreatedCache.clear();
         // Capture scroll position before DOM rebuild
         this.captureScrollPosition();
 
@@ -1635,41 +1768,14 @@ export class HighlightsSidebarView extends ItemView {
             cls: 'current-note-tasks-card'
         });
 
+        // Keyed by the section rather than the file: collapsing it means "I don't
+        // want this section taking space", which should hold as the active note
+        // changes rather than needing re-collapsing for every note.
+        this.makeGroupCollapsible(headerEl, [cardContainer], CURRENT_NOTE_GROUP_KEY);
+
         // Sort tasks based on current sort mode
         const sortedTasks = currentFileTasks.sort((a, b) => {
-            // Apply alphabetical sorting if enabled
-            if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                const textA = a.text.toLowerCase();
-                const textB = b.text.toLowerCase();
-                const comparison = textA.localeCompare(textB);
-                return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-            }
-
-            // Apply priority sorting
-            if (this.sortMode === 'priority') {
-                const priorityA = a.priority || 999; // Tasks without priority go last
-                const priorityB = b.priority || 999;
-                if (priorityA !== priorityB) {
-                    return priorityA - priorityB; // Lower number = higher priority
-                }
-                // Secondary sort by line number when priorities are equal
-                return a.lineNumber - b.lineNumber;
-            }
-
-            // Apply date sorting
-            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                const dateB = b.date || '9999-12-31';
-                const comparison = dateA.localeCompare(dateB);
-                if (comparison !== 0) {
-                    return this.sortMode === 'date-asc' ? comparison : -comparison;
-                }
-                // Secondary sort by line number when dates are equal
-                return a.lineNumber - b.lineNumber;
-            }
-
-            // Default: sort by line number (order of appearance in file)
-            return a.lineNumber - b.lineNumber;
+            return this.compareTasksBySortMode(a, b, 'position');
         });
 
         // Render tasks (flat list, no grouping or filtering)
@@ -1684,7 +1790,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.handleTaskClick(task, event);
                 },
                 onFileNameClick: (filePath, event) => {
-                    this.plugin.app.workspace.openLinkText(filePath, '');
+                    this.openNoteReusingLeaf(filePath, event);
                 },
                 onFlagToggle: async (task, event) => {
                     await this.handleFlagToggle(task, event);
@@ -1891,42 +1997,7 @@ export class HighlightsSidebarView extends ItemView {
                 if (this.groupingMode === 'none') {
                     // Sort tasks
                     const sortedTasks = filteredTasks.sort((a, b) => {
-                        // Apply alphabetical sorting if enabled
-                        if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                            const textA = a.text.toLowerCase();
-                            const textB = b.text.toLowerCase();
-                            const comparison = textA.localeCompare(textB);
-                            return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                        }
-
-                        // Apply priority sorting
-                        if (this.sortMode === 'priority') {
-                            const priorityA = a.priority || 999; // Tasks without priority go last
-                            const priorityB = b.priority || 999;
-                            if (priorityA !== priorityB) {
-                                return priorityA - priorityB; // Lower number = higher priority
-                            }
-                            // Secondary sort by line number when priorities are equal
-                            return a.lineNumber - b.lineNumber;
-                        }
-
-                        // Apply date sorting
-                        if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                            const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                            const dateB = b.date || '9999-12-31';
-                            const comparison = dateA.localeCompare(dateB);
-                            if (comparison !== 0) {
-                                return this.sortMode === 'date-asc' ? comparison : -comparison;
-                            }
-                            // Secondary sort by line number when dates are equal
-                            return a.lineNumber - b.lineNumber;
-                        }
-
-                        // Default: sort by file path, then by line number
-                        if (a.filePath !== b.filePath) {
-                            return a.filePath.localeCompare(b.filePath);
-                        }
-                        return a.lineNumber - b.lineNumber;
+                        return this.compareTasksBySortMode(a, b, 'path-then-position');
                     });
 
                     // Use pagination for performance
@@ -2091,6 +2162,10 @@ export class HighlightsSidebarView extends ItemView {
             const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
             const headerContent = groupHeader.createEl('span');
 
+            // Everything this group renders below its header, so the header can
+            // hide the group as a whole. Sections keep collapsing independently.
+            const groupBodyElements: HTMLElement[] = [];
+
             // Calculate completion percentage from ALL tasks in this group (not just filtered)
             const allGroupTasks = allGroups.has(groupName) ? allGroups.get(groupName)! : groupTasks;
             const completedCount = allGroupTasks.filter(t => t.completed).length;
@@ -2115,43 +2190,12 @@ export class HighlightsSidebarView extends ItemView {
             if (skipSectionGrouping) {
                 // Render tasks directly without section grouping
                 const sortedTasks = groupTasks.sort((a, b) => {
-                    // Apply alphabetical sorting if enabled
-                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                        const textA = a.text.toLowerCase();
-                        const textB = b.text.toLowerCase();
-                        const comparison = textA.localeCompare(textB);
-                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                    }
-
-                    // Apply priority sorting
-                    if (this.sortMode === 'priority') {
-                        const priorityA = a.priority || 999; // Tasks without priority go last
-                        const priorityB = b.priority || 999;
-                        if (priorityA !== priorityB) {
-                            return priorityA - priorityB; // Lower number = higher priority
-                        }
-                        // Secondary sort by line number when priorities are equal
-                        return a.lineNumber - b.lineNumber;
-                    }
-
-                    // Apply date sorting
-                    if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                        const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                        const dateB = b.date || '9999-12-31';
-                        const comparison = dateA.localeCompare(dateB);
-                        if (comparison !== 0) {
-                            return this.sortMode === 'date-asc' ? comparison : -comparison;
-                        }
-                        // Secondary sort by line number when dates are equal
-                        return a.lineNumber - b.lineNumber;
-                    }
-
-                    // Default: sort by line number within same file
-                    return a.lineNumber - b.lineNumber;
+                    return this.compareTasksBySortMode(a, b, 'position');
                 });
 
                 // Create wrapper container for consistent spacing
                 const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                groupBodyElements.push(groupTasksContainer);
 
                 // Only hide date badge for individual day groups (YYYY-MM-DD format)
                 // Show it for month/year groups so users can see the specific date
@@ -2191,7 +2235,7 @@ export class HighlightsSidebarView extends ItemView {
                             this.handleTaskClick(task, event);
                         },
                         onFileNameClick: (filePath, event) => {
-                            this.plugin.app.workspace.openLinkText(filePath, '');
+                            this.openNoteReusingLeaf(filePath, event);
                         },
                         onFlagToggle: async (task, event) => {
                             await this.handleFlagToggle(task, event);
@@ -2235,7 +2279,7 @@ export class HighlightsSidebarView extends ItemView {
                                     this.handleTaskClick(task, event);
                                 },
                                 onFileNameClick: (filePath, event) => {
-                                    this.plugin.app.workspace.openLinkText(filePath, '');
+                                    this.openNoteReusingLeaf(filePath, event);
                                 },
                                 onFlagToggle: async (task, event) => {
                                     await this.handleFlagToggle(task, event);
@@ -2280,6 +2324,7 @@ export class HighlightsSidebarView extends ItemView {
                     const isCollapsed = this.collapsedSections.has(sectionId) || this.collapsedSections.has(sectionPositionId);
 
                     const sectionHeader = this.listContainerEl.createDiv({ cls: 'task-section-header' });
+                    groupBodyElements.push(sectionHeader);
                     sectionHeader.setAttribute('data-section-id', sectionId);
                     sectionHeader.setAttribute('data-section-position-id', sectionPositionId);
                     sectionHeader.setAttribute('data-group-name', groupName);
@@ -2354,43 +2399,12 @@ export class HighlightsSidebarView extends ItemView {
 
                         // Sort tasks within secondary group
                         const sortedTasks = secondaryGroupTasks.sort((a, b) => {
-                            // Apply alphabetical sorting if enabled
-                            if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                                const textA = a.text.toLowerCase();
-                                const textB = b.text.toLowerCase();
-                                const comparison = textA.localeCompare(textB);
-                                return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                            }
-
-                            // Apply priority sorting
-                            if (this.sortMode === 'priority') {
-                                const priorityA = a.priority || 999; // Tasks without priority go last
-                                const priorityB = b.priority || 999;
-                                if (priorityA !== priorityB) {
-                                    return priorityA - priorityB; // Lower number = higher priority
-                                }
-                                // Secondary sort by line number when priorities are equal
-                                return a.lineNumber - b.lineNumber;
-                            }
-
-                            // Apply date sorting
-                            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                                const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                                const dateB = b.date || '9999-12-31';
-                                const comparison = dateA.localeCompare(dateB);
-                                if (comparison !== 0) {
-                                    return this.sortMode === 'date-asc' ? comparison : -comparison;
-                                }
-                                // Secondary sort by line number when dates are equal
-                                return a.lineNumber - b.lineNumber;
-                            }
-
-                            // Default: sort by line number within same file
-                            return a.lineNumber - b.lineNumber;
+                            return this.compareTasksBySortMode(a, b, 'position');
                         });
 
                         // Create a wrapper container for tasks in this secondary group
                         const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                    groupBodyElements.push(groupTasksContainer);
 
                         // Hide container if secondary group is collapsed
                         if (isSecondaryCollapsed) {
@@ -2430,7 +2444,7 @@ export class HighlightsSidebarView extends ItemView {
                                     this.handleTaskClick(task, event);
                                 },
                                 onFileNameClick: (filePath, event) => {
-                                    this.plugin.app.workspace.openLinkText(filePath, '');
+                                    this.openNoteReusingLeaf(filePath, event);
                                 },
                                 onFlagToggle: async (task) => {
                                     await this.handleFlagToggle(task);
@@ -2447,20 +2461,12 @@ export class HighlightsSidebarView extends ItemView {
                     // No secondary grouping - render tasks directly in this section
                     // Sort tasks within section
                     const sortedTasks = sectionTasks.sort((a, b) => {
-                        // Apply alphabetical sorting if enabled
-                        if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                            const textA = a.text.toLowerCase();
-                            const textB = b.text.toLowerCase();
-                            const comparison = textA.localeCompare(textB);
-                            return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                        }
-
-                        // Default: sort by line number within same file
-                        return a.lineNumber - b.lineNumber;
+                        return this.compareTasksBySortMode(a, b, 'position');
                     });
 
                     // Create a wrapper container for tasks in this section
                     const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                    groupBodyElements.push(groupTasksContainer);
 
                     // Hide container if section is collapsed
                     if (isSectionCollapsed) {
@@ -2504,7 +2510,7 @@ export class HighlightsSidebarView extends ItemView {
                                 this.handleTaskClick(task, event);
                             },
                             onFileNameClick: (filePath, event) => {
-                                this.plugin.app.workspace.openLinkText(filePath, '');
+                                this.openNoteReusingLeaf(filePath, event);
                             },
                             onFlagToggle: async (task) => {
                                 await this.handleFlagToggle(task);
@@ -2545,7 +2551,7 @@ export class HighlightsSidebarView extends ItemView {
                                         this.handleTaskClick(task, event);
                                     },
                                     onFileNameClick: (filePath, event) => {
-                                        this.plugin.app.workspace.openLinkText(filePath, '');
+                                        this.openNoteReusingLeaf(filePath, event);
                                     },
                                     onFlagToggle: async (task) => {
                                         await this.handleFlagToggle(task);
@@ -2560,6 +2566,9 @@ export class HighlightsSidebarView extends ItemView {
                 // }
             });
             } // End else (section grouping)
+
+            // Let the group header fold everything it rendered above
+            this.makeGroupCollapsible(groupHeader, groupBodyElements, groupName);
         });
     }
 
@@ -2908,6 +2917,7 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             setIcon(checkboxEl, newCompletedState ? 'square-check' : 'square');
         }
+        squircleifyIcon(checkboxEl);
 
         // Remove animation class after animation completes
         const animationDuration = newCompletedState ? 600 : 400;
@@ -2932,6 +2942,7 @@ export class HighlightsSidebarView extends ItemView {
             } else {
                 setIcon(checkboxEl, task.completed ? 'square-check' : 'square');
             }
+            squircleifyIcon(checkboxEl);
             // Revert progress circle on error
             this.updateGroupProgressCircle(task, task.completed);
             new Notice(`Failed to toggle task: ${error.message}`);
@@ -3302,7 +3313,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.handleTaskClick(task, event);
                 },
                 onFileNameClick: (filePath, event) => {
-                    this.plugin.app.workspace.openLinkText(filePath, '');
+                    this.openNoteReusingLeaf(filePath, event);
                 },
                 onFlagToggle: async (task) => {
                     await this.handleFlagToggle(task);
@@ -3344,7 +3355,7 @@ export class HighlightsSidebarView extends ItemView {
                             this.handleTaskClick(task, event);
                         },
                         onFileNameClick: (filePath, event) => {
-                            this.plugin.app.workspace.openLinkText(filePath, '');
+                            this.openNoteReusingLeaf(filePath, event);
                         },
                         onFlagToggle: async (task) => {
                             await this.handleFlagToggle(task);
@@ -3424,46 +3435,107 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
-    private handleTaskClick(task: Task, event?: MouseEvent) {
-        // Open the file and navigate to the task line
-        const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-        if (file instanceof TFile) {
-            this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
-                // Get the active markdown view
-                const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-                if (activeView) {
-                    // Reading View has no visible editor, so the selection and scroll
-                    // below would act on an offscreen CodeMirror. Scroll the rendered
-                    // view to the task's line instead.
-                    if (activeView.getMode() === 'preview') {
-                        this.scrollPreviewToLine(activeView, task.lineNumber);
-                        return;
-                    }
-
-                    const editor = activeView.editor;
-                    const line = editor.getLine(task.lineNumber);
-
-                    // Find the start of the task text (after the checkbox). Uses the
-                    // shared pattern so every supported state — including [/], [?] and
-                    // the priority markers — is stripped rather than selected.
-                    const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
-                    const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
-                    const taskTextEnd = line.length;
-
-                    // Select the task text (highlighting it)
-                    editor.setSelection(
-                        { line: task.lineNumber, ch: taskTextStart },
-                        { line: task.lineNumber, ch: taskTextEnd }
-                    );
-
-                    // Scroll to the line
-                    editor.scrollIntoView({
-                        from: { line: task.lineNumber, ch: taskTextStart },
-                        to: { line: task.lineNumber, ch: taskTextEnd }
-                    }, true);
-                }
-            });
+    /**
+     * Find a markdown view already showing this file, preferring the active one.
+     *
+     * `getLeavesOfType` walks every leaf — main area, popout windows and the
+     * left/right sidebars — so a note open in a side panel is reused instead of
+     * being opened a second time in the main area.
+     *
+     * @param activate Focus the leaf when one is found elsewhere in the workspace
+     * @returns The matching view, or null when the file is not open anywhere
+     */
+    private findOpenMarkdownView(filePath: string, activate: boolean): MarkdownView | null {
+        const active = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (active && active.file?.path === filePath) {
+            return active;
         }
+
+        for (const leaf of this.plugin.app.workspace.getLeavesOfType('markdown')) {
+            if (leaf.view instanceof MarkdownView && leaf.view.file?.path === filePath) {
+                if (activate) {
+                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
+                }
+                return leaf.view;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Open a note from the sidebar, reusing a view that already has it open —
+     * including one in a left or right sidebar — instead of opening a second
+     * copy in the main area.
+     *
+     * A modifier-click still opens a new tab or split, since that is an explicit
+     * request for one.
+     */
+    private openNoteReusingLeaf(filePath: string, event?: MouseEvent) {
+        if (event && Keymap.isModEvent(event)) {
+            this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+            return;
+        }
+
+        if (this.findOpenMarkdownView(filePath, true)) {
+            return;
+        }
+
+        this.plugin.app.workspace.openLinkText(filePath, filePath, false);
+    }
+
+    private handleTaskClick(task: Task, event?: MouseEvent) {
+        const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+        if (!(file instanceof TFile)) {
+            return;
+        }
+
+        // Reuse a view that already has this file open, wherever it lives, rather
+        // than opening another copy in the main area.
+        const openView = this.findOpenMarkdownView(task.filePath, true);
+        if (openView) {
+            this.focusTaskInView(openView, task);
+            return;
+        }
+
+        this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
+            const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+            if (activeView) {
+                this.focusTaskInView(activeView, task);
+            }
+        });
+    }
+
+    /** Select and scroll to a task's line within an already-resolved view. */
+    private focusTaskInView(targetView: MarkdownView, task: Task) {
+        // Reading View has no visible editor, so the selection and scroll below
+        // would act on an offscreen CodeMirror. Scroll the rendered view instead.
+        if (targetView.getMode() === 'preview') {
+            this.scrollPreviewToLine(targetView, task.lineNumber);
+            return;
+        }
+
+        const editor = targetView.editor;
+        const line = editor.getLine(task.lineNumber);
+
+        // Find the start of the task text (after the checkbox). Uses the shared
+        // pattern so every supported state — including [/], [?] and the priority
+        // markers — is stripped rather than selected.
+        const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
+        const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
+        const taskTextEnd = line.length;
+
+        // Select the task text (highlighting it)
+        editor.setSelection(
+            { line: task.lineNumber, ch: taskTextStart },
+            { line: task.lineNumber, ch: taskTextEnd }
+        );
+
+        // Scroll to the line
+        editor.scrollIntoView({
+            from: { line: task.lineNumber, ch: taskTextStart },
+            to: { line: task.lineNumber, ch: taskTextEnd }
+        }, true);
     }
 
     private renderCollectionDetailView(collectionId: string) {
@@ -3518,19 +3590,7 @@ export class HighlightsSidebarView extends ItemView {
         // Apply grouping if enabled
         if (this.groupingMode === 'none') {
             const sortedHighlights = filteredHighlights.sort((a, b) => {
-                // Apply alphabetical sorting if enabled
-                if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                }
-
-                // Default: sort by file path, then by position in file
-                if (a.filePath !== b.filePath) {
-                    return a.filePath.localeCompare(b.filePath);
-                }
-                return a.startOffset - b.startOffset;
+                return this.compareHighlightsBySortMode(a, b, 'path-then-position');
             });
 
             sortedHighlights.forEach(highlight => {
@@ -3611,19 +3671,7 @@ export class HighlightsSidebarView extends ItemView {
             if (this.groupingMode === 'none') {
                 // Sort highlights
                 const sortedHighlights = filteredHighlights.sort((a, b) => {
-                    // Apply alphabetical sorting if enabled
-                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                        const textA = a.text.toLowerCase();
-                        const textB = b.text.toLowerCase();
-                        const comparison = textA.localeCompare(textB);
-                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                    }
-
-                    // Default: sort by file path, then by position in file
-                    if (a.filePath !== b.filePath) {
-                        return a.filePath.localeCompare(b.filePath);
-                    }
-                    return a.startOffset - b.startOffset;
+                    return this.compareHighlightsBySortMode(a, b, 'path-then-position');
                 });
                 
                 // No grouping - use pagination for "All Notes" performance
@@ -3840,16 +3888,12 @@ export class HighlightsSidebarView extends ItemView {
                         return timeB - timeA; // Later times first
                     }
                 });
-            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                // Sort alphabetically by highlight text
-                sortedHighlights = groupHighlights.sort((a, b) => {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                });
             } else {
-                sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+                // Within a group the file is already implied, so ties fall back
+                // to position rather than path.
+                sortedHighlights = groupHighlights.sort(
+                    (a, b) => this.compareHighlightsBySortMode(a, b, 'position')
+                );
             }
             return [groupName, sortedHighlights] as [string, Highlight[]];
         }).sort(([a], [b]) => {
@@ -3946,13 +3990,18 @@ export class HighlightsSidebarView extends ItemView {
                 // Only render the group if we have highlights to show
                 if (groupHighlightsToShow.length > 0) {
                     // Render group header
-                    this.renderGroupHeader(groupName, groupHighlights, groupColors);
-                    
+                    const groupHeader = this.renderGroupHeader(groupName, groupHighlights, groupColors);
+
+                    // Items live in their own container so the header can hide them as a unit
+                    const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
+
                     // Render the subset of highlights for this page (already sorted)
                     groupHighlightsToShow.forEach(highlight => {
-                        this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true);
+                        this.createHighlightItem(itemsContainer, highlight, searchTerm, true);
                         renderedHighlightCount++;
                     });
+
+                    this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
                 }
             }
             
@@ -3968,7 +4017,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Render just the group header with stats
      */
-    private renderGroupHeader(groupName: string, groupHighlights: Highlight[], groupColors?: Map<string, string>): void {
+    private renderGroupHeader(groupName: string, groupHighlights: Highlight[], groupColors?: Map<string, string>): HTMLElement {
         // Create group header
         const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
         
@@ -4037,6 +4086,8 @@ export class HighlightsSidebarView extends ItemView {
         setIcon(filesIcon, 'files');
         
         filesContainer.createSpan({ text: `${fileCount}` });
+
+        return groupHeader;
     }
 
     /**
@@ -4044,7 +4095,7 @@ export class HighlightsSidebarView extends ItemView {
      */
     private renderSingleGroup(groupName: string, groupHighlights: Highlight[], searchTerm?: string, showFilename: boolean = false, groupColors?: Map<string, string>): void {
         // Render group header
-        this.renderGroupHeader(groupName, groupHighlights, groupColors);
+        const groupHeader = this.renderGroupHeader(groupName, groupHighlights, groupColors);
 
         // Sort highlights within the group
         let sortedHighlights: Highlight[];
@@ -4064,9 +4115,13 @@ export class HighlightsSidebarView extends ItemView {
         }
         
         // Create highlights in this group
+        // Items live in their own container so the header can hide them as a unit
+        const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
         sortedHighlights.forEach(highlight => {
-            this.createHighlightItem(this.listContainerEl, highlight, searchTerm, showFilename);
+            this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
         });
+
+        this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
     }
 
     /**
@@ -4393,6 +4448,24 @@ export class HighlightsSidebarView extends ItemView {
                     case 'date-desc':
                         setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.dateLatestFirst')}`);
                         break;
+                    case 'note-title-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteTitleAsc')}`);
+                        break;
+                    case 'note-title-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteTitleDesc')}`);
+                        break;
+                    case 'note-created-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteCreatedNewest')}`);
+                        break;
+                    case 'note-created-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteCreatedOldest')}`);
+                        break;
+                    case 'created-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.createdNewest')}`);
+                        break;
+                    case 'created-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.createdOldest')}`);
+                        break;
                     default:
                         setTooltip(button, t('toolbar.sort'));
                 }
@@ -4524,7 +4597,7 @@ export class HighlightsSidebarView extends ItemView {
             onFileNameClick: (filePath, event) => {
                 // Set flag to preserve pagination when clicking filenames
                 this.isPreservingPagination = true;
-                this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+                this.openNoteReusingLeaf(filePath, event);
             },
             onContextMenu: (highlight, event) => {
                 this.showHighlightContextMenu(highlight, event);
@@ -4545,14 +4618,25 @@ export class HighlightsSidebarView extends ItemView {
             && !!highlight.footnoteContents
             && highlight.footnoteContents.length > 0;
 
+        // When the setting is on, removing a highlight takes its comments with it.
+        // The label changes to match, so the menu never understates what it deletes.
+        const removeTakesComments = this.plugin.settings.removeCommentsWithHighlight;
+
         menu.addItem((item) => {
             item
-                .setTitle(t('contextMenu.removeHighlight'))
+                .setTitle(removeTakesComments && hasComments
+                    ? t('contextMenu.removeHighlightAndComments')
+                    : t('contextMenu.removeHighlight'))
                 .setIcon('eraser')
                 .onClick(async () => {
-                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-highlight');
+                    const ok = await this.plugin.removeHighlightFromSource(
+                        highlight,
+                        removeTakesComments ? 'remove-both' : 'remove-highlight'
+                    );
                     if (ok) {
-                        new Notice(t('notices.highlightRemoved'));
+                        new Notice(removeTakesComments && hasComments
+                            ? t('notices.highlightAndCommentsRemoved')
+                            : t('notices.highlightRemoved'));
                     }
                 });
         });
@@ -4570,18 +4654,21 @@ export class HighlightsSidebarView extends ItemView {
                 });
         });
 
-        menu.addItem((item) => {
-            item
-                .setTitle(t('contextMenu.removeHighlightAndComments'))
-                .setIcon('trash-2')
-                .setDisabled(!hasComments)
-                .onClick(async () => {
-                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-both');
-                    if (ok) {
-                        new Notice(t('notices.highlightAndCommentsRemoved'));
-                    }
-                });
-        });
+        // Redundant once the first item already removes both.
+        if (!removeTakesComments) {
+            menu.addItem((item) => {
+                item
+                    .setTitle(t('contextMenu.removeHighlightAndComments'))
+                    .setIcon('trash-2')
+                    .setDisabled(!hasComments)
+                    .onClick(async () => {
+                        const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-both');
+                        if (ok) {
+                            new Notice(t('notices.highlightAndCommentsRemoved'));
+                        }
+                    });
+            });
+        }
 
         menu.showAtMouseEvent(event);
     }
@@ -5090,21 +5177,8 @@ export class HighlightsSidebarView extends ItemView {
             this.isHighlightFocusing = false;
         }, 2000);
         
-        let targetView: MarkdownView | null = null;
-        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-
-        if (activeEditorView && activeEditorView.file && activeEditorView.file.path === highlight.filePath) {
-            targetView = activeEditorView;
-        } else {
-            const markdownLeaves = this.plugin.app.workspace.getLeavesOfType('markdown');
-            for (const leaf of markdownLeaves) {
-                if (leaf.view instanceof MarkdownView && leaf.view.file?.path === highlight.filePath) {
-                    targetView = leaf.view as MarkdownView;
-                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
-                    break;
-                }
-            }
-        }
+        // Reuses a view already showing this file, including one in a sidebar.
+        let targetView: MarkdownView | null = this.findOpenMarkdownView(highlight.filePath, true);
 
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
@@ -5450,21 +5524,8 @@ export class HighlightsSidebarView extends ItemView {
 
     private async focusFootnoteInEditor(highlight: Highlight, footnoteIndex: number, event?: MouseEvent) {
         // First, ensure the correct file is open
-        let targetView: MarkdownView | null = null;
-        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-
-        if (activeEditorView && activeEditorView.file && activeEditorView.file.path === highlight.filePath) {
-            targetView = activeEditorView;
-        } else {
-            const markdownLeaves = this.plugin.app.workspace.getLeavesOfType('markdown');
-            for (const leaf of markdownLeaves) {
-                if (leaf.view instanceof MarkdownView && leaf.view.file?.path === highlight.filePath) {
-                    targetView = leaf.view as MarkdownView;
-                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
-                    break;
-                }
-            }
-        }
+        // Reuses a view already showing this file, including one in a sidebar.
+        let targetView: MarkdownView | null = this.findOpenMarkdownView(highlight.filePath, true);
 
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
@@ -6140,23 +6201,21 @@ export class HighlightsSidebarView extends ItemView {
                         return timeB - timeA; // Later times first
                     }
                 });
-            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                // Sort alphabetically by highlight text
-                sortedHighlights = groupHighlights.sort((a, b) => {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                });
             } else {
-                // For other grouping modes, sort by start offset (position in file)
-                sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+                // Within a group the file is already implied, so ties fall back
+                // to position rather than path.
+                sortedHighlights = groupHighlights.sort(
+                    (a, b) => this.compareHighlightsBySortMode(a, b, 'position')
+                );
             }
             
-            // Create highlights in this group
+            // Items live in their own container so the header can hide them as a unit
+            const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
             sortedHighlights.forEach(highlight => {
-                this.createHighlightItem(this.listContainerEl, highlight, searchTerm, showFilename);
+                this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
             });
+
+            this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
         });
     }
 
@@ -7128,6 +7187,37 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         return this.applyAllFilters(source);
+    }
+
+    /**
+     * Creation time of a note, in epoch milliseconds, or undefined when the file
+     * cannot be resolved. Cached per render pass because sorting a large vault
+     * would otherwise hit the vault once per comparison.
+     */
+    private getNoteCreated = (filePath: string): number | undefined => {
+        const cached = this.noteCreatedCache.get(filePath);
+        if (cached !== undefined) {
+            return cached ?? undefined;
+        }
+
+        const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+        const ctime = file instanceof TFile ? file.stat.ctime : null;
+        this.noteCreatedCache.set(filePath, ctime);
+        return ctime ?? undefined;
+    };
+
+    private compareHighlightsBySortMode(a: Highlight, b: Highlight, fallback: SortFallback): number {
+        return compareHighlights(a, b, this.sortMode, {
+            fallback,
+            getNoteCreated: this.getNoteCreated
+        });
+    }
+
+    private compareTasksBySortMode(a: Task, b: Task, fallback: SortFallback): number {
+        return compareTasks(a, b, this.sortMode, {
+            fallback,
+            getNoteCreated: this.getNoteCreated
+        });
     }
 
     /**

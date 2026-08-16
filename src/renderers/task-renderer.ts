@@ -1,6 +1,7 @@
 import { setIcon, Menu, Notice, moment } from 'obsidian';
 import type { Task, TaskStatus } from '../../main';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import { squircleifyIcon } from '../utils/squircle-icon';
 import type HighlightCommentsPlugin from '../../main';
 
 export interface TaskRenderOptions {
@@ -117,6 +118,7 @@ export class TaskRenderer {
         // Treat as top-level if has parentTask (sub-task rendered as standalone)
         const isSubTask = task.indentLevel > 0 && !options.parentTask;
         setIcon(checkboxIcon, this.getCheckboxIcon(task, isSubTask));
+        squircleifyIcon(checkboxIcon);
         checkboxIcon.dataset.taskStatus = this.getStatus(task);
 
         // Add priority class to checkbox if priority is set
