@@ -2115,30 +2115,33 @@
     opacity: 1;
 }
 
-/* Collapsible highlight groups — mirrors the task section affordances above */
+/* Collapsible highlight groups — chevron affordance matching Sidebar RSS */
 .highlight-group-header.highlight-group-collapsible {
     cursor: pointer;
 }
 
-.highlight-group-header.collapsed {
-    color: var(--text-muted);
-    opacity: 0.7;
+.highlight-group-header.highlight-group-collapsible:hover {
+    color: var(--text-normal);
 }
 
-.highlight-group-header.collapsed:hover {
-    opacity: 0.9;
+.highlight-group-chevron {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--icon-color);
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
 }
 
-.highlight-group-ellipsis {
-    margin-left: auto;
-    font-weight: 400;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    pointer-events: none;
+.highlight-group-chevron .svg-icon {
+    width: 16px;
+    height: 16px;
 }
 
-.highlight-group-header.collapsed .highlight-group-ellipsis {
-    opacity: 1;
+.highlight-group-header.collapsed .highlight-group-chevron {
+    transform: rotate(-90deg);
 }
 
 /* Collapsed groups keep their header spacing but drop the divider, so the next

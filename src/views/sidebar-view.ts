@@ -1391,11 +1391,13 @@ export class HighlightsSidebarView extends ItemView {
         groupHeader.addClass('highlight-group-collapsible');
         groupHeader.setAttribute('data-group-id', groupId);
 
-        // Matches the ellipsis affordance used by collapsed task sections. It goes
-        // in the header's first row, which is already a flex row, so `margin-left:
-        // auto` pushes it to the right edge without any positioning tricks.
+        // A leading chevron that rotates when collapsed, matching Sidebar RSS.
+        // Always visible, so the group reads as collapsible before it is clicked —
+        // unlike an indicator that only appears once already collapsed.
         const headerRow = groupHeader.querySelector('span') ?? groupHeader;
-        headerRow.createSpan({ cls: 'highlight-group-ellipsis', text: '...' });
+        const chevron = createDiv({ cls: 'highlight-group-chevron' });
+        setIcon(chevron, 'chevron-down');
+        headerRow.insertBefore(chevron, headerRow.firstChild);
 
         const apply = (collapsed: boolean) => {
             groupHeader.toggleClass('collapsed', collapsed);
