@@ -10,7 +10,7 @@ import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
-import { normalizeVisibleNesting } from '../utils/task-status';
+import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
@@ -3419,12 +3419,22 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the active markdown view
                 const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
                 if (activeView) {
+                    // Reading View has no visible editor, so the selection and scroll
+                    // below would act on an offscreen CodeMirror. Scroll the rendered
+                    // view to the task's line instead.
+                    if (activeView.getMode() === 'preview') {
+                        this.scrollPreviewToLine(activeView, task.lineNumber);
+                        return;
+                    }
+
                     const editor = activeView.editor;
                     const line = editor.getLine(task.lineNumber);
 
-                    // Find the start of the task text (after checkbox)
-                    const taskMatch = line.match(/^(\s*[-*]\s*\[[ xX-]\]\s*)/);
-                    const taskTextStart = taskMatch ? taskMatch[1].length : 0;
+                    // Find the start of the task text (after the checkbox). Uses the
+                    // shared pattern so every supported state — including [/], [?] and
+                    // the priority markers — is stripped rather than selected.
+                    const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
+                    const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
                     const taskTextEnd = line.length;
 
                     // Select the task text (highlighting it)
