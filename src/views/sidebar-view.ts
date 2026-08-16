@@ -12,6 +12,7 @@ import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import { squircleifyIcon } from '../utils/squircle-icon';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -2908,6 +2909,7 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             setIcon(checkboxEl, newCompletedState ? 'square-check' : 'square');
         }
+        squircleifyIcon(checkboxEl);
 
         // Remove animation class after animation completes
         const animationDuration = newCompletedState ? 600 : 400;
@@ -2932,6 +2934,7 @@ export class HighlightsSidebarView extends ItemView {
             } else {
                 setIcon(checkboxEl, task.completed ? 'square-check' : 'square');
             }
+            squircleifyIcon(checkboxEl);
             // Revert progress circle on error
             this.updateGroupProgressCircle(task, task.completed);
             new Notice(`Failed to toggle task: ${error.message}`);
