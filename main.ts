@@ -157,7 +157,7 @@ export interface CommentPluginSettings {
     showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
-    collapsedHighlightGroups: string[]; // Highlight groups the user has collapsed, persisted across reloads
+    collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
     maxAutomaticBackups: number; // How many automatic backups to retain (manual backups are never deleted)
@@ -219,7 +219,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
-    collapsedHighlightGroups: [], // Nothing collapsed by default
+    collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
     maxAutomaticBackups: 20 // Keep the 20 most recent automatic backups by default

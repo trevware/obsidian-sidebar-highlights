@@ -2115,7 +2115,15 @@
     opacity: 1;
 }
 
-/* Collapsible highlight groups — chevron affordance matching Sidebar RSS */
+/* Collapsible groups — chevron affordance matching Sidebar RSS */
+
+/* Group collapse hides via a class while task sections hide via inline display,
+   so the two compose: expanding a group restores each section to its own state
+   instead of revealing everything. */
+.group-collapsed {
+    display: none !important;
+}
+
 .highlight-group-header.highlight-group-collapsible {
     cursor: pointer;
 }
