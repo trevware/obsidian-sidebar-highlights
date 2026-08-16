@@ -3424,46 +3424,86 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
-    private handleTaskClick(task: Task, event?: MouseEvent) {
-        // Open the file and navigate to the task line
-        const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-        if (file instanceof TFile) {
-            this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
-                // Get the active markdown view
-                const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-                if (activeView) {
-                    // Reading View has no visible editor, so the selection and scroll
-                    // below would act on an offscreen CodeMirror. Scroll the rendered
-                    // view to the task's line instead.
-                    if (activeView.getMode() === 'preview') {
-                        this.scrollPreviewToLine(activeView, task.lineNumber);
-                        return;
-                    }
-
-                    const editor = activeView.editor;
-                    const line = editor.getLine(task.lineNumber);
-
-                    // Find the start of the task text (after the checkbox). Uses the
-                    // shared pattern so every supported state — including [/], [?] and
-                    // the priority markers — is stripped rather than selected.
-                    const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
-                    const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
-                    const taskTextEnd = line.length;
-
-                    // Select the task text (highlighting it)
-                    editor.setSelection(
-                        { line: task.lineNumber, ch: taskTextStart },
-                        { line: task.lineNumber, ch: taskTextEnd }
-                    );
-
-                    // Scroll to the line
-                    editor.scrollIntoView({
-                        from: { line: task.lineNumber, ch: taskTextStart },
-                        to: { line: task.lineNumber, ch: taskTextEnd }
-                    }, true);
-                }
-            });
+    /**
+     * Find a markdown view already showing this file, preferring the active one.
+     *
+     * `getLeavesOfType` walks every leaf — main area, popout windows and the
+     * left/right sidebars — so a note open in a side panel is reused instead of
+     * being opened a second time in the main area.
+     *
+     * @param activate Focus the leaf when one is found elsewhere in the workspace
+     * @returns The matching view, or null when the file is not open anywhere
+     */
+    private findOpenMarkdownView(filePath: string, activate: boolean): MarkdownView | null {
+        const active = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+        if (active && active.file?.path === filePath) {
+            return active;
         }
+
+        for (const leaf of this.plugin.app.workspace.getLeavesOfType('markdown')) {
+            if (leaf.view instanceof MarkdownView && leaf.view.file?.path === filePath) {
+                if (activate) {
+                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
+                }
+                return leaf.view;
+            }
+        }
+
+        return null;
+    }
+
+    private handleTaskClick(task: Task, event?: MouseEvent) {
+        const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
+        if (!(file instanceof TFile)) {
+            return;
+        }
+
+        // Reuse a view that already has this file open, wherever it lives, rather
+        // than opening another copy in the main area.
+        const openView = this.findOpenMarkdownView(task.filePath, true);
+        if (openView) {
+            this.focusTaskInView(openView, task);
+            return;
+        }
+
+        this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
+            const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+            if (activeView) {
+                this.focusTaskInView(activeView, task);
+            }
+        });
+    }
+
+    /** Select and scroll to a task's line within an already-resolved view. */
+    private focusTaskInView(targetView: MarkdownView, task: Task) {
+        // Reading View has no visible editor, so the selection and scroll below
+        // would act on an offscreen CodeMirror. Scroll the rendered view instead.
+        if (targetView.getMode() === 'preview') {
+            this.scrollPreviewToLine(targetView, task.lineNumber);
+            return;
+        }
+
+        const editor = targetView.editor;
+        const line = editor.getLine(task.lineNumber);
+
+        // Find the start of the task text (after the checkbox). Uses the shared
+        // pattern so every supported state — including [/], [?] and the priority
+        // markers — is stripped rather than selected.
+        const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
+        const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
+        const taskTextEnd = line.length;
+
+        // Select the task text (highlighting it)
+        editor.setSelection(
+            { line: task.lineNumber, ch: taskTextStart },
+            { line: task.lineNumber, ch: taskTextEnd }
+        );
+
+        // Scroll to the line
+        editor.scrollIntoView({
+            from: { line: task.lineNumber, ch: taskTextStart },
+            to: { line: task.lineNumber, ch: taskTextEnd }
+        }, true);
     }
 
     private renderCollectionDetailView(collectionId: string) {
@@ -5090,21 +5130,8 @@ export class HighlightsSidebarView extends ItemView {
             this.isHighlightFocusing = false;
         }, 2000);
         
-        let targetView: MarkdownView | null = null;
-        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-
-        if (activeEditorView && activeEditorView.file && activeEditorView.file.path === highlight.filePath) {
-            targetView = activeEditorView;
-        } else {
-            const markdownLeaves = this.plugin.app.workspace.getLeavesOfType('markdown');
-            for (const leaf of markdownLeaves) {
-                if (leaf.view instanceof MarkdownView && leaf.view.file?.path === highlight.filePath) {
-                    targetView = leaf.view as MarkdownView;
-                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
-                    break;
-                }
-            }
-        }
+        // Reuses a view already showing this file, including one in a sidebar.
+        let targetView: MarkdownView | null = this.findOpenMarkdownView(highlight.filePath, true);
 
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
@@ -5450,21 +5477,8 @@ export class HighlightsSidebarView extends ItemView {
 
     private async focusFootnoteInEditor(highlight: Highlight, footnoteIndex: number, event?: MouseEvent) {
         // First, ensure the correct file is open
-        let targetView: MarkdownView | null = null;
-        const activeEditorView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-
-        if (activeEditorView && activeEditorView.file && activeEditorView.file.path === highlight.filePath) {
-            targetView = activeEditorView;
-        } else {
-            const markdownLeaves = this.plugin.app.workspace.getLeavesOfType('markdown');
-            for (const leaf of markdownLeaves) {
-                if (leaf.view instanceof MarkdownView && leaf.view.file?.path === highlight.filePath) {
-                    targetView = leaf.view as MarkdownView;
-                    this.plugin.app.workspace.setActiveLeaf(leaf, { focus: true });
-                    break;
-                }
-            }
-        }
+        // Reuses a view already showing this file, including one in a sidebar.
+        let targetView: MarkdownView | null = this.findOpenMarkdownView(highlight.filePath, true);
 
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
