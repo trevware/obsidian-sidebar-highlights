@@ -118,6 +118,7 @@ export interface CommentPluginSettings {
     autoToggleFold: boolean; // Automatically unfold content when focusing highlights from the sidebar
     useInlineFootnotes: boolean; // Use inline footnotes by default when adding comments
     selectTextOnCommentClick: boolean; // Select comment text when clicking comments instead of just positioning
+    removeCommentsWithHighlight: boolean; // Removing a highlight also removes its comments
     excludeExcalidraw: boolean; // Exclude .excalidraw files from highlight detection
     excludedFiles: string[]; // Legacy: Array of file/folder paths (kept for backward compatibility)
     fileFilters: FileFilter[]; // New: Array of file/folder filters with individual modes
@@ -178,6 +179,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     autoToggleFold: false, // Do not auto-toggle fold by default
     useInlineFootnotes: false, // Use standard footnotes by default
     selectTextOnCommentClick: false, // Position to highlight by default
+    removeCommentsWithHighlight: false, // Leave comments in place by default — removing them is not what was asked for
     excludeExcalidraw: true, // Exclude .excalidraw files by default
     excludedFiles: [], // Legacy: Empty array by default
     fileFilters: [], // New: Empty array by default
@@ -3686,6 +3688,16 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.useInlineFootnotes)
                 .onChange(async (value) => {
                     this.plugin.settings.useInlineFootnotes = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.comments.removeWithHighlight.name'))
+            .setDesc(t('settings.comments.removeWithHighlight.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.removeCommentsWithHighlight)
+                .onChange(async (value) => {
+                    this.plugin.settings.removeCommentsWithHighlight = value;
                     await this.plugin.saveSettings();
                 }));
 

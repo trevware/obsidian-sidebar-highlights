@@ -4436,14 +4436,25 @@ export class HighlightsSidebarView extends ItemView {
             && !!highlight.footnoteContents
             && highlight.footnoteContents.length > 0;
 
+        // When the setting is on, removing a highlight takes its comments with it.
+        // The label changes to match, so the menu never understates what it deletes.
+        const removeTakesComments = this.plugin.settings.removeCommentsWithHighlight;
+
         menu.addItem((item) => {
             item
-                .setTitle(t('contextMenu.removeHighlight'))
+                .setTitle(removeTakesComments && hasComments
+                    ? t('contextMenu.removeHighlightAndComments')
+                    : t('contextMenu.removeHighlight'))
                 .setIcon('eraser')
                 .onClick(async () => {
-                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-highlight');
+                    const ok = await this.plugin.removeHighlightFromSource(
+                        highlight,
+                        removeTakesComments ? 'remove-both' : 'remove-highlight'
+                    );
                     if (ok) {
-                        new Notice(t('notices.highlightRemoved'));
+                        new Notice(removeTakesComments && hasComments
+                            ? t('notices.highlightAndCommentsRemoved')
+                            : t('notices.highlightRemoved'));
                     }
                 });
         });
@@ -4461,18 +4472,21 @@ export class HighlightsSidebarView extends ItemView {
                 });
         });
 
-        menu.addItem((item) => {
-            item
-                .setTitle(t('contextMenu.removeHighlightAndComments'))
-                .setIcon('trash-2')
-                .setDisabled(!hasComments)
-                .onClick(async () => {
-                    const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-both');
-                    if (ok) {
-                        new Notice(t('notices.highlightAndCommentsRemoved'));
-                    }
-                });
-        });
+        // Redundant once the first item already removes both.
+        if (!removeTakesComments) {
+            menu.addItem((item) => {
+                item
+                    .setTitle(t('contextMenu.removeHighlightAndComments'))
+                    .setIcon('trash-2')
+                    .setDisabled(!hasComments)
+                    .onClick(async () => {
+                        const ok = await this.plugin.removeHighlightFromSource(highlight, 'remove-both');
+                        if (ok) {
+                            new Notice(t('notices.highlightAndCommentsRemoved'));
+                        }
+                    });
+            });
+        }
 
         menu.showAtMouseEvent(event);
     }
