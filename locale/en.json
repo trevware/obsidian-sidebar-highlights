@@ -185,6 +185,10 @@
         "name": "Show task notes",
         "desc": "Tasks containing bulleted text will display as notes under the task."
       },
+      "hideTasksPluginMetadata": {
+        "name": "Hide Tasks plugin metadata",
+        "desc": "Hide scheduling metadata added by the Tasks plugin (due and scheduled dates, recurrence, priority) from task text in the sidebar. Your notes are not changed."
+      },
       "showCompletedTasks": {
         "name": "Show completed tasks",
         "desc": "Include completed and cancelled tasks (- [x], - [-]) in the Tasks tab."

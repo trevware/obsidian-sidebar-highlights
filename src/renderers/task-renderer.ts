@@ -1,5 +1,6 @@
 import { setIcon, Menu, Notice, moment } from 'obsidian';
 import type { Task, TaskStatus } from '../../main';
+import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import type HighlightCommentsPlugin from '../../main';
 
 export interface TaskRenderOptions {
@@ -20,6 +21,27 @@ export class TaskRenderer {
     /** Status of a task, tolerating older objects that only carried `completed`. */
     private getStatus(task: Task): TaskStatus {
         return task.status ?? (task.completed ? 'done' : 'todo');
+    }
+
+    /**
+     * Text to render for a task: the raw text minus the date this plugin parsed
+     * out into its own badge, and minus Tasks-plugin metadata when that setting
+     * is on. `task.text` itself is never modified — search, IDs and file
+     * rewrites all continue to work against the real line.
+     */
+    private getDisplayText(task: Task): string {
+        let displayText = task.text;
+
+        if (task.dateText) {
+            // Remove the date text and trim any extra whitespace
+            displayText = displayText.replace(task.dateText, '').trim();
+        }
+
+        if (this.plugin.settings.hideTasksPluginMetadata) {
+            displayText = stripTasksPluginMetadata(displayText);
+        }
+
+        return displayText;
     }
 
     /**
@@ -119,11 +141,7 @@ export class TaskRenderer {
         }
 
         // Task text with date stripped out (if present)
-        let displayText = task.text;
-        if (task.dateText) {
-            // Remove the date text and trim any extra whitespace
-            displayText = task.text.replace(task.dateText, '').trim();
-        }
+        let displayText = this.getDisplayText(task);
 
         // Task text with tags rendered as badges
         const taskTextDiv = textContent.createDiv();
@@ -171,13 +189,8 @@ export class TaskRenderer {
                 const parentIcon = fileNameContainer.createSpan({ cls: 'task-parent-icon' });
                 setIcon(parentIcon, 'git-branch');
 
-                // Add parent task text (strip date and tags)
-                let parentText = options.parentTask.text;
-
-                // Remove date text if present
-                if (options.parentTask.dateText) {
-                    parentText = parentText.replace(options.parentTask.dateText, '').trim();
-                }
+                // Add parent task text (strip date, Tasks plugin metadata and tags)
+                let parentText = this.getDisplayText(options.parentTask);
 
                 // Remove tags (anything starting with #, including nested tags with /)
                 parentText = parentText.replace(/#[a-zA-Z0-9_/-]+/g, '').trim();

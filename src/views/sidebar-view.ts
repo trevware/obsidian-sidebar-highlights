@@ -11,6 +11,7 @@ import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterN
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
+import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -7248,7 +7249,13 @@ export class HighlightsSidebarView extends ItemView {
             return a.lineNumber - b.lineNumber;
         });
 
-        const text = joinTaskEntries(ordered.map(task => formatTaskForCopy(task, format)));
+        // Copy what is on screen: if Tasks plugin metadata is hidden in the
+        // sidebar, it should not reappear in the clipboard either.
+        const hideMetadata = this.plugin.settings.hideTasksPluginMetadata;
+        const text = joinTaskEntries(ordered.map(task => formatTaskForCopy(
+            hideMetadata ? { ...task, text: stripTasksPluginMetadata(task.text) } : task,
+            format
+        )));
 
         await this.writeToClipboard(text, visible.length);
     }

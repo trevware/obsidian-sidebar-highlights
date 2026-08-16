@@ -153,6 +153,7 @@ export interface CommentPluginSettings {
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
     showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
+    hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
     maxAutomaticBackups: number; // How many automatic backups to retain (manual backups are never deleted)
@@ -212,6 +213,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
+    hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
     maxAutomaticBackups: 20 // Keep the 20 most recent automatic backups by default
@@ -3851,6 +3853,17 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.showTaskContext)
                 .onChange(async (value) => {
                     this.plugin.settings.showTaskContext = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.tasks.hideTasksPluginMetadata.name'))
+            .setDesc(t('settings.tasks.hideTasksPluginMetadata.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.hideTasksPluginMetadata)
+                .onChange(async (value) => {
+                    this.plugin.settings.hideTasksPluginMetadata = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));
