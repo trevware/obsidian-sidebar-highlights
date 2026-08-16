@@ -13,6 +13,7 @@ import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/reg
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
+import { squircleifyIcon } from '../utils/squircle-icon';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -920,7 +921,10 @@ export class HighlightsSidebarView extends ItemView {
             tasksTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
-            setIcon(tasksTab, 'circle-check');
+            // square-check rather than circle-check so squircleifyIcon can swap its
+            // outline, matching the squircle checkboxes the tab leads to.
+            setIcon(tasksTab, 'square-check');
+            squircleifyIcon(tasksTab);
             setTooltip(tasksTab, t('tabs.tasks'));
             if (!defaultActive) {
                 this.viewMode = 'tasks';
@@ -2809,6 +2813,7 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             setIcon(checkboxEl, newCompletedState ? 'square-check' : 'square');
         }
+        squircleifyIcon(checkboxEl);
 
         // Remove animation class after animation completes
         const animationDuration = newCompletedState ? 600 : 400;
@@ -2833,6 +2838,7 @@ export class HighlightsSidebarView extends ItemView {
             } else {
                 setIcon(checkboxEl, task.completed ? 'square-check' : 'square');
             }
+            squircleifyIcon(checkboxEl);
             // Revert progress circle on error
             this.updateGroupProgressCircle(task, task.completed);
             new Notice(`Failed to toggle task: ${error.message}`);
