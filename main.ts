@@ -59,6 +59,7 @@ export interface Task {
     lineNumber: number;
     context: string[]; // Indented text lines below the task
     indentLevel: number; // Indentation level for nested tasks
+    parentLine?: number; // Line number of the structural parent, for re-resolving nesting after filtering
     section?: string; // Markdown header above the task (if any)
     date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
     dateText?: string; // Original date text from task (to strip from display)

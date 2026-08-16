@@ -10,6 +10,7 @@ import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
+import { normalizeVisibleNesting } from '../utils/task-status';
 import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
@@ -1583,7 +1584,9 @@ export class HighlightsSidebarView extends ItemView {
             });
         }
 
-        return currentFileTasks;
+        // Filtering above can remove a task's parent, so re-resolve nesting to stop
+        // survivors appearing as children of an unrelated preceding task.
+        return normalizeVisibleNesting(currentFileTasks);
     }
 
     /**
@@ -1859,6 +1862,10 @@ export class HighlightsSidebarView extends ItemView {
                     });
                 });
             }
+
+            // Filtering above can remove a task's parent, so re-resolve nesting to stop
+            // survivors appearing as children of an unrelated preceding task.
+            filteredTasks = normalizeVisibleNesting(filteredTasks);
 
             // Render tasks
             if (filteredTasks.length === 0) {

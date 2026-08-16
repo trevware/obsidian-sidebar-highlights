@@ -436,12 +436,9 @@
 /* The current-note header deliberately carries no overrides — it inherits
    .highlight-group-header so it matches Overdue and the other group headings. */
 
+/* No card treatment — the current note tasks list sits flush with the rest of
+   the list, like any other group under its heading. */
 .current-note-tasks-card {
-    background-color: var(--background-modifier-active-hover);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-    padding: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     margin-bottom: 24px;
 }
 

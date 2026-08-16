@@ -53,55 +53,113 @@ export function isResolvedStatus(status: TaskStatus): boolean {
     return status === 'done' || status === 'cancelled';
 }
 
-/** Running parent state while scanning a file's task lines top to bottom. */
+/**
+ * Running state while scanning a file's task lines top to bottom.
+ * `ancestorLines[n]` is the line number of the most recent task at indent level n.
+ */
 export interface TaskNestingState {
-    parentIndentLevel: number | undefined;
-    parentIsVisible: boolean;
+    ancestorLines: number[];
 }
 
 export function createTaskNestingState(): TaskNestingState {
-    return { parentIndentLevel: undefined, parentIsVisible: false };
+    return { ancestorLines: [] };
 }
 
 /** Clear parent tracking, e.g. at a heading or an unindented non-task line. */
 export function resetTaskNesting(state: TaskNestingState): void {
-    state.parentIndentLevel = undefined;
-    state.parentIsVisible = false;
+    state.ancestorLines = [];
+}
+
+export interface ResolvedNesting {
+    indentLevel: number;
+    /** Line number of the structural parent, or undefined at top level. */
+    parentLine: number | undefined;
 }
 
 /**
- * Resolve a task's effective indent level and advance parent tracking.
+ * Resolve a task's indent level against the file's real structure and record
+ * which line is its parent.
  *
- * Two rules matter here:
- *
- * 1. Every task line advances the state, including ones hidden by the
- *    completed-task filter, so nesting follows the file's real structure.
- * 2. A sub-task only stays nested if its parent is actually rendered. If the
- *    parent is absent or hidden, the sub-task is promoted to top level rather
- *    than attaching to whichever task happened to be the previous visible one —
- *    which could be an unrelated task much earlier in the file.
- *
- * @param rawIndentLevel Indent level derived from leading whitespace
- * @param isVisible Whether this task will actually be rendered
- * @param state Running state, mutated in place
- * @returns The effective indent level to store on the task
+ * Runs for every task line, including ones the caller will filter out, so the
+ * recorded structure always reflects the file rather than what survived a
+ * filter. A task can never sit more than one level below its nearest ancestor,
+ * which normalises over-indented or orphaned sub-tasks.
  */
 export function resolveTaskNesting(
     rawIndentLevel: number,
-    isVisible: boolean,
+    lineNumber: number,
     state: TaskNestingState
-): number {
-    let indentLevel = rawIndentLevel;
+): ResolvedNesting {
+    const indentLevel = Math.min(Math.max(rawIndentLevel, 0), state.ancestorLines.length);
+    const parentLine = indentLevel > 0 ? state.ancestorLines[indentLevel - 1] : undefined;
 
-    if (indentLevel > 0 && (state.parentIndentLevel === undefined || !state.parentIsVisible)) {
-        indentLevel = 0;
+    // This task becomes the ancestor at its own level; anything deeper is stale.
+    state.ancestorLines.length = indentLevel;
+    state.ancestorLines.push(lineNumber);
+
+    return { indentLevel, parentLine };
+}
+
+/** Minimum shape needed to re-resolve nesting for a filtered list. */
+export interface NestableTask {
+    filePath: string;
+    lineNumber: number;
+    indentLevel: number;
+    parentLine?: number;
+}
+
+/**
+ * Re-resolve indent levels for a list of tasks that has already been filtered.
+ *
+ * Filtering happens in the view (hiding completed tasks, search, tags), so a
+ * task's parent may not be present in the list being rendered. Such a task is
+ * promoted to top level instead of appearing nested under whichever task merely
+ * happens to precede it — which can be an unrelated task far earlier in the file.
+ *
+ * Returns a new array; unchanged tasks keep their original object identity, and
+ * changed ones are shallow copies so the shared task cache is never mutated.
+ */
+export function normalizeVisibleNesting<T extends NestableTask>(tasks: T[]): T[] {
+    const key = (filePath: string, lineNumber: number) => `${filePath}:${lineNumber}`;
+
+    const visible = new Map<string, T>();
+    for (const task of tasks) {
+        visible.set(key(task.filePath, task.lineNumber), task);
     }
 
-    if (indentLevel === 0 ||
-        (state.parentIndentLevel !== undefined && indentLevel <= state.parentIndentLevel)) {
-        state.parentIndentLevel = indentLevel;
-        state.parentIsVisible = isVisible;
-    }
+    const depths = new Map<string, number>();
+    const resolving = new Set<string>();
 
-    return indentLevel;
+    const depthOf = (task: T): number => {
+        const taskKey = key(task.filePath, task.lineNumber);
+
+        const cached = depths.get(taskKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        // A malformed parent chain must not loop forever. Neither case is reachable
+        // from the scanner, which always points at a strictly earlier line.
+        if (resolving.has(taskKey)) {
+            return 0;
+        }
+        resolving.add(taskKey);
+
+        let depth = 0;
+        if (task.parentLine !== undefined && task.parentLine !== task.lineNumber) {
+            const parent = visible.get(key(task.filePath, task.parentLine));
+            if (parent) {
+                depth = depthOf(parent) + 1;
+            }
+        }
+
+        resolving.delete(taskKey);
+        depths.set(taskKey, depth);
+        return depth;
+    };
+
+    return tasks.map(task => {
+        const depth = depthOf(task);
+        return depth === task.indentLevel ? task : { ...task, indentLevel: depth };
+    });
 }

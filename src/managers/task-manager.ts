@@ -251,9 +251,11 @@ export class TaskManager {
                 // counts as resolved; in-progress and question still need action.
                 const isVisible = !(isResolvedStatus(status) && !showCompleted);
 
-                // Runs for every task line, including hidden ones, so nesting follows
-                // the file rather than whatever survived filtering.
-                indentLevel = resolveTaskNesting(indentLevel, isVisible, nesting);
+                // Runs for every task line, including hidden ones, so the recorded
+                // structure follows the file rather than whatever survived filtering.
+                // The view re-resolves nesting after it applies its own filters.
+                const nested = resolveTaskNesting(indentLevel, i, nesting);
+                indentLevel = nested.indentLevel;
 
                 if (!isVisible) {
                     continue;
@@ -305,6 +307,7 @@ export class TaskManager {
                     lineNumber: i,
                     context: contextLines,
                     indentLevel: indentLevel,
+                    parentLine: nested.parentLine,
                     section: currentSection,
                     date: parsedDate?.date,
                     dateText: parsedDate?.dateText

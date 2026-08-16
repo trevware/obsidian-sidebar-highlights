@@ -13,7 +13,8 @@ import {
     isResolvedStatus,
     createTaskNestingState,
     resetTaskNesting,
-    resolveTaskNesting
+    resolveTaskNesting,
+    normalizeVisibleNesting
 } from './task-status';
 
 describe('task checkbox parsing', () => {
@@ -123,56 +124,128 @@ describe('task checkbox parsing', () => {
         });
     });
 
-    describe('nesting', () => {
-        /** Run a list of [rawIndentLevel, isVisible] through the resolver in order. */
-        const run = (rows: Array<[number, boolean]>): number[] => {
+    describe('scan-time nesting', () => {
+        /** Run raw indent levels through the resolver, one per line, in order. */
+        const run = (levels: number[]) => {
             const state = createTaskNestingState();
-            return rows.map(([level, visible]) => resolveTaskNesting(level, visible, state));
+            return levels.map((level, line) => resolveTaskNesting(level, line, state));
         };
 
-        it('should nest a sub-task under a visible parent', () => {
-            expect(run([[0, true], [1, true]])).toEqual([0, 1]);
+        it('should record a top-level task as having no parent', () => {
+            expect(run([0])).toEqual([{ indentLevel: 0, parentLine: undefined }]);
+        });
+
+        it('should record the parent line for a sub-task', () => {
+            expect(run([0, 1])).toEqual([
+                { indentLevel: 0, parentLine: undefined },
+                { indentLevel: 1, parentLine: 0 }
+            ]);
         });
 
         it('should promote a sub-task that has no parent at all', () => {
-            expect(run([[1, true]])).toEqual([0]);
+            expect(run([1])).toEqual([{ indentLevel: 0, parentLine: undefined }]);
         });
 
-        it('should promote a visible sub-task whose parent is hidden', () => {
-            // The regression from Excerpta.md: a visible sub-task under a completed
-            // parent must not attach to an unrelated earlier visible task.
-            expect(run([
-                [0, true],   // an unrelated visible task, much earlier
-                [0, false],  // the real parent, hidden by the completed filter
-                [1, true]    // the sub-task — belongs to the hidden parent
-            ])).toEqual([0, 0, 0]);
+        it('should clamp an over-indented task to one level below its ancestor', () => {
+            expect(run([0, 3])).toEqual([
+                { indentLevel: 0, parentLine: undefined },
+                { indentLevel: 1, parentLine: 0 }
+            ]);
         });
 
-        it('should keep nesting when both parent and child are hidden', () => {
-            expect(run([[0, false], [1, false]])).toEqual([0, 0]);
+        it('should point siblings at the same parent', () => {
+            const result = run([0, 1, 1]);
+            expect(result[1].parentLine).toBe(0);
+            expect(result[2].parentLine).toBe(0);
         });
 
-        it('should let a hidden parent still shape structure for a later visible one', () => {
-            // Hidden tasks advance parent tracking, so the visible sibling that
-            // follows resolves against the correct structural level.
-            expect(run([
-                [0, true],   // visible parent
-                [1, false],  // hidden child
-                [1, true]    // visible child — still a child of the visible parent
-            ])).toEqual([0, 1, 1]);
+        it('should reattach to the correct ancestor after dedenting', () => {
+            //  0: parent
+            //  1:   child
+            //  2:     grandchild
+            //  3:   back to child level
+            const result = run([0, 1, 2, 1]);
+            expect(result.map(r => r.indentLevel)).toEqual([0, 1, 2, 1]);
+            expect(result[2].parentLine).toBe(1);
+            expect(result[3].parentLine).toBe(0);
         });
 
         it('should reset parent tracking at a section boundary', () => {
             const state = createTaskNestingState();
 
-            expect(resolveTaskNesting(0, true, state)).toBe(0);
+            expect(resolveTaskNesting(0, 0, state).indentLevel).toBe(0);
             resetTaskNesting(state);
             // With tracking cleared, an indented task has no parent to attach to
-            expect(resolveTaskNesting(1, true, state)).toBe(0);
+            expect(resolveTaskNesting(1, 5, state)).toEqual({ indentLevel: 0, parentLine: undefined });
+        });
+    });
+
+    describe('normalizeVisibleNesting', () => {
+        const task = (lineNumber: number, indentLevel: number, parentLine?: number) => ({
+            filePath: 'Notes.md',
+            lineNumber,
+            indentLevel,
+            parentLine
         });
 
-        it('should treat a following same-level task as the new parent', () => {
-            expect(run([[0, true], [1, true], [1, true]])).toEqual([0, 1, 1]);
+        it('should keep nesting when the parent survives filtering', () => {
+            const result = normalizeVisibleNesting([task(0, 0), task(1, 1, 0)]);
+
+            expect(result.map(t => t.indentLevel)).toEqual([0, 1]);
+        });
+
+        it('should promote a task whose parent was filtered out', () => {
+            // The Excerpta.md regression: the parent and siblings are completed and
+            // hidden, so the survivor must not nest under the preceding visible task.
+            const result = normalizeVisibleNesting([
+                task(36, 0),          // unrelated visible task, far earlier
+                task(148, 1, 144)     // parent on line 144 was filtered out
+            ]);
+
+            expect(result.map(t => t.indentLevel)).toEqual([0, 0]);
+        });
+
+        it('should collapse a whole chain when an ancestor is missing', () => {
+            const result = normalizeVisibleNesting([
+                task(10, 1, 5),   // parent 5 missing -> top level
+                task(11, 2, 10)   // parent 10 present, now at level 0 -> level 1
+            ]);
+
+            expect(result.map(t => t.indentLevel)).toEqual([0, 1]);
+        });
+
+        it('should not treat a same-line task in another file as a parent', () => {
+            const result = normalizeVisibleNesting([
+                { filePath: 'A.md', lineNumber: 5, indentLevel: 0, parentLine: undefined },
+                { filePath: 'B.md', lineNumber: 6, indentLevel: 1, parentLine: 5 }
+            ]);
+
+            expect(result.map(t => t.indentLevel)).toEqual([0, 0]);
+        });
+
+        it('should preserve object identity for unchanged tasks', () => {
+            const parent = task(0, 0);
+            const child = task(1, 1, 0);
+
+            const result = normalizeVisibleNesting([parent, child]);
+
+            expect(result[0]).toBe(parent);
+            expect(result[1]).toBe(child);
+        });
+
+        it('should not mutate the input when a level changes', () => {
+            const orphan = task(148, 1, 144);
+
+            const result = normalizeVisibleNesting([orphan]);
+
+            expect(result[0].indentLevel).toBe(0);
+            expect(orphan.indentLevel).toBe(1); // cache untouched
+        });
+
+        it('should terminate on a self-referencing parent', () => {
+            const result = normalizeVisibleNesting([task(7, 1, 7)]);
+
+            expect(result[0].indentLevel).toBe(0);
         });
     });
 });
