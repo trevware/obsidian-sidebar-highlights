@@ -89,7 +89,7 @@ export class HighlightsSidebarView extends ItemView {
      * by prefix-matching group names, which would silently drop highlight entries
      * whose key happened to match.
      */
-    private collapsedHighlightGroups: Set<string> = new Set();
+    private collapsedGroups: Set<string> = new Set();
     private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
 
     // Follow-editor-scroll: scroll the sidebar to track the editor's visible position
@@ -126,7 +126,7 @@ export class HighlightsSidebarView extends ItemView {
         this.sortMode = plugin.settings.sortMode || 'none';
 
         // Restore which highlight groups were left collapsed
-        this.collapsedHighlightGroups = new Set(plugin.settings.collapsedHighlightGroups || []);
+        this.collapsedGroups = new Set(plugin.settings.collapsedGroups || []);
 
         // Load task secondary grouping mode from settings
         this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
@@ -1376,15 +1376,24 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     /**
-     * Make a highlight group header collapse the items beneath it.
+     * Make a group header collapse everything rendered beneath it.
      *
      * Applies the initial state, wires the click, and persists the change. The
      * collapsed set is read at render time, so the state survives re-renders
      * from sorting, filtering and edits.
+     *
+     * @param bodyElements Siblings that make up the group's body. Highlights use
+     *   a single wrapper; task groups render several (a tasks container, plus a
+     *   section header and container per section), so this takes a list.
+     *
+     * Hiding is done with a class rather than inline display, because task
+     * sections collapse themselves via inline display. Using different
+     * mechanisms lets the two compose: expanding a group restores its sections
+     * to whatever state they were in rather than blanket-revealing them.
      */
-    private makeHighlightGroupCollapsible(
+    private makeGroupCollapsible(
         groupHeader: HTMLElement,
-        itemsContainer: HTMLElement,
+        bodyElements: HTMLElement[],
         groupName: string
     ) {
         const groupId = this.getHighlightGroupId(groupName);
@@ -1401,21 +1410,21 @@ export class HighlightsSidebarView extends ItemView {
 
         const apply = (collapsed: boolean) => {
             groupHeader.toggleClass('collapsed', collapsed);
-            itemsContainer.style.display = collapsed ? 'none' : '';
+            bodyElements.forEach(el => el.toggleClass('group-collapsed', collapsed));
         };
 
-        apply(this.collapsedHighlightGroups.has(groupId));
+        apply(this.collapsedGroups.has(groupId));
 
         groupHeader.addEventListener('click', async () => {
-            const collapsed = !this.collapsedHighlightGroups.has(groupId);
+            const collapsed = !this.collapsedGroups.has(groupId);
             if (collapsed) {
-                this.collapsedHighlightGroups.add(groupId);
+                this.collapsedGroups.add(groupId);
             } else {
-                this.collapsedHighlightGroups.delete(groupId);
+                this.collapsedGroups.delete(groupId);
             }
             apply(collapsed);
 
-            this.plugin.settings.collapsedHighlightGroups = Array.from(this.collapsedHighlightGroups);
+            this.plugin.settings.collapsedGroups = Array.from(this.collapsedGroups);
             await this.plugin.saveSettings();
         });
     }
@@ -2158,6 +2167,10 @@ export class HighlightsSidebarView extends ItemView {
             const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
             const headerContent = groupHeader.createEl('span');
 
+            // Everything this group renders below its header, so the header can
+            // hide the group as a whole. Sections keep collapsing independently.
+            const groupBodyElements: HTMLElement[] = [];
+
             // Calculate completion percentage from ALL tasks in this group (not just filtered)
             const allGroupTasks = allGroups.has(groupName) ? allGroups.get(groupName)! : groupTasks;
             const completedCount = allGroupTasks.filter(t => t.completed).length;
@@ -2219,6 +2232,7 @@ export class HighlightsSidebarView extends ItemView {
 
                 // Create wrapper container for consistent spacing
                 const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                groupBodyElements.push(groupTasksContainer);
 
                 // Only hide date badge for individual day groups (YYYY-MM-DD format)
                 // Show it for month/year groups so users can see the specific date
@@ -2347,6 +2361,7 @@ export class HighlightsSidebarView extends ItemView {
                     const isCollapsed = this.collapsedSections.has(sectionId) || this.collapsedSections.has(sectionPositionId);
 
                     const sectionHeader = this.listContainerEl.createDiv({ cls: 'task-section-header' });
+                    groupBodyElements.push(sectionHeader);
                     sectionHeader.setAttribute('data-section-id', sectionId);
                     sectionHeader.setAttribute('data-section-position-id', sectionPositionId);
                     sectionHeader.setAttribute('data-group-name', groupName);
@@ -2458,6 +2473,7 @@ export class HighlightsSidebarView extends ItemView {
 
                         // Create a wrapper container for tasks in this secondary group
                         const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                    groupBodyElements.push(groupTasksContainer);
 
                         // Hide container if secondary group is collapsed
                         if (isSecondaryCollapsed) {
@@ -2528,6 +2544,7 @@ export class HighlightsSidebarView extends ItemView {
 
                     // Create a wrapper container for tasks in this section
                     const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
+                    groupBodyElements.push(groupTasksContainer);
 
                     // Hide container if section is collapsed
                     if (isSectionCollapsed) {
@@ -2627,6 +2644,9 @@ export class HighlightsSidebarView extends ItemView {
                 // }
             });
             } // End else (section grouping)
+
+            // Let the group header fold everything it rendered above
+            this.makeGroupCollapsible(groupHeader, groupBodyElements, groupName);
         });
     }
 
@@ -4024,7 +4044,7 @@ export class HighlightsSidebarView extends ItemView {
                         renderedHighlightCount++;
                     });
 
-                    this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
+                    this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
                 }
             }
             
@@ -4144,7 +4164,7 @@ export class HighlightsSidebarView extends ItemView {
             this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
         });
 
-        this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
+        this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
     }
 
     /**
@@ -6237,7 +6257,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
             });
 
-            this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
+            this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
         });
     }
 
