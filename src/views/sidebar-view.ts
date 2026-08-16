@@ -882,7 +882,10 @@ export class HighlightsSidebarView extends ItemView {
             tasksTab = tabsContainer.createEl('button', {
                 cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
             });
-            setIcon(tasksTab, 'circle-check');
+            // square-check rather than circle-check so squircleifyIcon can swap its
+            // outline, matching the squircle checkboxes the tab leads to.
+            setIcon(tasksTab, 'square-check');
+            squircleifyIcon(tasksTab);
             setTooltip(tasksTab, t('tabs.tasks'));
             if (!defaultActive) {
                 this.viewMode = 'tasks';
