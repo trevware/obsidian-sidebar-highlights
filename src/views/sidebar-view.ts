@@ -1684,7 +1684,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.handleTaskClick(task, event);
                 },
                 onFileNameClick: (filePath, event) => {
-                    this.plugin.app.workspace.openLinkText(filePath, '');
+                    this.openNoteReusingLeaf(filePath, event);
                 },
                 onFlagToggle: async (task, event) => {
                     await this.handleFlagToggle(task, event);
@@ -2191,7 +2191,7 @@ export class HighlightsSidebarView extends ItemView {
                             this.handleTaskClick(task, event);
                         },
                         onFileNameClick: (filePath, event) => {
-                            this.plugin.app.workspace.openLinkText(filePath, '');
+                            this.openNoteReusingLeaf(filePath, event);
                         },
                         onFlagToggle: async (task, event) => {
                             await this.handleFlagToggle(task, event);
@@ -2235,7 +2235,7 @@ export class HighlightsSidebarView extends ItemView {
                                     this.handleTaskClick(task, event);
                                 },
                                 onFileNameClick: (filePath, event) => {
-                                    this.plugin.app.workspace.openLinkText(filePath, '');
+                                    this.openNoteReusingLeaf(filePath, event);
                                 },
                                 onFlagToggle: async (task, event) => {
                                     await this.handleFlagToggle(task, event);
@@ -2430,7 +2430,7 @@ export class HighlightsSidebarView extends ItemView {
                                     this.handleTaskClick(task, event);
                                 },
                                 onFileNameClick: (filePath, event) => {
-                                    this.plugin.app.workspace.openLinkText(filePath, '');
+                                    this.openNoteReusingLeaf(filePath, event);
                                 },
                                 onFlagToggle: async (task) => {
                                     await this.handleFlagToggle(task);
@@ -2504,7 +2504,7 @@ export class HighlightsSidebarView extends ItemView {
                                 this.handleTaskClick(task, event);
                             },
                             onFileNameClick: (filePath, event) => {
-                                this.plugin.app.workspace.openLinkText(filePath, '');
+                                this.openNoteReusingLeaf(filePath, event);
                             },
                             onFlagToggle: async (task) => {
                                 await this.handleFlagToggle(task);
@@ -2545,7 +2545,7 @@ export class HighlightsSidebarView extends ItemView {
                                         this.handleTaskClick(task, event);
                                     },
                                     onFileNameClick: (filePath, event) => {
-                                        this.plugin.app.workspace.openLinkText(filePath, '');
+                                        this.openNoteReusingLeaf(filePath, event);
                                     },
                                     onFlagToggle: async (task) => {
                                         await this.handleFlagToggle(task);
@@ -3302,7 +3302,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.handleTaskClick(task, event);
                 },
                 onFileNameClick: (filePath, event) => {
-                    this.plugin.app.workspace.openLinkText(filePath, '');
+                    this.openNoteReusingLeaf(filePath, event);
                 },
                 onFlagToggle: async (task) => {
                     await this.handleFlagToggle(task);
@@ -3344,7 +3344,7 @@ export class HighlightsSidebarView extends ItemView {
                             this.handleTaskClick(task, event);
                         },
                         onFileNameClick: (filePath, event) => {
-                            this.plugin.app.workspace.openLinkText(filePath, '');
+                            this.openNoteReusingLeaf(filePath, event);
                         },
                         onFlagToggle: async (task) => {
                             await this.handleFlagToggle(task);
@@ -3450,6 +3450,27 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         return null;
+    }
+
+    /**
+     * Open a note from the sidebar, reusing a view that already has it open —
+     * including one in a left or right sidebar — instead of opening a second
+     * copy in the main area.
+     *
+     * A modifier-click still opens a new tab or split, since that is an explicit
+     * request for one.
+     */
+    private openNoteReusingLeaf(filePath: string, event?: MouseEvent) {
+        if (event && Keymap.isModEvent(event)) {
+            this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+            return;
+        }
+
+        if (this.findOpenMarkdownView(filePath, true)) {
+            return;
+        }
+
+        this.plugin.app.workspace.openLinkText(filePath, filePath, false);
     }
 
     private handleTaskClick(task: Task, event?: MouseEvent) {
@@ -4564,7 +4585,7 @@ export class HighlightsSidebarView extends ItemView {
             onFileNameClick: (filePath, event) => {
                 // Set flag to preserve pagination when clicking filenames
                 this.isPreservingPagination = true;
-                this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+                this.openNoteReusingLeaf(filePath, event);
             },
             onContextMenu: (highlight, event) => {
                 this.showHighlightContextMenu(highlight, event);
