@@ -21,11 +21,8 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
-# Claude AI development files
-CLAUDE.md
-CLAUDE_*.md
+# Local development notes
 CHECKLIST.md
-.claude
 
 # Testing and backups
 TESTING.md
