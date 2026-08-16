@@ -278,7 +278,13 @@
     "zToA": "Z → A",
     "priority": "优先级",
     "dateEarliestFirst": "日期（最早优先）",
-    "dateLatestFirst": "日期（最晚优先）"
+    "dateLatestFirst": "日期（最晚优先）",
+    "noteTitleAsc": "来源笔记（A → Z）",
+    "noteTitleDesc": "来源笔记（Z → A）",
+    "noteCreatedNewest": "笔记创建时间（最新优先）",
+    "noteCreatedOldest": "笔记创建时间（最早优先）",
+    "createdNewest": "高亮创建时间（最新优先）",
+    "createdOldest": "高亮创建时间（最早优先）"
   },
   "emptyStates": {
     "noComments": "无注释",

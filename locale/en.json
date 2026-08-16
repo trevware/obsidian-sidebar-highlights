@@ -293,7 +293,13 @@
     "zToA": "Z → A",
     "priority": "Priority",
     "dateEarliestFirst": "Date (Earliest First)",
-    "dateLatestFirst": "Date (Latest First)"
+    "dateLatestFirst": "Date (Latest First)",
+    "noteTitleAsc": "Source note (A → Z)",
+    "noteTitleDesc": "Source note (Z → A)",
+    "noteCreatedNewest": "Note created (newest first)",
+    "noteCreatedOldest": "Note created (oldest first)",
+    "createdNewest": "Highlight created (newest first)",
+    "createdOldest": "Highlight created (oldest first)"
   },
   "emptyStates": {
     "noComments": "No Comments",

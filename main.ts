@@ -7,6 +7,7 @@ import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
+import { SortMode } from './src/utils/sort-order';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -92,7 +93,7 @@ export interface DisplayMode {
 
 export interface TabSettings {
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc';
+    sortMode: SortMode;
     commentsExpanded: boolean;
     searchExpanded: boolean;
     selectedTags?: string[]; // Selected tag filters for this tab
@@ -108,7 +109,7 @@ export interface CommentPluginSettings {
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
-    sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc'; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
+    sortMode: SortMode; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
     tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps

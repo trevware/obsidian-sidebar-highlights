@@ -12,6 +12,7 @@ import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -33,7 +34,9 @@ export class HighlightsSidebarView extends ItemView {
     private highlightCommentsVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
     private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
-    private sortMode: 'none' | 'alphabetical-asc' | 'alphabetical-desc' | 'priority' | 'date-asc' | 'date-desc' = 'none';
+    private sortMode: SortMode = 'none';
+    /** Per-render cache of note creation times; null means the file was not resolvable. */
+    private noteCreatedCache: Map<string, number | null> = new Map();
     private commentsExpanded: boolean = false;
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
@@ -213,10 +216,12 @@ export class HighlightsSidebarView extends ItemView {
             this.collapseAllCommentsInMap();
         }
 
-        // Reset task-specific sort modes when switching to highlights views
+        // Reset sort modes that do not apply to the tab being switched to
         const isTasksView = viewMode === 'tasks';
         const isTaskSpecificSort = this.sortMode === 'priority' || this.sortMode === 'date-asc' || this.sortMode === 'date-desc';
-        if (!isTasksView && isTaskSpecificSort) {
+        // Highlight creation time has no task equivalent
+        const isHighlightSpecificSort = this.sortMode === 'created-asc' || this.sortMode === 'created-desc';
+        if ((!isTasksView && isTaskSpecificSort) || (isTasksView && isHighlightSpecificSort)) {
             this.sortMode = 'none';
         }
 
@@ -675,6 +680,40 @@ export class HighlightsSidebarView extends ItemView {
                             this.renderContent();
                         });
                 });
+
+                // Source-note sorting: available in every tab, since a list drawn
+                // from several notes is hard to read in raw file-path order.
+                menu.addSeparator();
+
+                const addSortItem = (title: string, icon: string, mode: SortMode) => {
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(title)
+                            .setIcon(icon)
+                            .setChecked(this.sortMode === mode)
+                            .onClick(() => {
+                                this.sortMode = mode;
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveSortModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+                };
+
+                addSortItem(t('sorting.noteTitleAsc'), 'file-text', 'note-title-asc');
+                addSortItem(t('sorting.noteTitleDesc'), 'file-text', 'note-title-desc');
+
+                menu.addSeparator();
+
+                addSortItem(t('sorting.noteCreatedNewest'), 'calendar', 'note-created-desc');
+                addSortItem(t('sorting.noteCreatedOldest'), 'calendar', 'note-created-asc');
+
+                // A highlight's own creation time only exists for highlights.
+                if (!isTasksView) {
+                    menu.addSeparator();
+                    addSortItem(t('sorting.createdNewest'), 'clock', 'created-desc');
+                    addSortItem(t('sorting.createdOldest'), 'clock', 'created-asc');
+                }
 
                 // Tasks-specific sorting options
                 if (isTasksView) {
@@ -1354,6 +1393,8 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private renderContent() {
+        // Note times are cached only for the duration of a render pass
+        this.noteCreatedCache.clear();
         // Capture scroll position before DOM rebuild
         this.captureScrollPosition();
 
@@ -1637,39 +1678,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Sort tasks based on current sort mode
         const sortedTasks = currentFileTasks.sort((a, b) => {
-            // Apply alphabetical sorting if enabled
-            if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                const textA = a.text.toLowerCase();
-                const textB = b.text.toLowerCase();
-                const comparison = textA.localeCompare(textB);
-                return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-            }
-
-            // Apply priority sorting
-            if (this.sortMode === 'priority') {
-                const priorityA = a.priority || 999; // Tasks without priority go last
-                const priorityB = b.priority || 999;
-                if (priorityA !== priorityB) {
-                    return priorityA - priorityB; // Lower number = higher priority
-                }
-                // Secondary sort by line number when priorities are equal
-                return a.lineNumber - b.lineNumber;
-            }
-
-            // Apply date sorting
-            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                const dateB = b.date || '9999-12-31';
-                const comparison = dateA.localeCompare(dateB);
-                if (comparison !== 0) {
-                    return this.sortMode === 'date-asc' ? comparison : -comparison;
-                }
-                // Secondary sort by line number when dates are equal
-                return a.lineNumber - b.lineNumber;
-            }
-
-            // Default: sort by line number (order of appearance in file)
-            return a.lineNumber - b.lineNumber;
+            return this.compareTasksBySortMode(a, b, 'position');
         });
 
         // Render tasks (flat list, no grouping or filtering)
@@ -1891,42 +1900,7 @@ export class HighlightsSidebarView extends ItemView {
                 if (this.groupingMode === 'none') {
                     // Sort tasks
                     const sortedTasks = filteredTasks.sort((a, b) => {
-                        // Apply alphabetical sorting if enabled
-                        if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                            const textA = a.text.toLowerCase();
-                            const textB = b.text.toLowerCase();
-                            const comparison = textA.localeCompare(textB);
-                            return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                        }
-
-                        // Apply priority sorting
-                        if (this.sortMode === 'priority') {
-                            const priorityA = a.priority || 999; // Tasks without priority go last
-                            const priorityB = b.priority || 999;
-                            if (priorityA !== priorityB) {
-                                return priorityA - priorityB; // Lower number = higher priority
-                            }
-                            // Secondary sort by line number when priorities are equal
-                            return a.lineNumber - b.lineNumber;
-                        }
-
-                        // Apply date sorting
-                        if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                            const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                            const dateB = b.date || '9999-12-31';
-                            const comparison = dateA.localeCompare(dateB);
-                            if (comparison !== 0) {
-                                return this.sortMode === 'date-asc' ? comparison : -comparison;
-                            }
-                            // Secondary sort by line number when dates are equal
-                            return a.lineNumber - b.lineNumber;
-                        }
-
-                        // Default: sort by file path, then by line number
-                        if (a.filePath !== b.filePath) {
-                            return a.filePath.localeCompare(b.filePath);
-                        }
-                        return a.lineNumber - b.lineNumber;
+                        return this.compareTasksBySortMode(a, b, 'path-then-position');
                     });
 
                     // Use pagination for performance
@@ -2115,39 +2089,7 @@ export class HighlightsSidebarView extends ItemView {
             if (skipSectionGrouping) {
                 // Render tasks directly without section grouping
                 const sortedTasks = groupTasks.sort((a, b) => {
-                    // Apply alphabetical sorting if enabled
-                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                        const textA = a.text.toLowerCase();
-                        const textB = b.text.toLowerCase();
-                        const comparison = textA.localeCompare(textB);
-                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                    }
-
-                    // Apply priority sorting
-                    if (this.sortMode === 'priority') {
-                        const priorityA = a.priority || 999; // Tasks without priority go last
-                        const priorityB = b.priority || 999;
-                        if (priorityA !== priorityB) {
-                            return priorityA - priorityB; // Lower number = higher priority
-                        }
-                        // Secondary sort by line number when priorities are equal
-                        return a.lineNumber - b.lineNumber;
-                    }
-
-                    // Apply date sorting
-                    if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                        const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                        const dateB = b.date || '9999-12-31';
-                        const comparison = dateA.localeCompare(dateB);
-                        if (comparison !== 0) {
-                            return this.sortMode === 'date-asc' ? comparison : -comparison;
-                        }
-                        // Secondary sort by line number when dates are equal
-                        return a.lineNumber - b.lineNumber;
-                    }
-
-                    // Default: sort by line number within same file
-                    return a.lineNumber - b.lineNumber;
+                    return this.compareTasksBySortMode(a, b, 'position');
                 });
 
                 // Create wrapper container for consistent spacing
@@ -2354,39 +2296,7 @@ export class HighlightsSidebarView extends ItemView {
 
                         // Sort tasks within secondary group
                         const sortedTasks = secondaryGroupTasks.sort((a, b) => {
-                            // Apply alphabetical sorting if enabled
-                            if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                                const textA = a.text.toLowerCase();
-                                const textB = b.text.toLowerCase();
-                                const comparison = textA.localeCompare(textB);
-                                return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                            }
-
-                            // Apply priority sorting
-                            if (this.sortMode === 'priority') {
-                                const priorityA = a.priority || 999; // Tasks without priority go last
-                                const priorityB = b.priority || 999;
-                                if (priorityA !== priorityB) {
-                                    return priorityA - priorityB; // Lower number = higher priority
-                                }
-                                // Secondary sort by line number when priorities are equal
-                                return a.lineNumber - b.lineNumber;
-                            }
-
-                            // Apply date sorting
-                            if (this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
-                                const dateA = a.date || '9999-12-31'; // Tasks without date go last
-                                const dateB = b.date || '9999-12-31';
-                                const comparison = dateA.localeCompare(dateB);
-                                if (comparison !== 0) {
-                                    return this.sortMode === 'date-asc' ? comparison : -comparison;
-                                }
-                                // Secondary sort by line number when dates are equal
-                                return a.lineNumber - b.lineNumber;
-                            }
-
-                            // Default: sort by line number within same file
-                            return a.lineNumber - b.lineNumber;
+                            return this.compareTasksBySortMode(a, b, 'position');
                         });
 
                         // Create a wrapper container for tasks in this secondary group
@@ -2447,16 +2357,7 @@ export class HighlightsSidebarView extends ItemView {
                     // No secondary grouping - render tasks directly in this section
                     // Sort tasks within section
                     const sortedTasks = sectionTasks.sort((a, b) => {
-                        // Apply alphabetical sorting if enabled
-                        if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                            const textA = a.text.toLowerCase();
-                            const textB = b.text.toLowerCase();
-                            const comparison = textA.localeCompare(textB);
-                            return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                        }
-
-                        // Default: sort by line number within same file
-                        return a.lineNumber - b.lineNumber;
+                        return this.compareTasksBySortMode(a, b, 'position');
                     });
 
                     // Create a wrapper container for tasks in this section
@@ -3518,19 +3419,7 @@ export class HighlightsSidebarView extends ItemView {
         // Apply grouping if enabled
         if (this.groupingMode === 'none') {
             const sortedHighlights = filteredHighlights.sort((a, b) => {
-                // Apply alphabetical sorting if enabled
-                if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                }
-
-                // Default: sort by file path, then by position in file
-                if (a.filePath !== b.filePath) {
-                    return a.filePath.localeCompare(b.filePath);
-                }
-                return a.startOffset - b.startOffset;
+                return this.compareHighlightsBySortMode(a, b, 'path-then-position');
             });
 
             sortedHighlights.forEach(highlight => {
@@ -3611,19 +3500,7 @@ export class HighlightsSidebarView extends ItemView {
             if (this.groupingMode === 'none') {
                 // Sort highlights
                 const sortedHighlights = filteredHighlights.sort((a, b) => {
-                    // Apply alphabetical sorting if enabled
-                    if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                        const textA = a.text.toLowerCase();
-                        const textB = b.text.toLowerCase();
-                        const comparison = textA.localeCompare(textB);
-                        return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                    }
-
-                    // Default: sort by file path, then by position in file
-                    if (a.filePath !== b.filePath) {
-                        return a.filePath.localeCompare(b.filePath);
-                    }
-                    return a.startOffset - b.startOffset;
+                    return this.compareHighlightsBySortMode(a, b, 'path-then-position');
                 });
                 
                 // No grouping - use pagination for "All Notes" performance
@@ -3840,16 +3717,12 @@ export class HighlightsSidebarView extends ItemView {
                         return timeB - timeA; // Later times first
                     }
                 });
-            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                // Sort alphabetically by highlight text
-                sortedHighlights = groupHighlights.sort((a, b) => {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                });
             } else {
-                sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+                // Within a group the file is already implied, so ties fall back
+                // to position rather than path.
+                sortedHighlights = groupHighlights.sort(
+                    (a, b) => this.compareHighlightsBySortMode(a, b, 'position')
+                );
             }
             return [groupName, sortedHighlights] as [string, Highlight[]];
         }).sort(([a], [b]) => {
@@ -4392,6 +4265,24 @@ export class HighlightsSidebarView extends ItemView {
                         break;
                     case 'date-desc':
                         setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.dateLatestFirst')}`);
+                        break;
+                    case 'note-title-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteTitleAsc')}`);
+                        break;
+                    case 'note-title-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteTitleDesc')}`);
+                        break;
+                    case 'note-created-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteCreatedNewest')}`);
+                        break;
+                    case 'note-created-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.noteCreatedOldest')}`);
+                        break;
+                    case 'created-desc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.createdNewest')}`);
+                        break;
+                    case 'created-asc':
+                        setTooltip(button, `${t('toolbar.sort')}: ${t('sorting.createdOldest')}`);
                         break;
                     default:
                         setTooltip(button, t('toolbar.sort'));
@@ -6140,17 +6031,12 @@ export class HighlightsSidebarView extends ItemView {
                         return timeB - timeA; // Later times first
                     }
                 });
-            } else if (this.sortMode === 'alphabetical-asc' || this.sortMode === 'alphabetical-desc') {
-                // Sort alphabetically by highlight text
-                sortedHighlights = groupHighlights.sort((a, b) => {
-                    const textA = a.text.toLowerCase();
-                    const textB = b.text.toLowerCase();
-                    const comparison = textA.localeCompare(textB);
-                    return this.sortMode === 'alphabetical-asc' ? comparison : -comparison;
-                });
             } else {
-                // For other grouping modes, sort by start offset (position in file)
-                sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
+                // Within a group the file is already implied, so ties fall back
+                // to position rather than path.
+                sortedHighlights = groupHighlights.sort(
+                    (a, b) => this.compareHighlightsBySortMode(a, b, 'position')
+                );
             }
             
             // Create highlights in this group
@@ -7128,6 +7014,37 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         return this.applyAllFilters(source);
+    }
+
+    /**
+     * Creation time of a note, in epoch milliseconds, or undefined when the file
+     * cannot be resolved. Cached per render pass because sorting a large vault
+     * would otherwise hit the vault once per comparison.
+     */
+    private getNoteCreated = (filePath: string): number | undefined => {
+        const cached = this.noteCreatedCache.get(filePath);
+        if (cached !== undefined) {
+            return cached ?? undefined;
+        }
+
+        const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+        const ctime = file instanceof TFile ? file.stat.ctime : null;
+        this.noteCreatedCache.set(filePath, ctime);
+        return ctime ?? undefined;
+    };
+
+    private compareHighlightsBySortMode(a: Highlight, b: Highlight, fallback: SortFallback): number {
+        return compareHighlights(a, b, this.sortMode, {
+            fallback,
+            getNoteCreated: this.getNoteCreated
+        });
+    }
+
+    private compareTasksBySortMode(a: Task, b: Task, fallback: SortFallback): number {
+        return compareTasks(a, b, this.sortMode, {
+            fallback,
+            getNoteCreated: this.getNoteCreated
+        });
     }
 
     /**
