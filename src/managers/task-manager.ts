@@ -1,6 +1,25 @@
 import { App, TFile, Vault, moment } from 'obsidian';
-import { Task } from '../../main';
+import { Task, TaskStatus } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
+import {
+    CHECKBOX_REGEX,
+    CHECKBOX_REGEX_WITH_PREFIX,
+    checkboxStateToStatus,
+    statusToCheckboxState,
+    isResolvedStatus,
+    createTaskNestingState,
+    resetTaskNesting,
+    resolveTaskNesting
+} from '../utils/task-status';
+
+export {
+    CHECKBOX_PATTERN,
+    CHECKBOX_REGEX,
+    CHECKBOX_REGEX_WITH_PREFIX,
+    checkboxStateToStatus,
+    statusToCheckboxState,
+    isResolvedStatus
+} from '../utils/task-status';
 
 export class TaskManager {
     private app: App;
@@ -183,10 +202,7 @@ export class TaskManager {
         const content = await this.vault.read(file);
         const lines = content.split('\n');
 
-        // Regex to match checkbox syntax: - [ ] or - [x] or - [!] or - [!1] or - [!2] or - [!3]
-        // Supports tasks in callouts (lines starting with >)
-        // Captures leading whitespace, checkbox state, and task text
-        const checkboxRegex = /^(?:>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX;
 
         // Regex to match markdown headers: # Header
         const headerRegex = /^(#{1,6})\s+(.+)$/;
@@ -194,8 +210,9 @@ export class TaskManager {
         // Track the current section header
         let currentSection: string | undefined = undefined;
 
-        // Track parent task for date inheritance
-        let parentTask: Task | undefined = undefined;
+        // Structural parent tracking for nesting. Deliberately not a Task object:
+        // hidden tasks must advance it too, and they never build one.
+        const nesting = createTaskNestingState();
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -204,7 +221,7 @@ export class TaskManager {
             const headerMatch = line.match(headerRegex);
             if (headerMatch) {
                 currentSection = headerMatch[2].trim();
-                parentTask = undefined; // Reset parent when entering new section
+                resetTaskNesting(nesting); // Reset parent when entering new section
                 continue;
             }
 
@@ -212,7 +229,8 @@ export class TaskManager {
 
             if (match) {
                 const [, indent, checkboxState, taskText] = match;
-                const isCompleted = checkboxState.toLowerCase() === 'x';
+                const status = checkboxStateToStatus(checkboxState);
+                const isCompleted = status === 'done';
                 const isFlagged = checkboxState.startsWith('!');
 
                 // Extract priority from checkbox state: [!1], [!2], [!3]
@@ -229,14 +247,17 @@ export class TaskManager {
                 const indentSpaces = indent.replace(/\t/g, '    ').length;
                 let indentLevel = Math.floor(indentSpaces / 4);
 
-                // FIX: If this task has indentLevel > 0 but no parent task exists,
-                // treat it as a top-level task (orphaned sub-task)
-                if (indentLevel > 0 && !parentTask) {
-                    indentLevel = 0;
-                }
+                // Resolved tasks are hidden when completed tasks are hidden. Cancelled
+                // counts as resolved; in-progress and question still need action.
+                const isVisible = !(isResolvedStatus(status) && !showCompleted);
 
-                // Skip completed tasks if not showing them
-                if (isCompleted && !showCompleted) {
+                // Runs for every task line, including hidden ones, so the recorded
+                // structure follows the file rather than whatever survived filtering.
+                // The view re-resolves nesting after it applies its own filters.
+                const nested = resolveTaskNesting(indentLevel, i, nesting);
+                indentLevel = nested.indentLevel;
+
+                if (!isVisible) {
                     continue;
                 }
 
@@ -279,39 +300,26 @@ export class TaskManager {
                     id: `${file.path}:${i}:${taskText}`, // Unique ID based on file, line, and text
                     text: taskText,
                     completed: isCompleted,
+                    status: status,
                     flagged: isFlagged,
                     priority: priority,
                     filePath: file.path,
                     lineNumber: i,
                     context: contextLines,
                     indentLevel: indentLevel,
+                    parentLine: nested.parentLine,
                     section: currentSection,
                     date: parsedDate?.date,
                     dateText: parsedDate?.dateText
                 };
 
                 tasks.push(task);
-
-                // Update parent task reference
-                // This task becomes the potential parent for subsequent indented tasks
-                if (indentLevel === 0) {
-                    // Top-level task - set as new parent
-                    parentTask = task;
-                } else if (parentTask && indentLevel <= parentTask.indentLevel) {
-                    // Same or lower indent than current parent - this is not a child
-                    // Reset parent to this task if it's at the same level
-                    if (indentLevel === 0) {
-                        parentTask = task;
-                    } else {
-                        // Keep looking for parent at this level, but this could be a new parent for deeper nesting
-                        parentTask = task;
-                    }
-                }
-                // If indentLevel > parentTask.indentLevel, keep current parent
+                // Parent tracking already happened above, before the visibility check,
+                // so that hidden tasks still contribute to the structure.
             } else {
                 // Non-task line - reset parent task if we encounter a non-empty line at indent 0
                 if (line.trim() !== '' && !line.match(/^[\s]/)) {
-                    parentTask = undefined;
+                    resetTaskNesting(nesting);
                 }
             }
         }
@@ -343,8 +351,7 @@ export class TaskManager {
 
         // Toggle the checkbox state - handle all checkbox types including priority markers
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
-        const match = currentLine.match(checkboxRegex);
+        const match = currentLine.match(CHECKBOX_REGEX_WITH_PREFIX);
 
         if (!match) {
             throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
@@ -352,9 +359,11 @@ export class TaskManager {
 
         const [, calloutPrefix, indent, currentState, taskText] = match;
 
-        // Toggle logic:
-        // [!], [!1], [!2], [!3], [ ] -> [x] (completing removes priority)
+        // Toggle logic (deliberately two-state):
+        // [ ], [/], [-], [?], [!], [!1], [!2], [!3] -> [x] (completing removes priority)
         // [x] -> [ ] (uncompleting gives normal checkbox)
+        // In-progress and the other states are set from the context menu, not by
+        // clicking, so completing a task stays a single click for everyone.
         const newState = currentState.toLowerCase() === 'x' ? ' ' : 'x';
         const newLine = `${calloutPrefix || ''}${indent}- [${newState}] ${taskText}`;
 
@@ -369,9 +378,54 @@ export class TaskManager {
         const updatedTask = {
             ...task,
             completed: newState === 'x',
+            status: checkboxStateToStatus(newState),
             flagged: false // Flag is removed when task is toggled
         };
         return updatedTask;
+    }
+
+    /**
+     * Set an explicit checkbox status on a task ([ ], [/], [-], [?], [x]).
+     *
+     * Status and priority share the same brackets in markdown, so applying a status
+     * necessarily clears any priority marker on that task.
+     *
+     * @param task The task to update
+     * @param status The status to apply
+     * @returns Updated task object
+     */
+    async setTaskStatus(task: Task, status: TaskStatus): Promise<Task> {
+        const file = this.vault.getAbstractFileByPath(task.filePath);
+        if (!(file instanceof TFile)) {
+            throw new Error(`File not found: ${task.filePath}`);
+        }
+
+        const content = await this.vault.read(file);
+        const lines = content.split('\n');
+        const currentLine = lines[task.lineNumber];
+
+        if (!currentLine) {
+            throw new Error(`Line ${task.lineNumber} not found in ${task.filePath}`);
+        }
+
+        const match = currentLine.match(CHECKBOX_REGEX_WITH_PREFIX);
+        if (!match) {
+            throw new Error(`No checkbox found at line ${task.lineNumber} in ${task.filePath}`);
+        }
+
+        const [, calloutPrefix, indent, , taskText] = match;
+        const newState = statusToCheckboxState(status);
+
+        lines[task.lineNumber] = `${calloutPrefix || ''}${indent}- [${newState}] ${taskText}`;
+        await this.vault.modify(file, lines.join('\n'));
+
+        return {
+            ...task,
+            completed: status === 'done',
+            status,
+            flagged: false,
+            priority: undefined // Priority shares the brackets, so it cannot survive
+        };
     }
 
     /**
@@ -397,7 +451,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -456,7 +510,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {
@@ -520,7 +574,7 @@ export class TaskManager {
 
         // Parse the task line - match checkboxes with optional priority: [ ], [x], [!], [!1], [!2], [!3]
         // Support tasks in callouts (preserve the > prefix)
-        const checkboxRegex = /^(>+ ?)?(\s*)- \[([ xX!]|!?[123])\] (.+)$/;
+        const checkboxRegex = CHECKBOX_REGEX_WITH_PREFIX;
         const match = currentLine.match(checkboxRegex);
 
         if (!match) {

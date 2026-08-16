@@ -1,6 +1,6 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import type { Highlight, Collection, CommentPluginSettings, Task } from '../../main';
+import type { Highlight, Collection, CommentPluginSettings, Task, TaskStatus } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
@@ -10,6 +10,15 @@ import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
+import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
+import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import {
+    CopyFormat,
+    formatHighlightForCopy,
+    formatTaskForCopy,
+    joinHighlightEntries,
+    joinTaskEntries
+} from '../utils/copy-format';
 import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
@@ -38,6 +47,8 @@ export class HighlightsSidebarView extends ItemView {
     private taskManager: TaskManager;
     private taskRenderer: TaskRenderer;
     private currentTasks: Task[] = [];
+    /** Tasks actually rendered in the Tasks tab, after every filter. */
+    private currentVisibleTasks: Task[] = [];
     private cachedAllTasks: Task[] | null = null; // Cache all scanned tasks
     private preservedScrollTop: number = 0;
     private isHighlightFocusing: boolean = false;
@@ -1583,7 +1594,9 @@ export class HighlightsSidebarView extends ItemView {
             });
         }
 
-        return currentFileTasks;
+        // Filtering above can remove a task's parent, so re-resolve nesting to stop
+        // survivors appearing as children of an unrelated preceding task.
+        return normalizeVisibleNesting(currentFileTasks);
     }
 
     /**
@@ -1859,6 +1872,13 @@ export class HighlightsSidebarView extends ItemView {
                     });
                 });
             }
+
+            // Filtering above can remove a task's parent, so re-resolve nesting to stop
+            // survivors appearing as children of an unrelated preceding task.
+            filteredTasks = normalizeVisibleNesting(filteredTasks);
+
+            // Remember exactly what is on screen so "copy visible results" matches it
+            this.currentVisibleTasks = filteredTasks;
 
             // Render tasks
             if (filteredTasks.length === 0) {
@@ -2921,6 +2941,38 @@ export class HighlightsSidebarView extends ItemView {
     private async handleFlagToggle(task: Task, event?: MouseEvent) {
         const menu = new Menu();
 
+        // Checkbox status. Status and priority share the same brackets in markdown,
+        // so they live in one menu — choosing either necessarily clears the other.
+        const statusOptions: Array<{ status: TaskStatus; title: string; icon: string }> = [
+            { status: 'todo', title: t('tasks.status.todo'), icon: 'square' },
+            { status: 'in-progress', title: t('tasks.status.inProgress'), icon: 'circle-slash' },
+            { status: 'question', title: t('tasks.status.question'), icon: 'circle-help' },
+            { status: 'cancelled', title: t('tasks.status.cancelled'), icon: 'circle-minus' }
+        ];
+
+        for (const option of statusOptions) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(option.title)
+                    .setIcon(option.icon)
+                    .setChecked((task.status ?? 'todo') === option.status)
+                    .onClick(async () => {
+                        try {
+                            this.updateTaskStatusInCache(task, option.status);
+                            this.renderContent();
+
+                            await this.taskManager.setTaskStatus(task, option.status);
+                        } catch (error) {
+                            new Notice(`Failed to set status: ${error.message}`);
+                            this.cachedAllTasks = null;
+                            this.renderContent();
+                        }
+                    })
+            );
+        }
+
+        menu.addSeparator();
+
         // Priority 1 - Red/High
         menu.addItem((item) =>
             item
@@ -3021,6 +3073,29 @@ export class HighlightsSidebarView extends ItemView {
         } else {
             menu.showAtPosition({ x: 0, y: 0 });
         }
+    }
+
+    /**
+     * Update task status in cache for optimistic UI updates.
+     * Mirrors updateTaskPriorityInCache, and clears priority for the same reason
+     * setTaskStatus does: the status and priority markers occupy the same brackets.
+     */
+    private updateTaskStatusInCache(task: Task, status: TaskStatus) {
+        const apply = (target: Task) => {
+            target.status = status;
+            target.completed = status === 'done';
+            target.priority = undefined;
+            target.flagged = false;
+        };
+
+        if (this.cachedAllTasks) {
+            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
+            if (cachedTask) {
+                apply(cachedTask);
+            }
+        }
+
+        apply(task);
     }
 
     /**
@@ -3357,12 +3432,22 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the active markdown view
                 const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
                 if (activeView) {
+                    // Reading View has no visible editor, so the selection and scroll
+                    // below would act on an offscreen CodeMirror. Scroll the rendered
+                    // view to the task's line instead.
+                    if (activeView.getMode() === 'preview') {
+                        this.scrollPreviewToLine(activeView, task.lineNumber);
+                        return;
+                    }
+
                     const editor = activeView.editor;
                     const line = editor.getLine(task.lineNumber);
 
-                    // Find the start of the task text (after checkbox)
-                    const taskMatch = line.match(/^(\s*[-*]\s*\[[ xX-]\]\s*)/);
-                    const taskTextStart = taskMatch ? taskMatch[1].length : 0;
+                    // Find the start of the task text (after the checkbox). Uses the
+                    // shared pattern so every supported state — including [/], [?] and
+                    // the priority markers — is stripped rather than selected.
+                    const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
+                    const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
                     const taskTextEnd = line.length;
 
                     // Select the task text (highlighting it)
@@ -5245,10 +5330,18 @@ export class HighlightsSidebarView extends ItemView {
 
         const startPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.tagStartLength);
         const endPos = targetView.editor.offsetToPos(targetMatchInfo.index + targetMatchInfo.length - targetMatchInfo.tagEndLength);
-        
+
+        // Reading View has no visible editor, so the CodeMirror calls below would
+        // operate on an offscreen instance and appear to do nothing. offsetToPos
+        // still resolves, so scroll the rendered view to the resolved line instead.
+        if (targetView.getMode() === 'preview') {
+            this.scrollPreviewToLine(targetView, startPos.line);
+            return;
+        }
+
         // Set cursor position first
         targetView.editor.setSelection(startPos, endPos);
-        
+
         // Auto-unfold if setting is enabled
         if (this.plugin.settings.autoToggleFold) {
             try {
@@ -5257,9 +5350,91 @@ export class HighlightsSidebarView extends ItemView {
                 console.warn('Failed to execute toggle fold command:', error);
             }
         }
-        
+
         targetView.editor.scrollIntoView({ from: startPos, to: endPos }, true);
         targetView.editor.focus();
+    }
+
+    /**
+     * Scroll a Reading View to a line. Uses setEphemeralState — the same mechanism
+     * Obsidian uses for internal link navigation — and falls back to the preview
+     * view's own scroll if that is unavailable.
+     *
+     * Scrolling is line-level: Reading View exposes no API for selecting rendered
+     * text, so the target is brought into view but not visually marked.
+     */
+    private scrollPreviewToLine(targetView: MarkdownView, line: number): void {
+        try {
+            targetView.setEphemeralState({ line });
+        } catch (error) {
+            console.warn('Failed to scroll preview via ephemeral state:', error);
+            try {
+                targetView.previewMode?.applyScroll(line);
+            } catch (fallbackError) {
+                console.warn('Failed to scroll preview:', fallbackError);
+            }
+        }
+
+        this.centerPreviewScroll(targetView);
+    }
+
+    /**
+     * Bring the just-scrolled line toward the middle of the Reading View.
+     *
+     * Both preview scroll APIs (setEphemeralState and applyScroll) are line-based
+     * and place the target at the top of the viewport — there is no centred
+     * variant to match the editor's scrollIntoView(range, true). The target sits
+     * at the top immediately after the scroll, so shifting up by half a viewport
+     * centres it. Runs in a frame so it lands after Obsidian's own scroll rather
+     * than being overwritten by it, and before paint so there is no visible jump.
+     */
+    private centerPreviewScroll(targetView: MarkdownView): void {
+        window.requestAnimationFrame(() => {
+            try {
+                const scroller = this.findPreviewScroller(targetView);
+                if (!scroller) {
+                    return;
+                }
+
+                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+                if (maxScroll <= 0) {
+                    return; // Content fits; nothing to centre
+                }
+
+                // Clamping means targets near either end settle short of centre,
+                // which is also how the editor behaves at the edges of a document.
+                const centered = scroller.scrollTop - scroller.clientHeight / 2;
+                scroller.scrollTop = Math.max(0, Math.min(maxScroll, centered));
+            } catch (error) {
+                console.warn('Failed to centre preview scroll:', error);
+            }
+        });
+    }
+
+    /** Locate the scrollable element behind a Reading View. */
+    private findPreviewScroller(targetView: MarkdownView): HTMLElement | null {
+        const root = targetView.previewMode?.containerEl ?? targetView.containerEl;
+        if (!root) {
+            return null;
+        }
+
+        const isScrollable = (el: HTMLElement | null): boolean =>
+            !!el && el.scrollHeight > el.clientHeight;
+
+        if (isScrollable(root)) {
+            return root;
+        }
+
+        // Obsidian nests the scroller inside the reading view container; the exact
+        // depth has changed across versions, so probe rather than assume.
+        for (const selector of ['.markdown-preview-view', '.markdown-reading-view']) {
+            const candidate = root.querySelector(selector);
+            if (candidate instanceof HTMLElement && isScrollable(candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     focusHighlight(highlightId: string) {
@@ -5373,6 +5548,14 @@ export class HighlightsSidebarView extends ItemView {
 
             if (!bestMatch) {
                 new Notice('Could not find the highlight in the editor.');
+                return;
+            }
+
+            // Reading View has no visible editor, so every positioning branch below
+            // would scroll an offscreen CodeMirror. Scroll the rendered view to the
+            // highlight's line instead — footnote-level precision needs an editor.
+            if (currentView.getMode() === 'preview') {
+                this.scrollPreviewToLine(currentView, editor.offsetToPos(bestMatch.index).line);
                 return;
             }
 
@@ -6887,17 +7070,8 @@ export class HighlightsSidebarView extends ItemView {
 
         menu.addSeparator();
 
-        // Copy all visible highlights
-        const visibleCount = this.getCurrentlyVisibleHighlights().length;
-        menu.addItem((item) => {
-            item
-                .setTitle(t('toolbar.copyVisibleHighlights', { count: visibleCount }))
-                .setIcon('copy')
-                .setDisabled(visibleCount === 0)
-                .onClick(() => {
-                    this.copyVisibleHighlightsToClipboard();
-                });
-        });
+        // Copy all visible results (highlights, or tasks in the Tasks tab)
+        this.addCopyVisibleMenuItems(menu);
 
         // Revert highlight colors
         menu.addItem((item) => {
@@ -6957,32 +7131,88 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     /**
-     * Format a single highlight as markdown text (mirrors the per-item copy
-     * button in highlight-renderer.ts).
+     * Tasks currently rendered in the Tasks tab, after every filter has been
+     * applied. Captured during render so the copy action can reuse exactly what
+     * the user is looking at rather than recomputing the filter chain.
      */
-    private formatHighlightForCopy(highlight: Highlight): string {
-        let text: string;
-        if (highlight.isNativeComment) {
-            text = `%%${highlight.text}%%`;
-        } else {
-            // Both regular markdown and HTML highlights export as ==text==
-            text = `==${highlight.text}==`;
-        }
-
-        // Append footnotes/comments (but not for native comments — the text is the comment)
-        if (!highlight.isNativeComment && highlight.footnoteContents && highlight.footnoteContents.length > 0) {
-            for (const content of highlight.footnoteContents) {
-                text += `^[${content}]`;
-            }
-        }
-        return text;
+    private getCurrentlyVisibleTasks(): Task[] {
+        return this.currentVisibleTasks ?? [];
     }
 
     /**
-     * Copy all currently-visible (post-filter) highlights to the clipboard,
-     * one per paragraph. Notifies the user of the count.
+     * Add the "copy visible results" entry, with a format submenu.
+     *
+     * Obsidian supports submenus at runtime but `setSubmenu` is absent from the
+     * published typings, so it is probed rather than assumed; without it the
+     * three formats are added as flat items so the feature still works.
      */
-    private async copyVisibleHighlightsToClipboard() {
+    private addCopyVisibleMenuItems(menu: Menu) {
+        const isTasks = this.viewMode === 'tasks';
+        const count = isTasks
+            ? this.getCurrentlyVisibleTasks().length
+            : this.getCurrentlyVisibleHighlights().length;
+
+        const title = isTasks
+            ? t('toolbar.copyVisibleResults', { count })
+            : t('toolbar.copyVisibleHighlights', { count });
+
+        const formats: Array<{ format: CopyFormat; label: string; icon: string }> = [
+            { format: 'with-syntax', label: t('toolbar.copyFormat.withSyntax'), icon: 'code' },
+            { format: 'plain', label: t('toolbar.copyFormat.plain'), icon: 'type' },
+            { format: 'list', label: t('toolbar.copyFormat.list'), icon: 'list' }
+        ];
+
+        const copy = (format: CopyFormat) => {
+            if (isTasks) {
+                this.copyVisibleTasksToClipboard(format);
+            } else {
+                this.copyVisibleHighlightsToClipboard(format);
+            }
+        };
+
+        let usedSubmenu = false;
+
+        menu.addItem((item) => {
+            item.setTitle(title).setIcon('copy').setDisabled(count === 0);
+
+            const submenuCapable = item as MenuItem & { setSubmenu?: () => Menu };
+            if (typeof submenuCapable.setSubmenu !== 'function') {
+                return;
+            }
+
+            try {
+                const submenu = submenuCapable.setSubmenu();
+                for (const { format, label, icon } of formats) {
+                    submenu.addItem((sub) =>
+                        sub.setTitle(label).setIcon(icon).onClick(() => copy(format))
+                    );
+                }
+                usedSubmenu = true;
+            } catch (error) {
+                console.warn('Failed to build copy submenu, falling back to flat items:', error);
+            }
+        });
+
+        if (usedSubmenu) {
+            return;
+        }
+
+        for (const { format, label, icon } of formats) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(`${title} — ${label}`)
+                    .setIcon(icon)
+                    .setDisabled(count === 0)
+                    .onClick(() => copy(format))
+            );
+        }
+    }
+
+    /**
+     * Copy all currently-visible (post-filter) highlights to the clipboard.
+     * Notifies the user of the count.
+     */
+    private async copyVisibleHighlightsToClipboard(format: CopyFormat) {
         const visible = this.getCurrentlyVisibleHighlights();
         if (visible.length === 0) {
             new Notice(t('notices.noHighlightsToCopy'));
@@ -6995,27 +7225,67 @@ export class HighlightsSidebarView extends ItemView {
             return a.startOffset - b.startOffset;
         });
 
-        const text = ordered.map(h => this.formatHighlightForCopy(h)).join('\n\n');
+        const text = joinHighlightEntries(
+            ordered.map(h => formatHighlightForCopy(h, format)),
+            format
+        );
 
+        await this.writeToClipboard(text, visible.length);
+    }
+
+    /**
+     * Copy all currently-visible (post-filter) tasks to the clipboard.
+     */
+    private async copyVisibleTasksToClipboard(format: CopyFormat) {
+        const visible = this.getCurrentlyVisibleTasks();
+        if (visible.length === 0) {
+            new Notice(t('notices.noHighlightsToCopy'));
+            return;
+        }
+
+        // Sort by file path then line so the output reflects document order.
+        const ordered = [...visible].sort((a, b) => {
+            if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
+            return a.lineNumber - b.lineNumber;
+        });
+
+        // Copy what is on screen: if Tasks plugin metadata is hidden in the
+        // sidebar, it should not reappear in the clipboard either.
+        const hideMetadata = this.plugin.settings.hideTasksPluginMetadata;
+        const text = joinTaskEntries(ordered.map(task => formatTaskForCopy(
+            hideMetadata ? { ...task, text: stripTasksPluginMetadata(task.text) } : task,
+            format
+        )));
+
+        await this.writeToClipboard(text, visible.length);
+    }
+
+    /**
+     * Write text to the clipboard, falling back to a hidden textarea when the
+     * async clipboard API is unavailable or blocked.
+     */
+    private async writeToClipboard(text: string, count: number) {
         try {
             await navigator.clipboard.writeText(text);
-            new Notice(t('notices.copiedHighlights', { count: visible.length }));
+            new Notice(t('notices.copiedHighlights', { count }));
+            return;
         } catch (err) {
-            // Fallback: hidden textarea
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                new Notice(t('notices.copiedHighlights', { count: visible.length }));
-            } catch (e) {
-                new Notice(t('notices.copyFailed'));
-            }
-            document.body.removeChild(textArea);
+            // Fall through to the textarea approach below.
         }
+
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            new Notice(t('notices.copiedHighlights', { count }));
+        } catch (e) {
+            new Notice(t('notices.copyFailed'));
+        }
+        document.body.removeChild(textArea);
     }
 
     /**

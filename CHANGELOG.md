@@ -5,6 +5,27 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-08-15
+
+### Added
+- **Additional task checkbox states**: `- [/]` in progress, `- [-]` cancelled, and `- [?]` question now appear in the Tasks tab alongside `- [ ]`, `- [x]` and the priority markers, each with its own icon. Previously any unrecognised state failed detection and the task was dropped from the sidebar entirely. Clicking a checkbox still completes it in one click; the new states are set from the task menu. Cancelled tasks are treated as resolved and hidden along with completed ones.
+- **Copy format options**: The copy action now offers three formats — with syntax, plain text, or as a list. Plain text and list drop the `==` wrappers, which are redundant once the surrounding document is gone. Native comment markers and `^[footnotes]` are kept in every format so annotations stay distinguishable.
+- **Copy visible results in the Tasks tab**: The same copy action is now available for tasks, honouring every active filter.
+- **Hide Tasks plugin metadata**: New setting, on by default, that hides scheduling metadata added by the Tasks plugin (due and scheduled dates, recurrence, priority) from task text in the sidebar. Both the Dataview style (`[scheduled:: 2026-08-20]`) and the emoji style are recognised. Your notes are never modified, and custom inline fields are left alone.
+- **Configurable backup retention**: The number of automatic backups to keep is now a setting rather than fixed at 20. Manual backups are still never deleted.
+
+### Fixed
+- **Highlights containing inline code**: `==text `code` text==` and custom patterns containing backticks or fenced code blocks are now detected. Exclusion previously discarded any highlight that overlapped a code range, which meant a highlight containing an inline code span disappeared from the sidebar entirely.
+- **Highlight colors from Highlightr**: `<mark>` highlights now show their real colour instead of always rendering yellow, for both Highlightr's inline-style and CSS-class modes. Also fixes 8-digit hex colours (`#RRGGBBAA`), which were previously dropped from the sidebar altogether.
+- **Reading View navigation**: Clicking a highlight, comment or task in the sidebar now scrolls Reading View to it, centred, matching the behaviour in Editing View. Previously it opened the file but never scrolled.
+- **Task nesting when completed tasks are hidden**: A sub-task whose parent is hidden by the completed-task filter no longer appears nested under an unrelated task earlier in the file.
+- **Backup location with a custom config folder**: Vaults that override the config folder (Settings → About → Override config folder) had backups written to a hardcoded `.obsidian` path instead of the folder in use. Backups left in the old location are recovered automatically on load.
+- **Duplicate backups**: Identical backups are no longer written repeatedly. External sync could fire several times in a row and each firing wrote another copy of unchanged data.
+
+### Changed
+- The current note tasks section now uses the same heading style as the other group headings, without the surrounding card.
+- The release workflow now runs on current action versions and Node 22.
+
 ## [1.36.0] - 2026-04-07
 
 ### Added

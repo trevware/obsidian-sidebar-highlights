@@ -6,6 +6,7 @@ import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
+import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -39,16 +40,27 @@ export interface FileFilter {
     mode: 'exclude' | 'include';
 }
 
+/**
+ * Checkbox state of a task. `completed` is kept alongside this for backwards
+ * compatibility and is true only for 'done'.
+ *
+ * Note: status and priority share the same brackets in markdown, so a task
+ * cannot carry both — setting one clears the other.
+ */
+export type TaskStatus = 'todo' | 'in-progress' | 'cancelled' | 'question' | 'done';
+
 export interface Task {
     id: string;
     text: string;
     completed: boolean;
+    status: TaskStatus; // Checkbox state: [ ] [/] [-] [?] [x]
     flagged: boolean; // Task is flagged with [!] (deprecated - use priority instead)
     priority?: 1 | 2 | 3; // Priority level: 1 (red/high), 2 (yellow/medium), 3 (blue/low)
     filePath: string;
     lineNumber: number;
     context: string[]; // Indented text lines below the task
     indentLevel: number; // Indentation level for nested tasks
+    parentLine?: number; // Line number of the structural parent, for re-resolving nesting after filtering
     section?: string; // Markdown header above the task (if any)
     date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
     dateText?: string; // Original date text from task (to strip from display)
@@ -142,8 +154,10 @@ export interface CommentPluginSettings {
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
     showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
     showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
+    hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
+    maxAutomaticBackups: number; // How many automatic backups to retain (manual backups are never deleted)
 }
 
 const DEFAULT_SETTINGS: CommentPluginSettings = {
@@ -200,9 +214,15 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
     showCurrentNoteTasksSection: true, // Show current note tasks section by default
     showOnlyCurrentNoteTasks: false, // Show all tasks by default
+    hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     displayModes: [], // Empty array by default
-    currentDisplayModeId: null // No active display mode by default
+    currentDisplayModeId: null, // No active display mode by default
+    maxAutomaticBackups: 20 // Keep the 20 most recent automatic backups by default
 }
+
+// Bounds for the automatic backup retention setting
+const MIN_AUTOMATIC_BACKUPS = 1;
+const MAX_AUTOMATIC_BACKUPS = 200;
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
@@ -222,6 +242,10 @@ export default class HighlightCommentsPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
+        // Resolve highlight classes from the owning plugin's settings rather than
+        // its stylesheet, which may not be injected yet when we scan (see method).
+        HtmlHighlightParser.setClassColorResolver((className) => this.resolveClassColor(className));
+
         // Initialize i18n system
         try {
             await i18n.init();
@@ -231,6 +255,9 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Migrate any existing backup files to the backups folder
         await this.migrateBackupFilesToFolder();
+
+        // Recover backups left behind by the old hardcoded ".obsidian" path
+        await this.recoverBackupsFromLegacyConfigDir();
 
         this.highlights = new Map(Object.entries(this.settings.highlights || {}));
         this.collections = new Map(Object.entries(this.settings.collections || {}));
@@ -678,7 +705,64 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.refreshSidebar();
     }
 
-    async createBackup(reason: string) {
+    // Resolve a highlight class (currently Highlightr's "hltr-<colour>") to its colour
+    // by reading that plugin's settings directly.
+    //
+    // Highlightr injects its stylesheet inside onLayoutReady — the same hook this
+    // plugin scans the vault on — so whether ".hltr-blue" is resolvable via computed
+    // style depends on plugin load order. Losing that race meant caching a fallback
+    // yellow into data.json, which then persisted until the file was re-parsed.
+    // Reading settings is deterministic and order-independent.
+    resolveClassColor(className: string): string | null {
+        try {
+            const hltrClass = className.split(/\s+/).find(c => c.toLowerCase().startsWith('hltr-'));
+            if (!hltrClass) {
+                return null;
+            }
+
+            const highlighters = (this.app as any).plugins?.plugins?.['highlightr-plugin']?.settings?.highlighters;
+            if (!highlighters) {
+                return null;
+            }
+
+            // Highlightr keys its palette by display name ("Blue") and lowercases it
+            // for the class name ("hltr-blue").
+            const colorName = hltrClass.slice('hltr-'.length).toLowerCase();
+            const key = Object.keys(highlighters).find(k => k.toLowerCase() === colorName);
+
+            return key ? highlighters[key] : null;
+        } catch (error) {
+            console.warn('Failed to resolve highlight class colour:', error);
+            return null;
+        }
+    }
+
+    // Resolve the plugin folder from the manifest so vaults that override the
+    // config folder (Settings > About > Override config folder, e.g. ".pure")
+    // read and write in the right place. Never hardcode ".obsidian" — the
+    // fallback composes the path from the vault's actual config folder name.
+    getPluginDir(): string {
+        return this.manifest.dir || `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+    }
+
+    getBackupsDir(): string {
+        return `${this.getPluginDir()}/backups`;
+    }
+
+    // Build a stable fingerprint of the data a backup actually protects, ignoring
+    // per-write metadata (reason, timestamps). Two backups with the same signature
+    // are interchangeable as restore points.
+    getBackupSignature(data: any): string {
+        return JSON.stringify({
+            settingsVersion: data?.settingsVersion ?? null,
+            collections: data?.collections ?? {},
+            customColorNames: data?.customColorNames ?? {},
+            highlights: data?.highlights ?? {}
+        });
+    }
+
+    // Returns true if a backup file was written, false if it was skipped or failed.
+    async createBackup(reason: string): Promise<boolean> {
         try {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `data-backup-${reason}-${timestamp}.json`;
@@ -694,8 +778,18 @@ export default class HighlightCommentsPlugin extends Plugin {
                 retentionManaged: true // Mark new backups as subject to retention policy
             };
 
+            // Skip writing a byte-for-byte duplicate of the most recent backup.
+            // Sync echo can fire onExternalSettingsChange several times in a row, and
+            // repeated manual clicks are exempt from retention, so both would otherwise
+            // pile up identical snapshots that protect nothing.
+            const existingBackups = await this.listBackups();
+            if (existingBackups.length > 0 &&
+                this.getBackupSignature(existingBackups[0].data) === this.getBackupSignature(criticalData)) {
+                return false;
+            }
+
             // Ensure backups folder exists
-            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            const backupsDir = this.getBackupsDir();
             try {
                 await this.app.vault.adapter.mkdir(backupsDir);
             } catch (e) {
@@ -708,22 +802,25 @@ export default class HighlightCommentsPlugin extends Plugin {
                 JSON.stringify(criticalData, null, 2)
             );
 
-            // Only show notice for important backups (not routine ones)
-            if (reason === 'migration' || reason === 'manual') {
+            // Only show notice for important backups (not routine ones).
+            // 'manual' is handled by its caller so it can report skipped duplicates.
+            if (reason === 'migration') {
                 new Notice(`Settings backup created: ${filename}`);
             }
 
             // Clean up old backups (only retention-managed ones)
             await this.cleanupOldBackups();
+            return true;
         } catch (error) {
             console.error('Failed to create backup:', error);
             new Notice('Warning: Could not create settings backup');
+            return false;
         }
     }
 
     async listBackups(): Promise<Array<{ path: string; filename: string; data: any }>> {
         try {
-            const backupsDir = '.obsidian/plugins/sidebar-highlights/backups';
+            const backupsDir = this.getBackupsDir();
             const files = await this.app.vault.adapter.list(backupsDir);
 
             const backups: Array<{ path: string; filename: string; data: any }> = [];
@@ -1128,7 +1225,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async writeRestoreLog(logContent: string): Promise<void> {
         try {
-            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            const logPath = `${this.getPluginDir()}/restore-log.txt`;
             await this.app.vault.adapter.write(logPath, logContent);
         } catch (error) {
             console.error('Failed to write restore log:', error);
@@ -1137,7 +1234,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async getRestoreLog(): Promise<string | null> {
         try {
-            const logPath = `${this.manifest.dir}/restore-log.txt`;
+            const logPath = `${this.getPluginDir()}/restore-log.txt`;
             const exists = await this.app.vault.adapter.exists(logPath);
             if (!exists) {
                 return null;
@@ -1250,10 +1347,17 @@ export default class HighlightCommentsPlugin extends Plugin {
                 b.data.backupReason !== 'manual'
             );
 
-            // Only delete automatic backups if we have more than 20
-            if (automaticBackups.length > 20) {
-                // Keep the 20 most recent, delete the rest
-                const toDelete = automaticBackups.slice(20);
+            // User-configurable retention limit, clamped to a safe range in case
+            // data.json was hand-edited or synced from an older/newer schema.
+            const configured = this.settings.maxAutomaticBackups ?? DEFAULT_SETTINGS.maxAutomaticBackups;
+            const keepCount = Number.isFinite(configured)
+                ? Math.max(MIN_AUTOMATIC_BACKUPS, Math.min(MAX_AUTOMATIC_BACKUPS, Math.floor(configured)))
+                : DEFAULT_SETTINGS.maxAutomaticBackups;
+
+            // Only delete automatic backups if we have more than the limit
+            if (automaticBackups.length > keepCount) {
+                // Keep the most recent, delete the rest
+                const toDelete = automaticBackups.slice(keepCount);
 
                 for (const backup of toDelete) {
                     try {
@@ -1275,7 +1379,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async migrateBackupFilesToFolder() {
         try {
-            const pluginDir = '.obsidian/plugins/sidebar-highlights';
+            const pluginDir = this.getPluginDir();
             const backupsDir = `${pluginDir}/backups`;
 
             // Ensure backups folder exists
@@ -1321,6 +1425,62 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         } catch (error) {
             console.error('Failed to migrate backup files:', error);
+        }
+    }
+
+    // Earlier versions wrote backups to a hardcoded ".obsidian/..." path, so vaults
+    // that override the config folder ended up with backups stranded outside the
+    // folder the plugin actually reads. Recover them once, on load. Copies rather
+    // than moves — the legacy folder may belong to a different, still-valid profile.
+    async recoverBackupsFromLegacyConfigDir() {
+        const LEGACY_BACKUPS_DIR = `.obsidian/plugins/${this.manifest.id}/backups`;
+        const backupsDir = this.getBackupsDir();
+
+        // No-op for the overwhelming majority of vaults, which use ".obsidian".
+        if (LEGACY_BACKUPS_DIR === backupsDir) {
+            return;
+        }
+
+        try {
+            if (!(await this.app.vault.adapter.exists(LEGACY_BACKUPS_DIR))) {
+                return;
+            }
+
+            const legacy = await this.app.vault.adapter.list(LEGACY_BACKUPS_DIR);
+            let recoveredCount = 0;
+
+            await this.app.vault.adapter.mkdir(backupsDir).catch(() => {});
+
+            for (const oldPath of legacy.files) {
+                if (!oldPath.endsWith('.json') || !oldPath.includes('data-backup-')) {
+                    continue;
+                }
+
+                const filename = oldPath.split('/').pop();
+                const newPath = `${backupsDir}/${filename}`;
+
+                try {
+                    // Never clobber a backup that already exists in the live folder.
+                    if (await this.app.vault.adapter.exists(newPath)) {
+                        continue;
+                    }
+
+                    await this.app.vault.adapter.write(
+                        newPath,
+                        await this.app.vault.adapter.read(oldPath)
+                    );
+                    recoveredCount++;
+                } catch (error) {
+                    console.error(`Failed to recover legacy backup ${oldPath}:`, error);
+                }
+            }
+
+            if (recoveredCount > 0) {
+                console.log(`Recovered ${recoveredCount} backup(s) from ${LEGACY_BACKUPS_DIR}`);
+                new Notice(`Recovered ${recoveredCount} Sidebar Highlights backup(s) from your previous config folder.`);
+            }
+        } catch (error) {
+            console.error('Failed to recover backups from legacy config folder:', error);
         }
     }
 
@@ -1873,8 +2033,11 @@ export default class HighlightCommentsPlugin extends Plugin {
                 const newHighlights = this.highlights.get(file.path) || [];
                 
                 // Check if any highlights were found or changed (more thorough than just count)
-                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
-                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount})));
+                // Include color so a colour-only change (e.g. a highlight plugin's
+                // palette resolving differently) still counts as a change, matching
+                // the per-file comparison in detectAndStoreMarkdownHighlights.
+                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
+                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
                 
                 if (oldHighlightsJSON !== newHighlightsJSON) {
                     hasChanges = true;
@@ -2751,14 +2914,15 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     /**
-     * Check if a range overlaps with any of the provided code block ranges
-     * Returns true if the range is fully inside, partially overlaps, or spans across a code block
+     * Check whether a match should be discarded because one of its delimiters
+     * falls inside an excluded range (code block, inline code, link, comment).
+     *
+     * A match that merely *encloses* an excluded range is kept — a highlight is
+     * allowed to contain inline code. See src/utils/range-exclusion.ts for why
+     * testing overlap or containment both get this wrong.
      */
     private isInsideCodeBlock(start: number, end: number, codeBlockRanges: Array<{start: number, end: number}>): boolean {
-        return codeBlockRanges.some(range => {
-            // Check for any overlap: ranges overlap if start < range.end AND end > range.start
-            return start < range.end && end > range.start;
-        });
+        return hasDelimiterInsideRanges(start, end, codeBlockRanges);
     }
 
     /**
@@ -3038,6 +3202,14 @@ class HighlightSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: HighlightCommentsPlugin) {
         super(app, plugin);
         this.plugin = plugin;
+    }
+
+    hide(): void {
+        super.hide();
+        // Apply the backup retention limit once the user is done editing it.
+        // Pruning on every keystroke would be destructive — typing "15" passes
+        // through "1" — so this waits until the settings tab closes.
+        void this.plugin.cleanupOldBackups();
     }
 
     display(): void {
@@ -3688,6 +3860,17 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName(t('settings.tasks.hideTasksPluginMetadata.name'))
+            .setDesc(t('settings.tasks.hideTasksPluginMetadata.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.hideTasksPluginMetadata)
+                .onChange(async (value) => {
+                    this.plugin.settings.hideTasksPluginMetadata = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
             .setName(t('settings.tasks.showCompletedTasks.name'))
             .setDesc(t('settings.tasks.showCompletedTasks.desc'))
             .addToggle(toggle => toggle
@@ -3899,8 +4082,28 @@ class HighlightSettingTab extends PluginSettingTab {
             .addButton(button => button
                 .setButtonText(t('settings.backupRestore.createManual.button'))
                 .onClick(async () => {
-                    await this.plugin.createBackup('manual');
-                    new Notice(t('settings.backupRestore.manualBackupCreated'));
+                    const created = await this.plugin.createBackup('manual');
+                    new Notice(created
+                        ? t('settings.backupRestore.manualBackupCreated')
+                        : t('settings.backupRestore.manualBackupSkipped'));
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.backupRestore.maxBackups.name'))
+            .setDesc(t('settings.backupRestore.maxBackups.desc'))
+            .addText(text => text
+                .setPlaceholder(DEFAULT_SETTINGS.maxAutomaticBackups.toString())
+                .setValue((this.plugin.settings.maxAutomaticBackups ?? DEFAULT_SETTINGS.maxAutomaticBackups).toString())
+                .onChange(async (value) => {
+                    const parsed = parseInt(value, 10);
+                    if (isNaN(parsed)) {
+                        return;
+                    }
+                    this.plugin.settings.maxAutomaticBackups = Math.max(
+                        MIN_AUTOMATIC_BACKUPS,
+                        Math.min(MAX_AUTOMATIC_BACKUPS, parsed)
+                    );
+                    await this.plugin.saveSettings();
                 }));
 
         new Setting(containerEl)

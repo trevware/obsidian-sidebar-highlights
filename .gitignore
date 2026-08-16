@@ -21,15 +21,16 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
-# Claude AI development files
-CLAUDE.md
+# Local development notes
 CHECKLIST.md
-.claude
 
 # Testing and backups
 TESTING.md
 backups/
 test-*.js
+
+# Runtime restore audit log (rewritten by the plugin on every restore)
+restore-log.txt
 
 # Local hot-reload marker (not for distribution)
 .hotreload

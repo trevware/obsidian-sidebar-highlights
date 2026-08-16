@@ -433,18 +433,12 @@
 }
 
 /* Current note tasks section styles */
-.current-note-group-header {
-    margin-bottom: 8px !important;
-    border-bottom: none !important;
-    padding-bottom: 0 !important;
-}
+/* The current-note header deliberately carries no overrides — it inherits
+   .highlight-group-header so it matches Overdue and the other group headings. */
 
+/* No card treatment — the current note tasks list sits flush with the rest of
+   the list, like any other group under its heading. */
 .current-note-tasks-card {
-    background-color: var(--background-modifier-active-hover);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-    padding: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     margin-bottom: 24px;
 }
 
@@ -1698,6 +1692,29 @@
     color: var(--text-muted);
 }
 
+/* Cancelled tasks read as resolved, like completed ones */
+.task-item-card.task-status-cancelled {
+    opacity: 0.6;
+}
+
+.task-item-card.task-status-cancelled .task-quote {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+/* In-progress and question tasks stay fully legible — they still need action */
+.task-checkbox[data-task-status="in-progress"] {
+    color: var(--color-accent);
+}
+
+.task-checkbox[data-task-status="question"] {
+    color: var(--text-accent);
+}
+
+.task-checkbox[data-task-status="cancelled"] {
+    color: var(--text-faint);
+}
+
 /* Task checkbox */
 .task-checkbox-container {
     flex-shrink: 0;
@@ -2134,6 +2151,12 @@
 
 /* Adjust spacing for highlight items after group headers */
 .highlight-group-header + .highlight-item-card {
+    margin-top: 10px;
+}
+
+/* Same spacing for the current note tasks card, so it sits like any other
+   content following a group heading */
+.highlight-group-header + .current-note-tasks-card {
     margin-top: 10px;
 }
 

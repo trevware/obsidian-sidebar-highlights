@@ -170,9 +170,13 @@
         "name": "显示任务笔记",
         "desc": "包含项目符号文本的任务将在任务下方显示为笔记。"
       },
+      "hideTasksPluginMetadata": {
+        "name": "隐藏 Tasks 插件元数据",
+        "desc": "在侧边栏的任务文本中隐藏 Tasks 插件添加的计划元数据（截止日期、计划日期、重复规则、优先级）。不会修改您的笔记。"
+      },
       "showCompletedTasks": {
         "name": "显示已完成的任务",
-        "desc": "在【任务】标签页中包含已完成的任务 (- [x])。"
+        "desc": "在【任务】标签页中包含已完成和已取消的任务 (- [x]、- [-])。"
       },
       "showCurrentNoteSection": {
         "name": "显示当前笔记任务",
@@ -203,6 +207,10 @@
         "desc": "创建您收藏的备份。",
         "button": "创建"
       },
+      "maxBackups": {
+        "name": "保留的自动备份数量",
+        "desc": "保留多少个自动备份。超出限制时，最早的自动备份将被删除。手动备份永远不会被删除。"
+      },
       "noBackups": "未找到备份。备份会在设置迁移或检测到外部更改时自动创建。",
       "emptyBackup": "最新备份不包含任何收藏。",
       "unknownDate": "未知日期",
@@ -213,7 +221,8 @@
       "restoreSuccess": "成功恢复 {{collections}} 个收藏（包含 {{highlights}} 个高亮）。",
       "orphanedCleaned": "已移除 {{count}} 个已删除高亮的引用。",
       "restoreFailed": "从备份恢复失败。请查看控制台了解详情。",
-      "manualBackupCreated": "手动备份创建成功"
+      "manualBackupCreated": "手动备份创建成功",
+      "manualBackupSkipped": "已跳过备份 — 最近的备份内容完全相同。"
     }
   },
   "sidebar": {
@@ -229,6 +238,12 @@
     "toggleFollowEditorScroll": "跟随编辑器滚动",
     "moreActions": "更多操作",
     "copyVisibleHighlights": "复制可见高亮 ({{count}})",
+    "copyVisibleResults": "复制可见结果 ({{count}})",
+    "copyFormat": {
+      "withSyntax": "包含标记",
+      "plain": "纯文本",
+      "list": "列表形式"
+    },
     "toggleHighlightComments": "切换高亮注释",
     "revertColors": "还原高亮颜色",
     "filter": "过滤",
@@ -353,7 +368,13 @@
     "sunday": "周日"
   },
   "tasks": {
-    "currentNote": "当前笔记"
+    "currentNote": "当前笔记",
+    "status": {
+      "todo": "待办",
+      "inProgress": "进行中",
+      "question": "疑问",
+      "cancelled": "已取消"
+    }
   },
   "modals": {
     "collection": {

@@ -3,7 +3,67 @@
  * These tests ensure the main highlight detection logic works correctly
  */
 
-export {};
+import { hasDelimiterInsideRanges } from './range-exclusion';
+
+describe('Highlights containing inline code (issue #102)', () => {
+    // Production copies, kept adjacent so drift is obvious:
+    // main.ts markdownHighlightRegex, and the inline-code half of getCodeBlockRanges.
+    const HIGHLIGHT_REGEX = /==((?:[^=]|=[^=])+?)==/g;
+    const INLINE_CODE_REGEX = /`([^`\n]+?)`/g;
+
+    const codeRanges = (content: string) => {
+        const ranges: Array<{ start: number; end: number }> = [];
+        INLINE_CODE_REGEX.lastIndex = 0;
+        let match;
+        while ((match = INLINE_CODE_REGEX.exec(content)) !== null) {
+            ranges.push({ start: match.index, end: match.index + match[0].length });
+        }
+        return ranges;
+    };
+
+    /** Run the real detection pipeline: match, then apply the exclusion rule. */
+    const detect = (content: string): string[] => {
+        const ranges = codeRanges(content);
+        const found: string[] = [];
+        HIGHLIGHT_REGEX.lastIndex = 0;
+        let match;
+        while ((match = HIGHLIGHT_REGEX.exec(content)) !== null) {
+            const start = match.index;
+            const end = match.index + match[0].length;
+            if (!hasDelimiterInsideRanges(start, end, ranges)) {
+                found.push(match[1]);
+            }
+        }
+        return found;
+    };
+
+    it('should detect a highlight containing an inline code span', () => {
+        expect(detect('==test `code` test==')).toEqual(['test `code` test']);
+    });
+
+    it('should detect a highlight ending with an inline code span', () => {
+        expect(detect('==test `test`==')).toEqual(['test `test`']);
+    });
+
+    it('should still detect a highlight with no code at all', () => {
+        expect(detect('==test **bold** test==')).toEqual(['test **bold** test']);
+    });
+
+    it('should not detect a highlight that is inside inline code', () => {
+        expect(detect('`==test==`')).toEqual([]);
+    });
+
+    it('should not produce a phantom highlight from a == inside code', () => {
+        // The regex pairs the == inside the code span with the one after it.
+        // That match must stay excluded, or the sidebar shows a nonsense entry.
+        expect(detect('Use `a == b` and ==real highlight== here'))
+            .not.toContain(' b` and ');
+    });
+
+    it('should detect a highlight containing several code spans', () => {
+        expect(detect('==compare `a` with `b` now==')).toEqual(['compare `a` with `b` now']);
+    });
+});
 
 describe('Highlight Detection Patterns', () => {
     describe('Markdown highlight regex', () => {
