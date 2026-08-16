@@ -5348,7 +5348,7 @@ export class HighlightsSidebarView extends ItemView {
      * view's own scroll if that is unavailable.
      *
      * Scrolling is line-level: Reading View exposes no API for selecting rendered
-     * text, so the highlight is brought into view but not visually marked.
+     * text, so the target is brought into view but not visually marked.
      */
     private scrollPreviewToLine(targetView: MarkdownView, line: number): void {
         try {
@@ -5361,6 +5361,67 @@ export class HighlightsSidebarView extends ItemView {
                 console.warn('Failed to scroll preview:', fallbackError);
             }
         }
+
+        this.centerPreviewScroll(targetView);
+    }
+
+    /**
+     * Bring the just-scrolled line toward the middle of the Reading View.
+     *
+     * Both preview scroll APIs (setEphemeralState and applyScroll) are line-based
+     * and place the target at the top of the viewport — there is no centred
+     * variant to match the editor's scrollIntoView(range, true). The target sits
+     * at the top immediately after the scroll, so shifting up by half a viewport
+     * centres it. Runs in a frame so it lands after Obsidian's own scroll rather
+     * than being overwritten by it, and before paint so there is no visible jump.
+     */
+    private centerPreviewScroll(targetView: MarkdownView): void {
+        window.requestAnimationFrame(() => {
+            try {
+                const scroller = this.findPreviewScroller(targetView);
+                if (!scroller) {
+                    return;
+                }
+
+                const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+                if (maxScroll <= 0) {
+                    return; // Content fits; nothing to centre
+                }
+
+                // Clamping means targets near either end settle short of centre,
+                // which is also how the editor behaves at the edges of a document.
+                const centered = scroller.scrollTop - scroller.clientHeight / 2;
+                scroller.scrollTop = Math.max(0, Math.min(maxScroll, centered));
+            } catch (error) {
+                console.warn('Failed to centre preview scroll:', error);
+            }
+        });
+    }
+
+    /** Locate the scrollable element behind a Reading View. */
+    private findPreviewScroller(targetView: MarkdownView): HTMLElement | null {
+        const root = targetView.previewMode?.containerEl ?? targetView.containerEl;
+        if (!root) {
+            return null;
+        }
+
+        const isScrollable = (el: HTMLElement | null): boolean =>
+            !!el && el.scrollHeight > el.clientHeight;
+
+        if (isScrollable(root)) {
+            return root;
+        }
+
+        // Obsidian nests the scroller inside the reading view container; the exact
+        // depth has changed across versions, so probe rather than assume.
+        for (const selector of ['.markdown-preview-view', '.markdown-reading-view']) {
+            const candidate = root.querySelector(selector);
+            if (candidate instanceof HTMLElement && isScrollable(candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     focusHighlight(highlightId: string) {
