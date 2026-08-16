@@ -82,6 +82,14 @@ export class HighlightsSidebarView extends ItemView {
     private sortButton!: HTMLElement; // Store sort button reference for state updates
     private taskRefreshTimeout?: number; // Debounce timer for task auto-refresh
     private collapsedSections: Set<string> = new Set(); // Track collapsed task sections
+    /**
+     * Collapsed highlight groups, persisted in settings.
+     *
+     * Deliberately separate from collapsedSections: the task code prunes that set
+     * by prefix-matching group names, which would silently drop highlight entries
+     * whose key happened to match.
+     */
+    private collapsedHighlightGroups: Set<string> = new Set();
     private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
 
     // Follow-editor-scroll: scroll the sidebar to track the editor's visible position
@@ -116,6 +124,9 @@ export class HighlightsSidebarView extends ItemView {
         // Load legacy settings as fallback (will be migrated to per-tab on first save)
         this.groupingMode = plugin.settings.groupingMode || 'none';
         this.sortMode = plugin.settings.sortMode || 'none';
+
+        // Restore which highlight groups were left collapsed
+        this.collapsedHighlightGroups = new Set(plugin.settings.collapsedHighlightGroups || []);
 
         // Load task secondary grouping mode from settings
         this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
@@ -1351,6 +1362,60 @@ export class HighlightsSidebarView extends ItemView {
     private getSearchTerm(): string {
         const searchInput = this.containerEl.querySelector('.highlights-search-input') as HTMLInputElement;
         return searchInput?.value || '';
+    }
+
+    /**
+     * Stable key for a highlight group's collapsed state.
+     *
+     * Scoped by tab and grouping mode so collapsing "Yellow" under colour
+     * grouping does not also collapse a tag of the same name, and so each tab
+     * keeps its own state.
+     */
+    private getHighlightGroupId(groupName: string): string {
+        return `${this.viewMode}::${this.groupingMode}::${groupName}`;
+    }
+
+    /**
+     * Make a highlight group header collapse the items beneath it.
+     *
+     * Applies the initial state, wires the click, and persists the change. The
+     * collapsed set is read at render time, so the state survives re-renders
+     * from sorting, filtering and edits.
+     */
+    private makeHighlightGroupCollapsible(
+        groupHeader: HTMLElement,
+        itemsContainer: HTMLElement,
+        groupName: string
+    ) {
+        const groupId = this.getHighlightGroupId(groupName);
+        groupHeader.addClass('highlight-group-collapsible');
+        groupHeader.setAttribute('data-group-id', groupId);
+
+        // Matches the ellipsis affordance used by collapsed task sections. It goes
+        // in the header's first row, which is already a flex row, so `margin-left:
+        // auto` pushes it to the right edge without any positioning tricks.
+        const headerRow = groupHeader.querySelector('span') ?? groupHeader;
+        headerRow.createSpan({ cls: 'highlight-group-ellipsis', text: '...' });
+
+        const apply = (collapsed: boolean) => {
+            groupHeader.toggleClass('collapsed', collapsed);
+            itemsContainer.style.display = collapsed ? 'none' : '';
+        };
+
+        apply(this.collapsedHighlightGroups.has(groupId));
+
+        groupHeader.addEventListener('click', async () => {
+            const collapsed = !this.collapsedHighlightGroups.has(groupId);
+            if (collapsed) {
+                this.collapsedHighlightGroups.add(groupId);
+            } else {
+                this.collapsedHighlightGroups.delete(groupId);
+            }
+            apply(collapsed);
+
+            this.plugin.settings.collapsedHighlightGroups = Array.from(this.collapsedHighlightGroups);
+            await this.plugin.saveSettings();
+        });
     }
 
     private renderContent() {
@@ -3946,13 +4011,18 @@ export class HighlightsSidebarView extends ItemView {
                 // Only render the group if we have highlights to show
                 if (groupHighlightsToShow.length > 0) {
                     // Render group header
-                    this.renderGroupHeader(groupName, groupHighlights, groupColors);
-                    
+                    const groupHeader = this.renderGroupHeader(groupName, groupHighlights, groupColors);
+
+                    // Items live in their own container so the header can hide them as a unit
+                    const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
+
                     // Render the subset of highlights for this page (already sorted)
                     groupHighlightsToShow.forEach(highlight => {
-                        this.createHighlightItem(this.listContainerEl, highlight, searchTerm, true);
+                        this.createHighlightItem(itemsContainer, highlight, searchTerm, true);
                         renderedHighlightCount++;
                     });
+
+                    this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
                 }
             }
             
@@ -3968,7 +4038,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Render just the group header with stats
      */
-    private renderGroupHeader(groupName: string, groupHighlights: Highlight[], groupColors?: Map<string, string>): void {
+    private renderGroupHeader(groupName: string, groupHighlights: Highlight[], groupColors?: Map<string, string>): HTMLElement {
         // Create group header
         const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
         
@@ -4037,6 +4107,8 @@ export class HighlightsSidebarView extends ItemView {
         setIcon(filesIcon, 'files');
         
         filesContainer.createSpan({ text: `${fileCount}` });
+
+        return groupHeader;
     }
 
     /**
@@ -4044,7 +4116,7 @@ export class HighlightsSidebarView extends ItemView {
      */
     private renderSingleGroup(groupName: string, groupHighlights: Highlight[], searchTerm?: string, showFilename: boolean = false, groupColors?: Map<string, string>): void {
         // Render group header
-        this.renderGroupHeader(groupName, groupHighlights, groupColors);
+        const groupHeader = this.renderGroupHeader(groupName, groupHighlights, groupColors);
 
         // Sort highlights within the group
         let sortedHighlights: Highlight[];
@@ -4064,9 +4136,13 @@ export class HighlightsSidebarView extends ItemView {
         }
         
         // Create highlights in this group
+        // Items live in their own container so the header can hide them as a unit
+        const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
         sortedHighlights.forEach(highlight => {
-            this.createHighlightItem(this.listContainerEl, highlight, searchTerm, showFilename);
+            this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
         });
+
+        this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
     }
 
     /**
@@ -6153,10 +6229,13 @@ export class HighlightsSidebarView extends ItemView {
                 sortedHighlights = groupHighlights.sort((a, b) => a.startOffset - b.startOffset);
             }
             
-            // Create highlights in this group
+            // Items live in their own container so the header can hide them as a unit
+            const itemsContainer = this.listContainerEl.createDiv({ cls: 'highlight-group-items' });
             sortedHighlights.forEach(highlight => {
-                this.createHighlightItem(this.listContainerEl, highlight, searchTerm, showFilename);
+                this.createHighlightItem(itemsContainer, highlight, searchTerm, showFilename);
             });
+
+            this.makeHighlightGroupCollapsible(groupHeader, itemsContainer, groupName);
         });
     }
 

@@ -2115,6 +2115,38 @@
     opacity: 1;
 }
 
+/* Collapsible highlight groups — mirrors the task section affordances above */
+.highlight-group-header.highlight-group-collapsible {
+    cursor: pointer;
+}
+
+.highlight-group-header.collapsed {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.highlight-group-header.collapsed:hover {
+    opacity: 0.9;
+}
+
+.highlight-group-ellipsis {
+    margin-left: auto;
+    font-weight: 400;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.highlight-group-header.collapsed .highlight-group-ellipsis {
+    opacity: 1;
+}
+
+/* Collapsed groups keep their header spacing but drop the divider, so the next
+   header does not read as a double rule. */
+.highlight-group-header.collapsed {
+    border-bottom-color: transparent;
+}
+
 /* Task secondary group headers (tag/date/flagged grouping) */
 /* COMMENTED OUT FOR NOW
 .task-secondary-group-header {
