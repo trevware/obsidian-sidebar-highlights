@@ -25,6 +25,12 @@ import { t } from '../i18n';
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
+/**
+ * Group key for the current-note tasks section. A constant rather than the file
+ * name, so its collapsed state is a preference about the section itself.
+ */
+const CURRENT_NOTE_GROUP_KEY = '__current_note__';
+
 export class HighlightsSidebarView extends ItemView {
     plugin: HighlightCommentsPlugin;
     private searchInputEl!: HTMLInputElement;
@@ -1372,6 +1378,12 @@ export class HighlightsSidebarView extends ItemView {
      * keeps its own state.
      */
     private getHighlightGroupId(groupName: string): string {
+        // The current-note section is not part of the grouping, so its state is
+        // keyed by the tab alone and survives a change of grouping mode.
+        if (groupName === CURRENT_NOTE_GROUP_KEY) {
+            return `${this.viewMode}::${groupName}`;
+        }
+
         return `${this.viewMode}::${this.groupingMode}::${groupName}`;
     }
 
@@ -1710,6 +1722,11 @@ export class HighlightsSidebarView extends ItemView {
         const cardContainer = this.contentAreaEl.createDiv({
             cls: 'current-note-tasks-card'
         });
+
+        // Keyed by the section rather than the file: collapsing it means "I don't
+        // want this section taking space", which should hold as the active note
+        // changes rather than needing re-collapsing for every note.
+        this.makeGroupCollapsible(headerEl, [cardContainer], CURRENT_NOTE_GROUP_KEY);
 
         // Sort tasks based on current sort mode
         const sortedTasks = currentFileTasks.sort((a, b) => {
