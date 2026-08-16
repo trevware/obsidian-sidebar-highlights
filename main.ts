@@ -6,6 +6,7 @@ import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
+import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -2913,14 +2914,15 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     /**
-     * Check if a range overlaps with any of the provided code block ranges
-     * Returns true if the range is fully inside, partially overlaps, or spans across a code block
+     * Check whether a match should be discarded because one of its delimiters
+     * falls inside an excluded range (code block, inline code, link, comment).
+     *
+     * A match that merely *encloses* an excluded range is kept — a highlight is
+     * allowed to contain inline code. See src/utils/range-exclusion.ts for why
+     * testing overlap or containment both get this wrong.
      */
     private isInsideCodeBlock(start: number, end: number, codeBlockRanges: Array<{start: number, end: number}>): boolean {
-        return codeBlockRanges.some(range => {
-            // Check for any overlap: ranges overlap if start < range.end AND end > range.start
-            return start < range.end && end > range.start;
-        });
+        return hasDelimiterInsideRanges(start, end, codeBlockRanges);
     }
 
     /**

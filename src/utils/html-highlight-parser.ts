@@ -5,6 +5,8 @@
  * Handles: <span style="background:color">, <font color="color">, <mark>, <span class="class">
  */
 
+import { hasDelimiterInsideRanges } from './range-exclusion';
+
 export interface HtmlHighlight {
     text: string;
     color: string;
@@ -190,14 +192,17 @@ export class HtmlHighlightParser {
     }
 
     /**
-     * Check if a range is inside any code block
+     * Check if a match should be discarded because one of its delimiters falls
+     * inside a code block. Shares the rule used for markdown highlights so an
+     * HTML highlight containing inline code is kept, while one whose tags
+     * straddle a code boundary is discarded. See utils/range-exclusion.ts.
      */
     private static isInsideCodeBlock(
         start: number,
         end: number,
         codeBlockRanges: Array<{start: number, end: number}>
     ): boolean {
-        return codeBlockRanges.some(range => start >= range.start && end <= range.end);
+        return hasDelimiterInsideRanges(start, end, codeBlockRanges);
     }
 
     /**
