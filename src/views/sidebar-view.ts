@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection, CommentPluginSettings, Task, TaskStatus } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
@@ -11,6 +11,13 @@ import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterN
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
+import {
+    CopyFormat,
+    formatHighlightForCopy,
+    formatTaskForCopy,
+    joinHighlightEntries,
+    joinTaskEntries
+} from '../utils/copy-format';
 import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
@@ -39,6 +46,8 @@ export class HighlightsSidebarView extends ItemView {
     private taskManager: TaskManager;
     private taskRenderer: TaskRenderer;
     private currentTasks: Task[] = [];
+    /** Tasks actually rendered in the Tasks tab, after every filter. */
+    private currentVisibleTasks: Task[] = [];
     private cachedAllTasks: Task[] | null = null; // Cache all scanned tasks
     private preservedScrollTop: number = 0;
     private isHighlightFocusing: boolean = false;
@@ -1866,6 +1875,9 @@ export class HighlightsSidebarView extends ItemView {
             // Filtering above can remove a task's parent, so re-resolve nesting to stop
             // survivors appearing as children of an unrelated preceding task.
             filteredTasks = normalizeVisibleNesting(filteredTasks);
+
+            // Remember exactly what is on screen so "copy visible results" matches it
+            this.currentVisibleTasks = filteredTasks;
 
             // Render tasks
             if (filteredTasks.length === 0) {
@@ -7057,17 +7069,8 @@ export class HighlightsSidebarView extends ItemView {
 
         menu.addSeparator();
 
-        // Copy all visible highlights
-        const visibleCount = this.getCurrentlyVisibleHighlights().length;
-        menu.addItem((item) => {
-            item
-                .setTitle(t('toolbar.copyVisibleHighlights', { count: visibleCount }))
-                .setIcon('copy')
-                .setDisabled(visibleCount === 0)
-                .onClick(() => {
-                    this.copyVisibleHighlightsToClipboard();
-                });
-        });
+        // Copy all visible results (highlights, or tasks in the Tasks tab)
+        this.addCopyVisibleMenuItems(menu);
 
         // Revert highlight colors
         menu.addItem((item) => {
@@ -7127,32 +7130,88 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     /**
-     * Format a single highlight as markdown text (mirrors the per-item copy
-     * button in highlight-renderer.ts).
+     * Tasks currently rendered in the Tasks tab, after every filter has been
+     * applied. Captured during render so the copy action can reuse exactly what
+     * the user is looking at rather than recomputing the filter chain.
      */
-    private formatHighlightForCopy(highlight: Highlight): string {
-        let text: string;
-        if (highlight.isNativeComment) {
-            text = `%%${highlight.text}%%`;
-        } else {
-            // Both regular markdown and HTML highlights export as ==text==
-            text = `==${highlight.text}==`;
-        }
-
-        // Append footnotes/comments (but not for native comments — the text is the comment)
-        if (!highlight.isNativeComment && highlight.footnoteContents && highlight.footnoteContents.length > 0) {
-            for (const content of highlight.footnoteContents) {
-                text += `^[${content}]`;
-            }
-        }
-        return text;
+    private getCurrentlyVisibleTasks(): Task[] {
+        return this.currentVisibleTasks ?? [];
     }
 
     /**
-     * Copy all currently-visible (post-filter) highlights to the clipboard,
-     * one per paragraph. Notifies the user of the count.
+     * Add the "copy visible results" entry, with a format submenu.
+     *
+     * Obsidian supports submenus at runtime but `setSubmenu` is absent from the
+     * published typings, so it is probed rather than assumed; without it the
+     * three formats are added as flat items so the feature still works.
      */
-    private async copyVisibleHighlightsToClipboard() {
+    private addCopyVisibleMenuItems(menu: Menu) {
+        const isTasks = this.viewMode === 'tasks';
+        const count = isTasks
+            ? this.getCurrentlyVisibleTasks().length
+            : this.getCurrentlyVisibleHighlights().length;
+
+        const title = isTasks
+            ? t('toolbar.copyVisibleResults', { count })
+            : t('toolbar.copyVisibleHighlights', { count });
+
+        const formats: Array<{ format: CopyFormat; label: string; icon: string }> = [
+            { format: 'with-syntax', label: t('toolbar.copyFormat.withSyntax'), icon: 'code' },
+            { format: 'plain', label: t('toolbar.copyFormat.plain'), icon: 'type' },
+            { format: 'list', label: t('toolbar.copyFormat.list'), icon: 'list' }
+        ];
+
+        const copy = (format: CopyFormat) => {
+            if (isTasks) {
+                this.copyVisibleTasksToClipboard(format);
+            } else {
+                this.copyVisibleHighlightsToClipboard(format);
+            }
+        };
+
+        let usedSubmenu = false;
+
+        menu.addItem((item) => {
+            item.setTitle(title).setIcon('copy').setDisabled(count === 0);
+
+            const submenuCapable = item as MenuItem & { setSubmenu?: () => Menu };
+            if (typeof submenuCapable.setSubmenu !== 'function') {
+                return;
+            }
+
+            try {
+                const submenu = submenuCapable.setSubmenu();
+                for (const { format, label, icon } of formats) {
+                    submenu.addItem((sub) =>
+                        sub.setTitle(label).setIcon(icon).onClick(() => copy(format))
+                    );
+                }
+                usedSubmenu = true;
+            } catch (error) {
+                console.warn('Failed to build copy submenu, falling back to flat items:', error);
+            }
+        });
+
+        if (usedSubmenu) {
+            return;
+        }
+
+        for (const { format, label, icon } of formats) {
+            menu.addItem((item) =>
+                item
+                    .setTitle(`${title} — ${label}`)
+                    .setIcon(icon)
+                    .setDisabled(count === 0)
+                    .onClick(() => copy(format))
+            );
+        }
+    }
+
+    /**
+     * Copy all currently-visible (post-filter) highlights to the clipboard.
+     * Notifies the user of the count.
+     */
+    private async copyVisibleHighlightsToClipboard(format: CopyFormat) {
         const visible = this.getCurrentlyVisibleHighlights();
         if (visible.length === 0) {
             new Notice(t('notices.noHighlightsToCopy'));
@@ -7165,27 +7224,61 @@ export class HighlightsSidebarView extends ItemView {
             return a.startOffset - b.startOffset;
         });
 
-        const text = ordered.map(h => this.formatHighlightForCopy(h)).join('\n\n');
+        const text = joinHighlightEntries(
+            ordered.map(h => formatHighlightForCopy(h, format)),
+            format
+        );
 
+        await this.writeToClipboard(text, visible.length);
+    }
+
+    /**
+     * Copy all currently-visible (post-filter) tasks to the clipboard.
+     */
+    private async copyVisibleTasksToClipboard(format: CopyFormat) {
+        const visible = this.getCurrentlyVisibleTasks();
+        if (visible.length === 0) {
+            new Notice(t('notices.noHighlightsToCopy'));
+            return;
+        }
+
+        // Sort by file path then line so the output reflects document order.
+        const ordered = [...visible].sort((a, b) => {
+            if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
+            return a.lineNumber - b.lineNumber;
+        });
+
+        const text = joinTaskEntries(ordered.map(task => formatTaskForCopy(task, format)));
+
+        await this.writeToClipboard(text, visible.length);
+    }
+
+    /**
+     * Write text to the clipboard, falling back to a hidden textarea when the
+     * async clipboard API is unavailable or blocked.
+     */
+    private async writeToClipboard(text: string, count: number) {
         try {
             await navigator.clipboard.writeText(text);
-            new Notice(t('notices.copiedHighlights', { count: visible.length }));
+            new Notice(t('notices.copiedHighlights', { count }));
+            return;
         } catch (err) {
-            // Fallback: hidden textarea
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                new Notice(t('notices.copiedHighlights', { count: visible.length }));
-            } catch (e) {
-                new Notice(t('notices.copyFailed'));
-            }
-            document.body.removeChild(textArea);
+            // Fall through to the textarea approach below.
         }
+
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            new Notice(t('notices.copiedHighlights', { count }));
+        } catch (e) {
+            new Notice(t('notices.copyFailed'));
+        }
+        document.body.removeChild(textArea);
     }
 
     /**

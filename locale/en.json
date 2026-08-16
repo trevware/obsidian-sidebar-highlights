@@ -249,6 +249,12 @@
     "toggleFollowEditorScroll": "Follow editor scroll",
     "moreActions": "More actions",
     "copyVisibleHighlights": "Copy visible highlights ({{count}})",
+    "copyVisibleResults": "Copy visible results ({{count}})",
+    "copyFormat": {
+      "withSyntax": "With syntax",
+      "plain": "Plain text",
+      "list": "As list"
+    },
     "toggleHighlightComments": "Toggle highlight comments",
     "revertColors": "Revert highlight colors",
     "filter": "Filter",
