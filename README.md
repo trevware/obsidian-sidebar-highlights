@@ -1,6 +1,6 @@
 # Sidebar Highlights
 
-Simplify and streamline how you work with highlights, comments, and tasks in Obsidian. This plugin helps you capture, organize, and navigate your thoughts across your entire vault with advanced search capabilities, a flexible comment system, and comprehensive task management.
+Collect every highlight, comment and task in your vault into one sidebar, then find your way back to them. It works with Obsidian's own markdown: highlights are `==text==`, comments are footnotes, and nothing is stored in a format only this plugin can read.
 
 <p align="center">
   <picture>
@@ -8,226 +8,148 @@ Simplify and streamline how you work with highlights, comments, and tasks in Obs
   </picture>
 </p>
 
-### **Flexible Comment System using Obsidian's Footnote Syntax**
-- **Standard comments**: `==highlight==[^1]` with `[^1]: Your comment`
-- **Inline comments**: `==highlight==^[immediate comment]`
-- **Native Obsidian comments**: `%%standalone comment%%` will also appear in the sidebar
-- **Mixed commenting**: Combine different comment types on the same highlight
+<p align="center">
+  <b>Sidebar Highlights is free, and built in my spare time.</b><br>
+  If it earns a place in your vault, buying me a coffee keeps it going.
+</p>
 
-### **Comprehensive Task Management**
-- **Smart task detection** automatically scans vault for all tasks (`- [ ]` and `- [x]`)
-- **Natural language dates** like "tomorrow", "next Monday", or "+3d" for due dates
-- **Intelligent grouping** by due date with contextual labels (Today, Tomorrow, day names, months, years)
-- **Task filtering** by completion status, flagged tasks, or due dates (Overdue, Due Today, etc.)
-- **Task context** shows indented content and sub-bullets below tasks
-- **Flag tasks** for priority marking and quick filtering
+<p align="center">
+  <a href="https://buymeacoffee.com/trevware">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50">
+  </a>
+</p>
 
-### **Visual Organization**
-- **Smart grouping** by color, date, folder, collection, filename, or due date
-- **Current folder tab** to review every highlight in the folder you're working in, with or without subfolders (enable in Settings → Views)
-- **Collections system** to organize highlights across multiple files
-- **Display modes** to save and restore different display configurations
-- **Clean sidebar interface** with optional toolbar and action hiding
-- **Color-coded highlights**: Gold, Red, Teal, Blue, and Green
-- **International support**: Full Chinese (Simplified) localization
+## Highlights
 
-### **Seamless Integration**
-- **Works directly with Obsidian's markdown syntax** - no custom formats required
-- **Command palette live updates** to navigate to collections as you create them
-- **Click sidebar highlights and comments** to navigate directly to their location
-- **Real-time updates** as edits are made in the editor
+Select text and choose **Create highlight** from the right-click menu, or run it from the command palette and give it a hotkey. Typing the syntax by hand works just as well.
 
-### **Advanced Search & Filtering**
-- **Smart search** with logical operators (`AND`, `OR`) and parentheses for complex queries
-- **Tag filters** using `#tag` syntax with autocomplete support
-- **Collection filters** using `@collection` syntax 
-- **Exclude filters** with `-#tag` and `-@collection` for precise filtering
-- **Color filters** to show only highlights in one or more colors
-- **Type filters** to show highlights and comments together, highlights only, or comments only
-- **Real-time search preview** showing exactly how your query will be interpreted
-- **International support** for Unicode characters in tags and search
+| Syntax | Notes |
+| --- | --- |
+| `==text==` | Standard markdown highlight |
+| `<mark>text</mark>` | Including the inline-style and CSS-class output of [Highlightr](https://github.com/chetachiezikeuzor/Highlightr-Plugin) |
+| `<font color="#835cf5">text</font>` | Hex, shorthand hex and named colors |
+| `<span style="background:yellow">text</span>` | Background color is read from the style |
+| `%%text%%` | A native Obsidian comment, shown in the sidebar in its own right |
 
-## Getting Started
+Hover a highlight in the sidebar to reveal its color picker. Your own names for the five palette colors live in **Settings → Color names**, and those names are what the color filter shows.
 
-### Creating Your First Highlight
+## Comments
 
-**Method 1: Right-click menu (Easiest)**
-1. Select any text in a markdown file
-2. Right-click and choose "Create highlight"
-3. Your text is now highlighted and appears in the sidebar!
+Comments are ordinary Obsidian footnotes, so they survive without this plugin installed.
 
-**Method 2: Command palette**
-- Press `Ctrl/Cmd + P` → type "Toggle highlight"
-
-**Method 3: Manual syntax**
-- Type: `==your highlighted text==`
-
-**Pro tip**: Use a hotkey for highlights.
-
-### The Three Comment Types
-
-#### 1. **Standard Comments**
-Perfect for detailed comments that don't clutter your text:
 ```markdown
-==Important concept==[^1]
+==Standard comment==[^1]
 
-[^1]: This is my detailed explanation of why this concept matters
+[^1]: Kept out of the way at the bottom of the note
+
+==Inline comment==^[Written right where you are]
+
+==Both at once==[^1]^[and as many as you like]
+
+%% A native comment, standing on its own %%
 ```
 
-#### 2. **Inline Comments**
-Great for immediate thoughts without jumping around:
-```markdown
-==Key insight==^[This changed my perspective completely!]
-```
+**Settings → Comments** chooses which style the plugin writes by default, and whether deleting a highlight takes its comments with it.
 
-#### 3. **Native Comments** (Standalone)
-Use anywhere in your document for general thoughts:
-```markdown
-%% Remember to revisit this section during review %%
-```
+## The sidebar
 
-**Pro tip**: This plugin supports mixed footnote types! For example: `==text==[^1]^[quick note]`
+Five tabs, each remembering its own filters, grouping and sort:
 
-### Advanced Search
+- **Current note**: highlights in the note you're reading
+- **Current folder**: every note in that note's folder, following you as you move around the vault. Widen it to subfolders from the overflow menu. *Hidden by default; enable in Settings → Views*
+- **All notes**: the whole vault, paginated
+- **Collections**: highlights you've grouped by hand, across any number of notes
+- **Tasks**: every task in the vault. *Hidden by default; enable in Settings → Views*
 
-The search bar supports powerful queries:
+Clicking anything takes you to it, in Editing or Reading view. **Follow editor scroll**, in the overflow menu, works the other way round: the sidebar tracks the highlight nearest what you're reading.
 
-**Basic examples:**
-- `home` - Find all highlights containing "home"
-- `#important` - Show only highlights tagged with #important
-- `@work` - Filter by "work" collection
+### Search
 
-**Advanced queries:**
-- `#urgent AND @project` - Must have both tag and collection
-- `#bug OR #feature` - Either tag works
-- `(#critical OR #high) AND security` - Complex logic with parentheses
-- `-#archived` - Exclude highlights tagged with #archived
-- `home #important -@completed` - Text + include tag + exclude collection
+The search box takes text, tags, collections and boolean logic:
 
-**Auto-complete**: Start typing `#` or `@` and use ↑↓ arrows to navigate suggestions.
+| Query | Finds |
+| --- | --- |
+| `onboarding` | Text in the highlight, or in its note's path |
+| `#important` | Highlights tagged `#important` |
+| `@work` | Highlights in the "work" collection |
+| `#urgent AND @project` | Both at once |
+| `#bug OR #feature` | Either |
+| `(#critical OR #high) AND security` | Grouped with parentheses |
+| `-#archived` | Everything except that tag |
+| `"Projects/Acme/reference"` | A quoted phrase, including a folder path |
 
-### Using the Sidebar
+Start typing `#` or `@` for autocomplete, and use ↑↓ to pick.
 
-2. **Navigate**: Four tabs available:
-   - **Current Note**: See highlights from active file
-   - **All Notes**: Browse your entire vault
-   - **Collections**: Organized highlight groups
-   - **Tasks**: Manage tasks from across your vault (enable in Settings)
-3. **Click to jump**: Any highlight or task takes you directly to its location
-4. **Search & filter**: Use the powerful search and filter options
-5. **Group & organize**: Sort by color, date, folder, collection, or due date
+### Filters
 
-### Collections - Organize Highlights Across Files
+The filter menu narrows what search alone can't:
 
-Collections help you group related highlights from different notes:
+- **Type**: highlights and comments together, highlights only, or comments only
+- **Colors**: one or several at once, listing only the colors actually present
+- **Tags** and **Collections**: the same sets search reaches, pickable instead of typed
+- **Status** and **Due date**: in the Tasks tab, covering flagged, complete, overdue, due today and more
 
-1. **Create**: Go to Collections tab → "New Collection"
-2. **Add highlights**: Click the collection button on any highlight
-3. **Browse**: Click collection cards to see contents
-4. **Quick access**: Use Command Palette → "Go to [Collection Name]"
+Filters and search compose, and the filter button lights up whenever a filter is active, so a narrowed list is never a mystery.
 
-### Tasks - Manage Your To-Dos
+### Grouping and sorting
 
-The Tasks tab provides a unified view of all tasks in your vault:
+Group by color, tag, folder, collection, note, comment count or creation date. Group headings fold away, and stay folded across restarts. Sort alphabetically, by source note, or by when a highlight or note was created, plus by priority and due date in the Tasks tab.
 
-1. **Enable**: Go to Settings → Views → Show Tasks tab
-2. **Add dates**: Click the calendar icon to set due dates with natural language ("tomorrow", "next week", etc.)
-3. **Flag tasks**: Mark important tasks for quick filtering
-4. **Group by date**: Organize tasks with smart labels (Today, Tomorrow, day names, month names, years)
-5. **Filter**: Show only overdue, due today, flagged, or incomplete tasks
-6. **Click to edit**: Any task takes you directly to its location in the file
+### Collections
 
-**Pro tip**: Tasks automatically show their context (indented content below them) for better understanding.
+Collections gather related highlights from anywhere in the vault.
 
-### Display Modes - Save Your View Preferences
+1. **Create** one from the Collections tab
+2. **Add** highlights with the collection button on any highlight
+3. **Jump** straight to one from the command palette, where each collection gets its own command as you create it
 
-Display Modes let you save and quickly switch between different display configurations:
+## Tasks
 
-1. **Save a mode**: Set up your preferred view → Settings → Display Modes → Save Current Display
-2. **Apply modes**: Use the Command Palette → "Apply display mode: [Mode Name]"
-3. **Update modes**: Make changes and update existing modes with new settings
-4. **Quick switching**: Perfect for different workflows (Reading Mode, Full View, etc.)
+The Tasks tab collects every checkbox in the vault: `- [ ]`, `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`.
 
-### Color Your Highlights
+- Set due dates in natural language, like "tomorrow", "next Monday" or "+3d"
+- Group by due date with readable headings: Today, Tomorrow, weekday names, months
+- Flag what matters, and filter by flag, status or date
+- See each task's context, the indented lines beneath it, without leaving the sidebar
+- Metadata written by the Tasks plugin is hidden by default, in either the Dataview or emoji style
 
-**Change colors**: Hover over the side of a highlight to view the color picker.
+## Settings worth knowing
+
+Everything lives under **Settings → Sidebar Highlights**.
+
+- **Views**: which of the five tabs appear
+- **Display modes**: save your Display and Views settings as a named mode, and apply it from the command palette
+- **Detection**: whether HTML comments and adjacent native comments are picked up
+- **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
+- **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
+- **Typography** and **Styling**: font sizes and weights per element
+- **Backup and restore**: automatic backups of your collections and highlight metadata, with a retention limit
 
 ## Installation
 
-### Option 1: Community Plugin (Recommended)
-1. Open Obsidian Settings
-2. Go to **Community Plugins** → **Browse**
-3. Search for "Sidebar Highlights"
-4. Click **Install** and then **Enable**
+**From Community Plugins**: Settings → Community Plugins → Browse → search "Sidebar Highlights" → Install → Enable.
 
-### Option 2: Manual Installation
-1. Download the latest release from GitHub
-2. Extract to your vault's `.obsidian/plugins/sidebar-highlights/` folder
-3. Reload Obsidian or restart the app
-4. Enable the plugin in **Settings** → **Community Plugins**
+**Manually**: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/trevware/obsidian-sidebar-highlights/releases), drop them in `.obsidian/plugins/sidebar-highlights/`, and enable the plugin.
 
-## Settings & Customization
+## Notes and limitations
 
-Access plugin settings via **Settings** → **Sidebar Highlights**:
+- PDF highlights aren't supported
+- Highlights inside code blocks are ignored on purpose, so `==` in a DataviewJS block won't appear
+- Fully localized in English and Chinese (Simplified)
 
-**Display:**
-- **Use inline footnotes by default**: Toggle between footnote styles
-- **Hide toolbar/actions**: Clean up the interface
-- **Show timestamps**: Display creation times on highlights
-- **Show filenames**: Show note titles in multi-file views
+Bugs and feature requests are welcome on [GitHub Issues](https://github.com/trevware/obsidian-sidebar-highlights/issues).
 
-**Views:**
-- **Show Tasks tab**: Enable the Tasks tab in the sidebar
+## Support the project
 
-**Tasks:**
-- **Show completed tasks**: Toggle visibility of completed tasks
-- **Show task context**: Display indented content below tasks
-- **Task date format**: Choose how dates appear (YYYY-MM-DD, MM/DD/YYYY, etc.)
+This plugin is free and always will be. It's built and maintained in my own time, and support is what makes that sustainable.
 
-**Display Modes:**
-- **Save current display**: Create named presets for different viewing configurations
-- **Manage modes**: Update, rename, or delete existing display modes
+<p align="center">
+  <a href="https://buymeacoffee.com/trevware">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50">
+  </a>
+</p>
 
-## Keyboard Shortcuts & Commands
-
-- **Toggle sidebar**: Open/close the highlights panel
-- **Create highlight**: Convert selected text to highlight
-- **Go to [Collection]**: Jump directly to specific collections
-- **Apply display mode**: Quickly switch between saved display configurations
-
-*Tip: Set custom hotkeys in Obsidian's Hotkeys settings*
-
-## Pro Tips & Tricks
-
-- **Quick footnotes**: Enable "Use inline footnotes by default" for faster note-taking
-- **Take advantage of search**: Use `(#urgent OR #important) AND -#completed` for complex filtering
-- **Color coding system**: Develop your own color meanings for consistent organization
-- **Collection workflows**: Create collections for projects, topics, or review cycles
-- **Natural language dates**: Use "tomorrow", "next Monday", "+3d", or "in 2 weeks" for quick task scheduling
-- **Display modes for workflows**: Save different modes for reading, reviewing, or editing sessions
-- **Smart date grouping**: Group tasks by due date to see what's coming up (Today, Tomorrow, day names, months)
-
-## Troubleshooting & FAQ
-
-**Q: Can I use this with PDF files?**
-A: PDF highlights aren't supported.
-
-**Q: Why can't I jump to highlights from within Reading View?**
-A: Jumping to highlights from within Reading View is not currently supported.
-
-**Q: Where is the Tasks tab?**
-A: The Tasks tab is hidden by default. Enable it in Settings → Views → Show Tasks tab.
-
-### Need More Help?
-
-- Report bugs or request features on [GitHub Issues](https://github.com/trevware/obsidian-sidebar-highlights/issues)
-
-## ❤️ Support the Project
-
-If this plugin enhances your Obsidian experience:
-- ☕ [Buy me a coffee](https://buymeacoffee.com/trevware) to fuel development
-- ⭐ Star the project on GitHub
-
----
-
-*Made with ❤️ for the Obsidian community*
+<p align="center">
+  <a href="https://buymeacoffee.com/trevware"><b>buymeacoffee.com/trevware</b></a><br>
+  Starring the repo helps too, and costs nothing.
+</p>
