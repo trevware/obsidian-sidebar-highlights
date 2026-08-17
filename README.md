@@ -24,6 +24,7 @@ Simplify and streamline how you work with highlights, comments, and tasks in Obs
 
 ### **Visual Organization**
 - **Smart grouping** by color, date, folder, collection, filename, or due date
+- **Current folder tab** to review every highlight in the folder you're working in, with or without subfolders (enable in Settings → Views)
 - **Collections system** to organize highlights across multiple files
 - **Display modes** to save and restore different display configurations
 - **Clean sidebar interface** with optional toolbar and action hiding
@@ -41,6 +42,8 @@ Simplify and streamline how you work with highlights, comments, and tasks in Obs
 - **Tag filters** using `#tag` syntax with autocomplete support
 - **Collection filters** using `@collection` syntax 
 - **Exclude filters** with `-#tag` and `-@collection` for precise filtering
+- **Color filters** to show only highlights in one or more colors
+- **Type filters** to show highlights and comments together, highlights only, or comments only
 - **Real-time search preview** showing exactly how your query will be interpreted
 - **International support** for Unicode characters in tags and search
 

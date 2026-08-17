@@ -9,7 +9,9 @@
     "currentNote": "当前笔记",
     "allNotes": "所有笔记",
     "collections": "合集",
-    "tasks": "任务"
+    "tasks": "任务",
+    "currentFolder": "当前文件夹",
+    "currentFolderNamed": "当前文件夹：{{folder}}"
   },
   "settings": {
     "display": {
@@ -62,6 +64,10 @@
       "showTasksTab": {
         "name": "显示【任务】标签页",
         "desc": "在侧边栏中显示【任务】标签页。"
+      },
+      "showCurrentFolderTab": {
+        "name": "显示【当前文件夹】标签页",
+        "desc": "列出当前笔记所在文件夹中所有笔记的高亮。"
       }
     },
     "displayModes": {
@@ -238,7 +244,6 @@
     "group": "分组高亮",
     "secondaryGroup": "二级分组",
     "sort": "排序高亮",
-    "toggleComments": "切换原生注释",
     "toggleFollowEditorScroll": "跟随编辑器滚动",
     "moreActions": "更多操作",
     "copyVisibleHighlights": "复制可见高亮 ({{count}})",
@@ -254,7 +259,8 @@
     "actions": "操作",
     "backToCollections": "返回合集",
     "newCollection": "新建合集",
-    "closeSearch": "关闭搜索"
+    "closeSearch": "关闭搜索",
+    "includeSubfolders": "包含子文件夹中的笔记"
   },
   "actions": {
     "moveToCollection": "移动到...",
@@ -318,7 +324,9 @@
     "today": "今天",
     "upcoming": "即将到来",
     "flagged": "已标记",
-    "unflagged": "未标记"
+    "unflagged": "未标记",
+    "noHighlightsInFolder": "{{folder}} 中没有高亮。",
+    "noMatchingInFolder": "{{folder}} 中没有匹配的高亮。"
   },
   "contextMenu": {
     "openNewTab": "在新标签页中打开",
@@ -345,7 +353,14 @@
     "noteCreated": "笔记创建",
     "last7Days": "最近7天",
     "last30Days": "最近30天",
-    "lastYear": "最近一年"
+    "lastYear": "最近一年",
+    "colors": "颜色",
+    "type": {
+      "heading": "类型",
+      "all": "高亮与批注",
+      "highlightsOnly": "仅高亮",
+      "commentsOnly": "仅批注"
+    }
   },
   "dateSuggestions": {
     "today": "今天",

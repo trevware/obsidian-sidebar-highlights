@@ -86,6 +86,7 @@ export interface DisplayMode {
     minimumCharacterCount: number;
     // Views settings
     showCurrentNoteTab: boolean;
+    showCurrentFolderTab: boolean;
     showAllNotesTab: boolean;
     showCollectionsTab: boolean;
     showTasksTab: boolean;
@@ -97,7 +98,8 @@ export interface TabSettings {
     commentsExpanded: boolean;
     searchExpanded: boolean;
     selectedTags?: string[]; // Selected tag filters for this tab
-    selectedCollections?: string[]; // Selected collection filters for this tab
+    selectedCollections?: string[];
+    selectedColors?: string[]; // Selected colour filters for this tab // Selected collection filters for this tab
     selectedSpecialFilters?: string[]; // Selected special filters (Flagged, Upcoming, etc.) for this tab
 }
 
@@ -110,7 +112,7 @@ export interface CommentPluginSettings {
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
     sortMode: SortMode; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
-    tabSettings: { [key in 'current' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
+    tabSettings: { [key in 'current' | 'folder' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
@@ -148,6 +150,7 @@ export interface CommentPluginSettings {
         green: string;
     };
     showCurrentNoteTab: boolean; // Show/hide Current Note tab
+    showCurrentFolderTab: boolean; // Show/hide Current Folder tab
     showAllNotesTab: boolean; // Show/hide All Notes tab
     showCollectionsTab: boolean; // Show/hide Collections tab
     showTasksTab: boolean; // Show/hide Tasks tab
@@ -210,6 +213,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
         green: ''
     },
     showCurrentNoteTab: true, // Show Current Note tab by default
+    showCurrentFolderTab: false, // Current Folder tab hidden by default (enable in Settings > Views)
     showAllNotesTab: true, // Show All Notes tab by default
     showCollectionsTab: true, // Show Collections tab by default
     showTasksTab: false, // Tasks tab hidden by default (enable in Settings > Views)
@@ -622,6 +626,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             minimumCharacterCount: this.settings.minimumCharacterCount,
             // Capture current Views settings
             showCurrentNoteTab: this.settings.showCurrentNoteTab,
+            showCurrentFolderTab: this.settings.showCurrentFolderTab,
             showAllNotesTab: this.settings.showAllNotesTab,
             showCollectionsTab: this.settings.showCollectionsTab,
             showTasksTab: this.settings.showTasksTab
@@ -639,6 +644,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.settings.minimumCharacterCount = displayMode.minimumCharacterCount;
         // Apply Views settings
         this.settings.showCurrentNoteTab = displayMode.showCurrentNoteTab;
+        this.settings.showCurrentFolderTab = displayMode.showCurrentFolderTab ?? false;
         this.settings.showAllNotesTab = displayMode.showAllNotesTab;
         this.settings.showCollectionsTab = displayMode.showCollectionsTab;
         this.settings.showTasksTab = displayMode.showTasksTab;
@@ -666,6 +672,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         displayMode.dateFormat = this.settings.dateFormat;
         displayMode.minimumCharacterCount = this.settings.minimumCharacterCount;
         displayMode.showCurrentNoteTab = this.settings.showCurrentNoteTab;
+        displayMode.showCurrentFolderTab = this.settings.showCurrentFolderTab;
         displayMode.showAllNotesTab = this.settings.showAllNotesTab;
         displayMode.showCollectionsTab = this.settings.showCollectionsTab;
         displayMode.showTasksTab = this.settings.showTasksTab;
@@ -3313,6 +3320,17 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.showCurrentNoteTab)
                 .onChange(async (value) => {
                     this.plugin.settings.showCurrentNoteTab = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.views.showCurrentFolderTab.name'))
+            .setDesc(t('settings.views.showCurrentFolderTab.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCurrentFolderTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.showCurrentFolderTab = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
                 }));

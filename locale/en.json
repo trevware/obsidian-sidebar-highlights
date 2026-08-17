@@ -9,7 +9,9 @@
     "currentNote": "Current note",
     "allNotes": "All notes",
     "collections": "Collections",
-    "tasks": "Tasks"
+    "tasks": "Tasks",
+    "currentFolder": "Current folder",
+    "currentFolderNamed": "Current folder: {{folder}}"
   },
   "settings": {
     "display": {
@@ -62,6 +64,10 @@
       "showTasksTab": {
         "name": "Show Tasks tab",
         "desc": "Show the Tasks tab in the sidebar."
+      },
+      "showCurrentFolderTab": {
+        "name": "Show Current Folder tab",
+        "desc": "Lists highlights from every note in the folder of the note you're viewing."
       }
     },
     "displayModes": {
@@ -253,7 +259,6 @@
     "group": "Group highlights",
     "secondaryGroup": "Secondary grouping",
     "sort": "Sort highlights",
-    "toggleComments": "Toggle native comments",
     "toggleFollowEditorScroll": "Follow editor scroll",
     "moreActions": "More actions",
     "copyVisibleHighlights": "Copy visible highlights ({{count}})",
@@ -269,7 +274,8 @@
     "actions": "Actions",
     "backToCollections": "Back to Collections",
     "newCollection": "New collection",
-    "closeSearch": "Close search"
+    "closeSearch": "Close search",
+    "includeSubfolders": "Include notes in subfolders"
   },
   "actions": {
     "moveToCollection": "Move to...",
@@ -333,7 +339,9 @@
     "today": "Today",
     "upcoming": "Upcoming",
     "flagged": "Flagged",
-    "unflagged": "Unflagged"
+    "unflagged": "Unflagged",
+    "noHighlightsInFolder": "No highlights in {{folder}}.",
+    "noMatchingInFolder": "No matching highlights in {{folder}}."
   },
   "contextMenu": {
     "openNewTab": "Open in new tab",
@@ -360,7 +368,14 @@
     "noteCreated": "Note Created",
     "last7Days": "Last 7 days",
     "last30Days": "Last 30 days",
-    "lastYear": "Last year"
+    "lastYear": "Last year",
+    "colors": "Colours",
+    "type": {
+      "heading": "Type",
+      "all": "Highlights and comments",
+      "highlightsOnly": "Highlights only",
+      "commentsOnly": "Comments only"
+    }
   },
   "dateSuggestions": {
     "today": "Today",

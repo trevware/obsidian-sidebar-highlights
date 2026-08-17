@@ -14,6 +14,11 @@ import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/ta
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
 import { squircleifyIcon } from '../utils/squircle-icon';
+import { isCommentsToggleOn, nextCommentsToggleState } from '../utils/comments-toggle';
+import { isInFolder, parentFolderPath } from '../utils/folder-scope';
+import { firstVisibleTab, tabIndex, visibleTabs } from '../utils/tab-order';
+import { HighlightTypeFilter, matchesTypeFilter, migrateLegacyTypeFilter } from '../utils/type-filter';
+import { colorLabel, resolveHighlightColor } from '../utils/color-labels';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -52,7 +57,7 @@ export class HighlightsSidebarView extends ItemView {
     private selectedHighlightIds: Set<string> = new Set(); // Multi-select for highlights
     private actionsButton: HTMLElement | null = null; // Actions menu button for multi-select
     private collectionNavButton: HTMLElement | null = null; // Collection navigation button
-    private viewMode: 'current' | 'all' | 'collections' | 'tasks' = 'current';
+    private viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks' = 'current';
     private currentCollectionId: string | null = null;
     private taskManager: TaskManager;
     private taskRenderer: TaskRenderer;
@@ -88,7 +93,8 @@ export class HighlightsSidebarView extends ItemView {
     private dropdownManager: DropdownManager = new DropdownManager();
     private highlightRenderer: HighlightRenderer;
     private savedScrollPosition: number = 0; // Store scroll position during rebuilds
-    private showNativeComments: boolean = true; // Track native comments visibility
+    private typeFilter: HighlightTypeFilter = 'all'; // Show highlights, native comments, or both
+    private selectedColors: Set<string> = new Set(); // Colour filter, per tab like the others
     private sortButton!: HTMLElement; // Store sort button reference for state updates
     private taskRefreshTimeout?: number; // Debounce timer for task auto-refresh
     private collapsedSections: Set<string> = new Set(); // Track collapsed task sections
@@ -101,6 +107,11 @@ export class HighlightsSidebarView extends ItemView {
      */
     private collapsedGroups: Set<string> = new Set();
     private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
+
+    // Current folder tab: the button itself (its tooltip names the folder in view),
+    // and whether it reaches into subfolders as well
+    private currentFolderTab: HTMLElement | null = null;
+    private folderScopeRecursive: boolean = false;
 
     // Follow-editor-scroll: scroll the sidebar to track the editor's visible position
     private followEditorScroll: boolean = false;
@@ -140,10 +151,16 @@ export class HighlightsSidebarView extends ItemView {
 
         // Load task secondary grouping mode from settings
         this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
-        // Load native comments visibility from vault-specific localStorage
-        this.showNativeComments = this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments') !== 'false';
+        // Load the type filter from vault-specific localStorage, honouring the state
+        // stored by versions that only had a native-comments on/off toggle
+        const storedTypeFilter = this.plugin.app.loadLocalStorage('sidebar-highlights-type-filter');
+        this.typeFilter = (storedTypeFilter === 'all' || storedTypeFilter === 'highlights' || storedTypeFilter === 'comments')
+            ? storedTypeFilter
+            : migrateLegacyTypeFilter(this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments'));
         // Load follow-editor-scroll state from vault-specific localStorage
         this.followEditorScroll = this.plugin.app.loadLocalStorage('sidebar-highlights-follow-editor-scroll') === 'true';
+        // Load the Current folder tab's subfolder depth from vault-specific localStorage
+        this.folderScopeRecursive = this.plugin.app.loadLocalStorage('sidebar-highlights-folder-scope-recursive') === 'true';
     }
 
     getViewType() { return VIEW_TYPE_HIGHLIGHTS; }
@@ -153,7 +170,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Get default settings for a specific tab
      */
-    private getDefaultTabSettings(viewMode: 'current' | 'all' | 'collections' | 'tasks'): { groupingMode: typeof this.groupingMode, sortMode: typeof this.sortMode, commentsExpanded: boolean, searchExpanded: boolean } {
+    private getDefaultTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks'): { groupingMode: typeof this.groupingMode, sortMode: typeof this.sortMode, commentsExpanded: boolean, searchExpanded: boolean } {
         // Tasks tab has different defaults
         if (viewMode === 'tasks') {
             return {
@@ -163,7 +180,7 @@ export class HighlightsSidebarView extends ItemView {
                 searchExpanded: false
             };
         }
-        // Highlight tabs (current, all, collections)
+        // Highlight tabs (current, folder, all, collections)
         return {
             groupingMode: 'none',
             sortMode: 'none',
@@ -187,7 +204,8 @@ export class HighlightsSidebarView extends ItemView {
             searchExpanded: this.searchExpanded,
             selectedTags: Array.from(this.selectedTags),
             selectedCollections: Array.from(this.selectedCollections),
-            selectedSpecialFilters: Array.from(this.selectedSpecialFilters)
+            selectedSpecialFilters: Array.from(this.selectedSpecialFilters),
+            selectedColors: Array.from(this.selectedColors)
         };
 
         this.plugin.saveSettings();
@@ -196,7 +214,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Restore tab settings when switching tabs
      */
-    private restoreTabSettings(viewMode: 'current' | 'all' | 'collections' | 'tasks'): void {
+    private restoreTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks'): void {
         const tabSettings = this.plugin.settings.tabSettings?.[viewMode];
 
         if (tabSettings) {
@@ -210,6 +228,7 @@ export class HighlightsSidebarView extends ItemView {
             this.selectedTags = new Set(tabSettings.selectedTags || []);
             this.selectedCollections = new Set(tabSettings.selectedCollections || []);
             this.selectedSpecialFilters = new Set(tabSettings.selectedSpecialFilters || []);
+            this.selectedColors = new Set(tabSettings.selectedColors || []);
 
             // Sync highlightCommentsVisible map with commentsExpanded state
             if (this.commentsExpanded) {
@@ -229,6 +248,7 @@ export class HighlightsSidebarView extends ItemView {
             this.selectedTags.clear();
             this.selectedCollections.clear();
             this.selectedSpecialFilters.clear();
+            this.selectedColors.clear();
 
             // Sync highlightCommentsVisible map with default state (always collapsed)
             this.collapseAllCommentsInMap();
@@ -285,7 +305,7 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
-    public getViewMode(): 'current' | 'all' | 'collections' | 'tasks' {
+    public getViewMode(): 'current' | 'folder' | 'all' | 'collections' | 'tasks' {
         return this.viewMode;
     }
 
@@ -378,7 +398,8 @@ export class HighlightsSidebarView extends ItemView {
             
             // Replace search input with search button
             const searchButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'search' }
             });
             this.searchButton = searchButton;
             setIcon(searchButton, 'search');
@@ -388,7 +409,8 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             const groupButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'group' }
             });
             setIcon(groupButton, 'group');
             setTooltip(groupButton, t('toolbar.group'));
@@ -649,7 +671,8 @@ export class HighlightsSidebarView extends ItemView {
 
             // Add sort button (positioned after group button)
             this.sortButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'sort' }
             });
             setIcon(this.sortButton, 'arrow-up-down');
             setTooltip(this.sortButton, t('toolbar.sort'));
@@ -782,20 +805,9 @@ export class HighlightsSidebarView extends ItemView {
                 menu.showAtMouseEvent(event);
             });
 
-            // Add toggle native comments button (positioned after sort button)
-            const nativeCommentsToggleButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
-            });
-            setTooltip(nativeCommentsToggleButton, t('toolbar.toggleComments'));
-            this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
-            nativeCommentsToggleButton.addEventListener('click', () => {
-                this.toggleNativeCommentsVisibility();
-                this.updateNativeCommentsToggleState(nativeCommentsToggleButton);
-                this.renderContent();
-            });
-
             this.commentsToggleButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'comments' }
             });
             setTooltip(this.commentsToggleButton, t('toolbar.toggleHighlightComments'));
             this.updateCommentsToggleIcon(this.commentsToggleButton);
@@ -814,7 +826,8 @@ export class HighlightsSidebarView extends ItemView {
             });
 
             const tagFilterButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button highlights-tag-filter-button'
+                cls: 'highlights-group-button highlights-tag-filter-button',
+                attr: { 'data-action': 'filter' }
             });
             setTooltip(tagFilterButton, t('toolbar.filter'));
             setIcon(tagFilterButton, 'list-filter');
@@ -825,7 +838,8 @@ export class HighlightsSidebarView extends ItemView {
 
             // Add collection navigation button (New Collection / Back to Collections)
             this.collectionNavButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'collection-nav' }
             });
             setTooltip(this.collectionNavButton, 'Collection Navigation');
             this.updateCollectionNavButton(this.collectionNavButton);
@@ -843,7 +857,8 @@ export class HighlightsSidebarView extends ItemView {
 
             // Add Actions button for multi-select (initially hidden)
             this.actionsButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button'
+                cls: 'highlights-group-button',
+                attr: { 'data-action': 'actions' }
             });
             setTooltip(this.actionsButton, t('toolbar.actions'));
             setIcon(this.actionsButton, 'ellipsis');
@@ -856,7 +871,8 @@ export class HighlightsSidebarView extends ItemView {
             // Overflow ("more") menu — secondary actions, parked at the far right
             // of the toolbar. Holds follow-scroll, revert colors, copy visible.
             const overflowMenuButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button highlights-overflow-button'
+                cls: 'highlights-group-button highlights-overflow-button',
+                attr: { 'data-action': 'overflow' }
             });
             setTooltip(overflowMenuButton, t('toolbar.moreActions'));
             setIcon(overflowMenuButton, 'ellipsis-vertical');
@@ -891,125 +907,60 @@ export class HighlightsSidebarView extends ItemView {
         // Add tabs container
         const tabsContainer = this.contentEl.createDiv({ cls: 'highlights-tabs-container' });
 
-        // Determine which tab should be active by default
-        let defaultActive = false;
+        // Tabs render in a fixed order, minus any hidden in settings. Building them
+        // from that one list keeps creation, the active-tab mapping and the fallback
+        // tab from drifting apart as tabs are added.
+        const order = visibleTabs(this.plugin.settings);
+        if (order.length > 0 && !order.includes(this.viewMode)) {
+            this.viewMode = order[0];
+        }
 
-        let currentNoteTab: HTMLElement | null = null;
-        if (this.plugin.settings.showCurrentNoteTab) {
-            currentNoteTab = tabsContainer.createEl('button', {
-                cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
+        this.currentFolderTab = null;
+        order.forEach(tabId => {
+            const tabEl = tabsContainer.createEl('button', {
+                cls: 'highlights-tab' + (tabId === this.viewMode ? ' active' : '')
             });
-            setIcon(currentNoteTab, 'file-text');
-            setTooltip(currentNoteTab, t('tabs.currentNote'));
-            if (!defaultActive) {
-                this.viewMode = 'current';
-                defaultActive = true;
+
+            switch (tabId) {
+                case 'current':
+                    setIcon(tabEl, 'file-text');
+                    setTooltip(tabEl, t('tabs.currentNote'));
+                    break;
+                case 'folder':
+                    setIcon(tabEl, 'folder-closed');
+                    this.currentFolderTab = tabEl;
+                    this.updateCurrentFolderTabTooltip();
+                    break;
+                case 'all':
+                    setIcon(tabEl, 'files');
+                    setTooltip(tabEl, t('tabs.allNotes'));
+                    break;
+                case 'collections':
+                    setIcon(tabEl, 'folder-open');
+                    setTooltip(tabEl, t('tabs.collections'));
+                    break;
+                case 'tasks':
+                    // square-check rather than circle-check so squircleifyIcon can swap its
+                    // outline, matching the squircle checkboxes the tab leads to.
+                    setIcon(tabEl, 'square-check');
+                    squircleifyIcon(tabEl);
+                    setTooltip(tabEl, t('tabs.tasks'));
+                    break;
             }
-        }
 
-        let allNotesTab: HTMLElement | null = null;
-        if (this.plugin.settings.showAllNotesTab) {
-            allNotesTab = tabsContainer.createEl('button', {
-                cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
-            });
-            setIcon(allNotesTab, 'files');
-            setTooltip(allNotesTab, t('tabs.allNotes'));
-            if (!defaultActive) {
-                this.viewMode = 'all';
-                defaultActive = true;
-            }
-        }
+            tabEl.addEventListener('click', () => {
+                if (this.viewMode === tabId) return;
 
-        let collectionsTab: HTMLElement | null = null;
-        if (this.plugin.settings.showCollectionsTab) {
-            collectionsTab = tabsContainer.createEl('button', {
-                cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
-            });
-            setIcon(collectionsTab, 'folder-open');
-            setTooltip(collectionsTab, t('tabs.collections'));
-            if (!defaultActive) {
-                this.viewMode = 'collections';
-                defaultActive = true;
-            }
-        }
-
-        let tasksTab: HTMLElement | null = null;
-        if (this.plugin.settings.showTasksTab) {
-            tasksTab = tabsContainer.createEl('button', {
-                cls: 'highlights-tab' + (!defaultActive ? ' active' : '')
-            });
-            // square-check rather than circle-check so squircleifyIcon can swap its
-            // outline, matching the squircle checkboxes the tab leads to.
-            setIcon(tasksTab, 'square-check');
-            squircleifyIcon(tasksTab);
-            setTooltip(tasksTab, t('tabs.tasks'));
-            if (!defaultActive) {
-                this.viewMode = 'tasks';
-                defaultActive = true;
-            }
-        }
-
-        // Add click handlers
-        if (currentNoteTab) {
-            currentNoteTab.addEventListener('click', () => {
-                if (this.viewMode !== 'current') {
-                    currentNoteTab!.classList.add('active');
-                    if (allNotesTab) allNotesTab.classList.remove('active');
-                    if (collectionsTab) collectionsTab.classList.remove('active');
-                    if (tasksTab) tasksTab.classList.remove('active');
-                    this.viewMode = 'current';
-                    this.clearSelection(); // Clear multi-select when switching tabs
-                    this.restoreTabSettings('current'); // Restore tab-specific settings (including filters)
-                    this.updateContent(); // Content update instead of full rebuild
-                }
-            });
-        }
-
-        if (allNotesTab) {
-            allNotesTab.addEventListener('click', () => {
-                if (this.viewMode !== 'all') {
-                    allNotesTab!.classList.add('active');
-                    if (currentNoteTab) currentNoteTab.classList.remove('active');
-                    if (collectionsTab) collectionsTab.classList.remove('active');
-                    if (tasksTab) tasksTab.classList.remove('active');
-                    this.viewMode = 'all';
-                    this.clearSelection(); // Clear multi-select when switching tabs
-                    this.restoreTabSettings('all'); // Restore tab-specific settings (including filters)
-                    this.updateContent(); // Content update instead of full rebuild
-                }
-            });
-        }
-
-        if (collectionsTab) {
-            collectionsTab.addEventListener('click', () => {
-                if (this.viewMode !== 'collections') {
-                    collectionsTab!.classList.add('active');
-                    if (currentNoteTab) currentNoteTab.classList.remove('active');
-                    if (allNotesTab) allNotesTab.classList.remove('active');
-                    if (tasksTab) tasksTab.classList.remove('active');
-                    this.viewMode = 'collections';
-                    this.clearSelection(); // Clear multi-select when switching tabs
-                    this.restoreTabSettings('collections'); // Restore tab-specific settings (including filters)
+                this.viewMode = tabId;
+                this.clearSelection(); // Clear multi-select when switching tabs
+                this.restoreTabSettings(tabId); // Restore tab-specific settings (including filters)
+                if (tabId === 'collections') {
                     this.currentCollectionId = null;
-                    this.updateContent(); // Content update instead of full rebuild
                 }
+                this.updateTabStates();
+                this.updateContent(); // Content update instead of full rebuild
             });
-        }
-
-        if (tasksTab) {
-            tasksTab.addEventListener('click', () => {
-                if (this.viewMode !== 'tasks') {
-                    tasksTab!.classList.add('active');
-                    if (currentNoteTab) currentNoteTab.classList.remove('active');
-                    if (allNotesTab) allNotesTab.classList.remove('active');
-                    if (collectionsTab) collectionsTab.classList.remove('active');
-                    this.viewMode = 'tasks';
-                    this.clearSelection(); // Clear multi-select when switching tabs
-                    this.restoreTabSettings('tasks'); // Restore tab-specific settings (including filters)
-                    this.updateContent(); // Content update instead of full rebuild
-                }
-            });
-        }
+        });
 
         this.contentAreaEl = this.contentEl.createDiv({ cls: 'highlights-list-area' });
         this.listContainerEl = this.contentAreaEl.createDiv({ cls: 'highlights-list' });
@@ -1177,22 +1128,9 @@ export class HighlightsSidebarView extends ItemView {
         this.viewMode = 'collections';
         this.currentCollectionId = collectionId;
         
-        // Update the tab state to show collections tab as active
-        // Get tabs by their order since they don't have data-tab attributes
-        const tabs = this.contentEl.querySelectorAll('.highlights-tab');
-        if (tabs.length >= 3) {
-            const currentNoteTab = tabs[0] as HTMLElement;  // First tab
-            const allNotesTab = tabs[1] as HTMLElement;     // Second tab  
-            const collectionsTab = tabs[2] as HTMLElement;  // Third tab
-            
-            // Remove active class from all tabs
-            currentNoteTab.classList.remove('active');
-            allNotesTab.classList.remove('active');
-            collectionsTab.classList.remove('active');
-            
-            // Add active class to collections tab
-            collectionsTab.classList.add('active');
-        }
+        // Mark the collections tab active. Positions shift with hidden tabs, so this
+        // goes through the shared mapping rather than assuming a fixed index.
+        this.updateTabStates();
 
         // Clear any tag filters
         this.selectedTags.clear();
@@ -1230,6 +1168,12 @@ export class HighlightsSidebarView extends ItemView {
         this.viewMode = currentViewMode;
         this.currentCollectionId = currentCollectionId;
 
+        // That tab may have just been hidden in settings - fall back rather than
+        // rendering a view with no tab to match it
+        if (tabIndex(this.plugin.settings, this.viewMode) === -1) {
+            this.resetToFirstVisibleTab();
+        }
+
         // Restore tab settings (grouping, sorting, etc.) for the correct viewMode
         // This is needed because onOpen() called restoreTabSettings with the old viewMode
         this.restoreTabSettings(this.viewMode);
@@ -1258,50 +1202,38 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private updateTabStates() {
-        // Get tabs by their order since they don't have data-tab attributes
+        // Tabs have no data-tab attributes, so they are addressed by their rendered
+        // position - which shifts as tabs are hidden. tabIndex() owns that mapping.
         const tabs = this.contentEl.querySelectorAll('.highlights-tab');
 
         // Remove active class from all tabs
         tabs.forEach(tab => tab.classList.remove('active'));
 
-        // Build a mapping of which tab index corresponds to which view mode
-        // This accounts for hidden tabs (e.g., if only Tasks tab is shown, it's at index 0)
-        let tabIndex = 0;
-        const tabMapping: { [key: string]: number } = {};
-
-        if (this.plugin.settings.showCurrentNoteTab) {
-            tabMapping['current'] = tabIndex++;
-        }
-        if (this.plugin.settings.showAllNotesTab) {
-            tabMapping['all'] = tabIndex++;
-        }
-        if (this.plugin.settings.showCollectionsTab) {
-            tabMapping['collections'] = tabIndex++;
-        }
-        if (this.plugin.settings.showTasksTab) {
-            tabMapping['tasks'] = tabIndex++;
-        }
-
-        // Add active class to the correct tab based on current view mode
-        const activeTabIndex = tabMapping[this.viewMode];
-        if (activeTabIndex !== undefined && tabs[activeTabIndex]) {
+        const activeTabIndex = tabIndex(this.plugin.settings, this.viewMode);
+        if (activeTabIndex !== -1 && tabs[activeTabIndex]) {
             tabs[activeTabIndex].classList.add('active');
         }
     }
 
     resetToFirstVisibleTab() {
         // Determine which tab should be first based on settings
-        if (this.plugin.settings.showCurrentNoteTab) {
-            this.viewMode = 'current';
-        } else if (this.plugin.settings.showAllNotesTab) {
-            this.viewMode = 'all';
-        } else if (this.plugin.settings.showCollectionsTab) {
-            this.viewMode = 'collections';
-            this.currentCollectionId = null; // Reset to collections list view
-        } else if (this.plugin.settings.showTasksTab) {
-            this.viewMode = 'tasks';
+        const first = firstVisibleTab(this.plugin.settings);
+        if (first) {
+            this.viewMode = first;
+            if (first === 'collections') {
+                this.currentCollectionId = null; // Reset to collections list view
+            }
         }
         // Note: Don't call updateTabStates() here - refresh() will do it after rebuilding the DOM
+    }
+
+    /** Name the folder in view on the tab itself, so "current folder" means something. */
+    private updateCurrentFolderTabTooltip() {
+        if (!this.currentFolderTab) return;
+        const folder = this.getCurrentFolderLabel();
+        setTooltip(this.currentFolderTab, folder === null
+            ? t('tabs.currentFolder')
+            : t('tabs.currentFolderNamed', { folder }));
     }
 
     private captureScrollPosition(): void {
@@ -1391,7 +1323,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Create new element with updated data
         const tempContainer = document.createElement('div');
-        const showFilename = this.viewMode === 'all';
+        const showFilename = this.viewMode === 'all' || this.viewMode === 'folder';
         this.createHighlightItem(tempContainer, updatedHighlight, this.getSearchTerm(), showFilename);
         
         // Replace existing element with updated one
@@ -1487,6 +1419,8 @@ export class HighlightsSidebarView extends ItemView {
     private renderContent() {
         // Note times are cached only for the duration of a render pass
         this.noteCreatedCache.clear();
+        // The active note may have moved to another folder since the last render
+        this.updateCurrentFolderTabTooltip();
         // Capture scroll position before DOM rebuild
         this.captureScrollPosition();
 
@@ -1587,8 +1521,8 @@ export class HighlightsSidebarView extends ItemView {
             
             highlightsContainer.createSpan({ text: `${collectionStats.highlightCount}` });
 
-            // Native comments count section (show when native comments are enabled)
-            if (this.showNativeComments) {
+            // Native comments count section (show when native comments are on screen)
+            if (this.typeFilter !== 'highlights') {
                 const nativeCommentsContainer = infoLineContainer.createDiv({
                     cls: 'highlight-line-info'
                 });
@@ -3629,6 +3563,8 @@ export class HighlightsSidebarView extends ItemView {
                 return;
             }
             allHighlights = this.plugin.getCurrentFileHighlights();
+        } else if (this.viewMode === 'folder') {
+            allHighlights = this.getFolderHighlights();
         } else if (this.viewMode === 'all') {
             // Get all highlights from all files
             allHighlights = [];
@@ -3639,6 +3575,7 @@ export class HighlightsSidebarView extends ItemView {
             // Collections view is handled elsewhere
             return;
         }
+
 
         // VIEW-LEVEL FILTERING: Filter out highlights from excluded files
         // This only applies to 'current' and 'all' views, NOT collections
@@ -3663,6 +3600,15 @@ export class HighlightsSidebarView extends ItemView {
                 } else {
                     message = searchTerm ? t('emptyStates.noMatching') : t('emptyStates.noHighlightsInFile');
                 }
+            } else if (this.viewMode === 'folder') {
+                const folder = this.getCurrentFolderLabel();
+                if (folder === null) {
+                    message = t('emptyStates.noFileOpen');
+                } else {
+                    message = searchTerm
+                        ? t('emptyStates.noMatchingInFolder', { folder })
+                        : t('emptyStates.noHighlightsInFolder', { folder });
+                }
             } else {
                 message = searchTerm ? t('emptyStates.noMatchingAcrossAll') : t('emptyStates.noHighlightsAcrossAll');
             }
@@ -3674,8 +3620,9 @@ export class HighlightsSidebarView extends ItemView {
                     return this.compareHighlightsBySortMode(a, b, 'path-then-position');
                 });
                 
-                // No grouping - use pagination for "All Notes" performance
-                if (this.viewMode === 'all') {
+                // No grouping - use pagination for "All Notes" performance.
+                // The folder tab can span a whole project tree, so it paginates too.
+                if (this.viewMode === 'all' || this.viewMode === 'folder') {
                     this.renderHighlightsWithPagination(sortedHighlights, searchTerm);
                 } else {
                     // Current file - render all items directly (small dataset)
@@ -3685,7 +3632,7 @@ export class HighlightsSidebarView extends ItemView {
                 }
             } else {
                 // Use pagination for grouped highlights in "All Notes" mode
-                if (this.viewMode === 'all') {
+                if (this.viewMode === 'all' || this.viewMode === 'folder') {
                     this.renderGroupedHighlightsWithPagination(filteredHighlights, searchTerm);
                 } else {
                     // Current file - render all groups directly (small dataset)
@@ -4065,8 +4012,8 @@ export class HighlightsSidebarView extends ItemView {
         
         highlightsContainer.createSpan({ text: `${regularHighlightsCount}` });
 
-        // Native comments count section (show when native comments are enabled)
-        if (this.showNativeComments) {
+        // Native comments count section (show when native comments are on screen)
+        if (this.typeFilter !== 'highlights') {
             const nativeCommentsContainer = infoLineContainer.createDiv({
                 cls: 'highlight-line-info'
             });
@@ -6165,8 +6112,8 @@ export class HighlightsSidebarView extends ItemView {
             
             highlightsContainer.createSpan({ text: `${regularHighlightsCount}` });
 
-            // Native comments count section (show when native comments are enabled)
-            if (this.showNativeComments) {
+            // Native comments count section (show when native comments are on screen)
+            if (this.typeFilter !== 'highlights') {
                 const nativeCommentsContainer = infoLineContainer.createDiv({
                     cls: 'highlight-line-info'
                 });
@@ -6223,9 +6170,9 @@ export class HighlightsSidebarView extends ItemView {
         button.empty();
 
         // Use global state to determine icon, not current view
-        const anyExpanded = this.areCommentsGloballyExpanded();
+        const expanded = isCommentsToggleOn(this.commentsExpanded, this.areCommentsGloballyExpanded(), this.hasToggleableComments());
 
-        const iconName = anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down';
+        const iconName = expanded ? 'chevrons-down-up' : 'chevrons-up-down';
         setIcon(button, iconName);
     }
 
@@ -6276,11 +6223,10 @@ export class HighlightsSidebarView extends ItemView {
             allHighlights.push(...fileHighlights);
         }
 
-        // Check if any comments are currently expanded globally
-        const anyExpanded = this.areCommentsGloballyExpanded();
-
         // If any are expanded, collapse all. If none are expanded, expand all.
-        const newState = !anyExpanded;
+        // With nothing expandable in the vault the button flips its own state instead,
+        // so it can still be switched off.
+        const newState = nextCommentsToggleState(this.commentsExpanded, this.areCommentsGloballyExpanded(), this.hasToggleableComments());
 
         allHighlights.forEach(highlight => {
             // Only toggle footnote comments for regular highlights, not native comments
@@ -6312,6 +6258,22 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
+    /**
+     * Whether any highlight in the vault could show comments at all. When nothing can,
+     * areCommentsGloballyExpanded() is stuck at false and cannot drive the toolbar toggle.
+     */
+    private hasToggleableComments(): boolean {
+        for (const [, fileHighlights] of this.plugin.highlights) {
+            for (const highlight of fileHighlights) {
+                // Native comments are the comment, so they have nothing to expand
+                if (highlight.isNativeComment) continue;
+                const validFootnoteCount = highlight.footnoteContents?.filter(c => c.trim() !== '').length || 0;
+                if (validFootnoteCount > 0) return true;
+            }
+        }
+        return false;
+    }
+
     private getHighlightCommentsVisibility(highlight: Highlight): boolean {
         // If we already have a stored state for this highlight, use it
         const storedVisibility = this.highlightCommentsVisible.get(highlight.id);
@@ -6339,6 +6301,8 @@ export class HighlightsSidebarView extends ItemView {
         let highlightsToReset: Highlight[];
         if (this.viewMode === 'current') {
             highlightsToReset = this.plugin.getCurrentFileHighlights();
+        } else if (this.viewMode === 'folder') {
+            highlightsToReset = this.getFolderHighlights();
         } else if (this.viewMode === 'all') {
             // Get all highlights from all files
             highlightsToReset = [];
@@ -6406,8 +6370,10 @@ export class HighlightsSidebarView extends ItemView {
     private getAllTagsInFile(): string[] {
         const allTags = new Set<string>();
 
-        if (this.viewMode === 'current') {
-            const highlights = this.plugin.getCurrentFileHighlights();
+        if (this.viewMode === 'current' || this.viewMode === 'folder') {
+            const highlights = this.viewMode === 'folder'
+                ? this.getFolderHighlights()
+                : this.plugin.getCurrentFileHighlights();
             highlights.forEach(highlight => {
                 const tags = this.extractTagsFromHighlight(highlight);
                 tags.forEach(tag => allTags.add(tag));
@@ -6447,21 +6413,30 @@ export class HighlightsSidebarView extends ItemView {
         return Array.from(allTags).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
     }
 
-    private getAllCollectionsInCurrentScope(): { id: string, name: string }[] {
-        const allCollections = new Set<string>();
-        let highlights: Highlight[] = [];
-        
+    /** The highlights this tab draws from, before any filter is applied. */
+    private getScopeHighlights(): Highlight[] {
         if (this.viewMode === 'current') {
-            highlights = this.plugin.getCurrentFileHighlights();
-        } else if (this.viewMode === 'all') {
-            // Get highlights from all files
-            for (const [filePath, fileHighlights] of this.plugin.highlights) {
+            return this.plugin.getCurrentFileHighlights();
+        }
+        if (this.viewMode === 'folder') {
+            return this.getFolderHighlights();
+        }
+        if (this.viewMode === 'all') {
+            const highlights: Highlight[] = [];
+            for (const [, fileHighlights] of this.plugin.highlights) {
                 highlights.push(...fileHighlights);
             }
-        } else if (this.viewMode === 'collections' && this.currentCollectionId) {
-            // Get highlights from current collection
-            highlights = this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
+            return highlights;
         }
+        if (this.viewMode === 'collections' && this.currentCollectionId) {
+            return this.plugin.collectionsManager.getHighlightsInCollection(this.currentCollectionId);
+        }
+        return [];
+    }
+
+    private getAllCollectionsInCurrentScope(): { id: string, name: string }[] {
+        const allCollections = new Set<string>();
+        const highlights: Highlight[] = this.getScopeHighlights();
         
         // Get all collections that contain these highlights
         highlights.forEach(highlight => {
@@ -6562,11 +6537,6 @@ export class HighlightsSidebarView extends ItemView {
         const availableSpecialFilters = this.getAvailableSpecialFilters();
         const noteDateFilters = this.viewMode === 'tasks' ? this.getNoteDateFilters() : [];
 
-        if (availableTags.length === 0 && availableCollections.length === 0 && availableSpecialFilters.length === 0 && noteDateFilters.length === 0) {
-            new Notice(t('emptyStates.noTagsOrFilters'));
-            return;
-        }
-
         // Sort collections alphabetically with locale-aware sorting
         const sortedCollections = availableCollections.sort((a, b) =>
             a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
@@ -6581,6 +6551,8 @@ export class HighlightsSidebarView extends ItemView {
                     this.selectedTags.clear();
                     this.selectedCollections.clear();
                     this.selectedSpecialFilters.clear();
+                    this.selectedColors.clear();
+                    this.setTypeFilter('all');
                     this.saveCurrentTabSettings();
                     this.renderContent();
                     this.showTagActive();
@@ -6698,6 +6670,61 @@ export class HighlightsSidebarView extends ItemView {
                         } else {
                             this.selectedTags.add(tag);
                         }
+                        this.renderContent();
+                        this.showTagActive();
+                    }
+                }))
+            });
+        }
+
+        // Add Type category. Unlike the others this is a single choice, and it mirrors
+        // the toolbar button rather than holding its own state.
+        const typeOptions: Array<{ id: HighlightTypeFilter, labelKey: string, icon: string }> = [
+            { id: 'all', labelKey: 'filterMenu.type.all', icon: 'captions' },
+            { id: 'highlights', labelKey: 'filterMenu.type.highlightsOnly', icon: 'highlighter' },
+            { id: 'comments', labelKey: 'filterMenu.type.commentsOnly', icon: 'message-square' }
+        ];
+        items.push({
+            id: 'category-type',
+            text: t('filterMenu.type.heading'),
+            icon: 'shapes',
+            expandable: true,
+            expanded: false,
+            children: typeOptions.map(option => ({
+                id: `type-${option.id}`,
+                text: t(option.labelKey),
+                uncheckedIcon: option.icon,
+                checked: this.typeFilter === option.id,
+                radioGroup: 'type',
+                onClick: () => {
+                    this.setTypeFilter(option.id);
+                    this.renderContent();
+                    this.showTagActive();
+                }
+            }))
+        });
+
+        // Add Colours category (only colours actually present in this view)
+        const availableColors = this.getAvailableColors();
+        if (availableColors.length > 1) {
+            items.push({
+                id: 'category-colors',
+                text: t('filterMenu.colors'),
+                icon: 'palette',
+                expandable: true,
+                expanded: false,
+                children: availableColors.map(color => ({
+                    id: `color-${color}`,
+                    text: this.getColorLabel(color),
+                    uncheckedIcon: 'circle',
+                    checked: this.selectedColors.has(color),
+                    onClick: () => {
+                        if (this.selectedColors.has(color)) {
+                            this.selectedColors.delete(color);
+                        } else {
+                            this.selectedColors.add(color);
+                        }
+                        this.saveCurrentTabSettings();
                         this.renderContent();
                         this.showTagActive();
                     }
@@ -6869,6 +6896,14 @@ export class HighlightsSidebarView extends ItemView {
         this.saveCurrentTabSettings();
     }
 
+    /** Apply a disabled rule across the toolbar, addressing buttons by their data-action role. */
+    private setToolbarButtonsDisabled(shouldDisable: (button: Element) => boolean) {
+        const toolbarButtons = this.contentEl.querySelectorAll('.highlights-search-container button');
+        toolbarButtons.forEach(button => {
+            button.classList.toggle('disabled', shouldDisable(button));
+        });
+    }
+
     private enableSearchAndToolbar() {
         // Only proceed if toolbar is enabled
         if (!this.plugin.settings.showToolbar) return;
@@ -6882,25 +6917,13 @@ export class HighlightsSidebarView extends ItemView {
             this.searchInputEl.classList.remove('disabled');
         }
 
-        // Enable toolbar buttons (except collection nav button which should always be enabled in collections view)
-        const toolbarButtons = this.contentEl.querySelectorAll('.highlights-search-container button');
-        toolbarButtons.forEach((button, index) => {
-            const isCollectionNavButton = index === toolbarButtons.length - 1; // Last button
-            // Button order: 0=search, 1=group, 2=sort, 3=native comments, 4=comments, 5=reset colors
-            const isNativeCommentsToggle = index === 3; // Native comments toggle is the 4th button (index 3)
-            const isCommentsToggle = index === 4; // Comments toggle is the 5th button (index 4)
-            const isResetColors = index === 5; // Reset colors is the 6th button (index 5)
-
-            if (this.viewMode === 'collections' && !this.currentCollectionId && !isCollectionNavButton && !isNativeCommentsToggle) {
-                // In collections overview, disable all buttons except collection nav and native comments toggle
-                button.classList.add('disabled');
-            } else if (this.viewMode === 'tasks' && (isNativeCommentsToggle || isCommentsToggle || isResetColors)) {
-                // In tasks view, disable comment and color buttons
-                button.classList.add('disabled');
-            } else {
-                // Enable all other cases
-                button.classList.remove('disabled');
-            }
+        // Enable toolbar buttons. Addressed by role rather than by position: the row's
+        // contents have changed over time and index-based rules silently target the
+        // wrong button when one is added or moved.
+        this.setToolbarButtonsDisabled(button => {
+            const action = button.getAttribute('data-action');
+            // Comment controls act on highlights, which the Tasks tab does not show
+            return this.viewMode === 'tasks' && action === 'comments';
         });
 
         // Update collection nav button styling
@@ -6931,17 +6954,11 @@ export class HighlightsSidebarView extends ItemView {
             this.searchInputEl.classList.add('disabled');
         }
 
-        // Disable toolbar buttons except collection nav button
-        const toolbarButtons = this.contentEl.querySelectorAll('.highlights-search-container button');
-        toolbarButtons.forEach((button, index) => {
-            const isCollectionNavButton = index === toolbarButtons.length - 1; // Last button
-            
-            if (!isCollectionNavButton) {
-                button.classList.add('disabled');
-            } else {
-                // Keep collection nav button enabled and styled
-                button.classList.remove('disabled');
-            }
+        // Disable toolbar buttons except collection nav, which is how a collection gets
+        // created from here, and the overflow menu, whose actions still apply.
+        this.setToolbarButtonsDisabled(button => {
+            const action = button.getAttribute('data-action');
+            return action !== 'collection-nav' && action !== 'overflow';
         });
         
         // Update collection nav button styling
@@ -6969,7 +6986,8 @@ export class HighlightsSidebarView extends ItemView {
 
         const tagFilterButton = this.contentEl.querySelector('.highlights-tag-filter-button') as HTMLElement;
         if (tagFilterButton) {
-            if (this.selectedTags.size > 0 || this.selectedCollections.size > 0 || this.selectedSpecialFilters.size > 0) {
+            if (this.selectedTags.size > 0 || this.selectedCollections.size > 0 || this.selectedSpecialFilters.size > 0
+                || this.selectedColors.size > 0 || this.typeFilter !== 'all') {
                 tagFilterButton.classList.add('active');
             } else {
                 tagFilterButton.classList.remove('active');
@@ -7023,18 +7041,6 @@ export class HighlightsSidebarView extends ItemView {
             this.plugin.saveSettings();
             this.plugin.refreshSidebar();
         }).open();
-    }
-
-    private updateNativeCommentsToggleState(button: HTMLElement) {
-        if (this.showNativeComments) {
-            setIcon(button, 'captions');
-            button.classList.remove('active');
-            setTooltip(button, t('toolbar.toggleComments'));
-        } else {
-            setIcon(button, 'captions-off');
-            button.classList.add('active');
-            setTooltip(button, t('toolbar.toggleComments'));
-        }
     }
 
     // Animation methods for collection creation and deletion
@@ -7091,9 +7097,28 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
-    private toggleNativeCommentsVisibility() {
-        this.showNativeComments = !this.showNativeComments;
-        this.plugin.app.saveLocalStorage('sidebar-highlights-show-native-comments', this.showNativeComments.toString());
+    private setTypeFilter(filter: HighlightTypeFilter) {
+        this.typeFilter = filter;
+        this.plugin.app.saveLocalStorage('sidebar-highlights-type-filter', filter);
+    }
+
+    /**
+     * Every colour present in the current tab's highlights, so the filter offers only
+     * real choices. Deliberately reads the unfiltered scope: if it read what is on
+     * screen, picking one colour would drop every other colour out of the menu.
+     */
+    private getAvailableColors(): string[] {
+        const colors = new Set<string>();
+        this.getScopeHighlights().forEach(highlight => {
+            colors.add(resolveHighlightColor(highlight.color, this.plugin.settings.highlightColor));
+        });
+        return Array.from(colors).sort((a, b) =>
+            this.getColorLabel(a).localeCompare(this.getColorLabel(b), undefined, { numeric: true, sensitivity: 'base' })
+        );
+    }
+
+    private getColorLabel(color: string): string {
+        return colorLabel(color, this.plugin.settings);
     }
 
     private toggleFollowEditorScroll() {
@@ -7110,11 +7135,63 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
+    /** The folder the Current folder tab is showing: the active note's own folder. */
+    private getCurrentFolderPath(): string | null {
+        const activeFile = this.plugin.app.workspace.getActiveFile();
+        return activeFile ? parentFolderPath(activeFile.path) : null;
+    }
+
+    /** The folder path as shown to the user, naming the vault root rather than showing nothing. */
+    private getCurrentFolderLabel(): string | null {
+        const folder = this.getCurrentFolderPath();
+        if (folder === null) return null;
+        return folder === '' ? t('emptyStates.root') : folder;
+    }
+
+    /**
+     * Every highlight in the active note's folder. The folder is always derived from
+     * the active note, so the tab follows the user around the vault with nothing to
+     * pick or remember.
+     */
+    private getFolderHighlights(): Highlight[] {
+        const folder = this.getCurrentFolderPath();
+        if (folder === null) return [];
+
+        const scoped: Highlight[] = [];
+        for (const [filePath, fileHighlights] of this.plugin.highlights) {
+            if (isInFolder(filePath, folder, this.folderScopeRecursive)) {
+                scoped.push(...fileHighlights);
+            }
+        }
+        return scoped;
+    }
+
+    private toggleFolderScopeRecursive() {
+        this.folderScopeRecursive = !this.folderScopeRecursive;
+        this.plugin.app.saveLocalStorage('sidebar-highlights-folder-scope-recursive', this.folderScopeRecursive.toString());
+        this.renderContent();
+    }
+
     /**
      * Show the toolbar overflow menu (secondary actions).
      */
     private showOverflowMenu(event: MouseEvent) {
         const menu = new Menu();
+
+        // Subfolder depth, only meaningful on the tab that shows a folder
+        if (this.viewMode === 'folder') {
+            menu.addItem((item) => {
+                item
+                    .setTitle(t('toolbar.includeSubfolders'))
+                    .setIcon('folder-tree')
+                    .setChecked(this.folderScopeRecursive)
+                    .onClick(() => {
+                        this.toggleFolderScopeRecursive();
+                    });
+            });
+
+            menu.addSeparator();
+        }
 
         // Toggle Follow editor scroll
         menu.addItem((item) => {
@@ -7160,6 +7237,8 @@ export class HighlightsSidebarView extends ItemView {
             const file = this.plugin.app.workspace.getActiveFile();
             if (!file) return [];
             source = this.plugin.getCurrentFileHighlights() || [];
+        } else if (this.viewMode === 'folder') {
+            source = this.getFolderHighlights();
         } else if (this.viewMode === 'all') {
             for (const [, highlights] of this.plugin.highlights) {
                 source.push(...highlights);
@@ -7466,7 +7545,7 @@ export class HighlightsSidebarView extends ItemView {
      */
     private syncSidebarToEditorScroll() {
         if (!this.followEditorScroll) return;
-        if (this.viewMode !== 'current') return;
+        if (this.viewMode !== 'current' && this.viewMode !== 'folder') return;
         if (!this.contentAreaEl) return;
 
         // Pause sync briefly after the user has scrolled the sidebar by hand,
@@ -7745,8 +7824,14 @@ export class HighlightsSidebarView extends ItemView {
                 if (!collectionFilterMatch) return false;
             }
 
-            // 4. Apply native comments filtering
-            if (!this.showNativeComments && highlight.isNativeComment) {
+            // 4. Apply the colour filter dropdown (AND with smart search)
+            if (this.selectedColors.size > 0) {
+                const color = resolveHighlightColor(highlight.color, this.plugin.settings.highlightColor);
+                if (!this.selectedColors.has(color)) return false;
+            }
+
+            // 5. Apply the type filter (highlights, native comments, or both)
+            if (!matchesTypeFilter(highlight.isNativeComment, this.typeFilter)) {
                 return false;
             }
 

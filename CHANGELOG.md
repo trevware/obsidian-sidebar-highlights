@@ -5,6 +5,25 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-08-16
+
+### Added
+- **Current folder tab**: A new tab listing highlights and comments from every note in the folder of the note you're viewing, so a project's annotations can be reviewed together without adding anything to each one. The folder is always taken from the active note, so the tab follows you as you move around the vault. "Include notes in subfolders" in the overflow menu widens it to the whole tree, and the tab's tooltip names the folder currently in view. The tab is hidden by default — enable it in Settings → Views.
+- **Filter by color**: A Colors category in the filter menu listing the colors actually present in the current tab, with multiple selectable at once. Colors are labelled with your own names from Settings where you've set them, and highlights carrying colors from HTML or Highlightr are included alongside the built-in palette.
+- **Filter by type**: A Type category in the filter menu with three choices — highlights and comments, highlights only, or comments only. Comments-only was not previously expressible.
+
+### Changed
+- **The native comments toolbar button has been removed.** What it did now lives in the filter menu under Type, which also offers the comments-only view the button could not reach. Your current setting carries over: if you had native comments hidden, the filter starts on "Highlights only".
+- The filter menu's Clear now also clears color filters and resets the type filter, and the filter button's active state reflects both — neither can narrow the list without showing that something is filtered.
+- The filter menu now always opens. It previously refused, reporting no filters found, in vaults with no tags or collections — which also hid the new Type and Colors categories.
+
+### Fixed
+- **Toggle highlight comments could not be switched off.** In vaults where no highlight had a comment attached, the button turned on and stayed on, writing that state back to settings on every click.
+- **The filter button was disabled in the Tasks tab**, making the Status and Due date filters unreachable from the tab they belong to. A regression from 1.36.0, when moving Revert highlight colors into the overflow menu shifted the positions the toolbar used to identify its buttons.
+- **New collection was unclickable in the Collections overview**, leaving the collections grid with no way to create a collection. The same 1.36.0 shift; the button being kept enabled there was identified by position, and the position had moved.
+- Navigating to a collection from the command palette marked the wrong tab active when any tab was hidden.
+- Hiding the tab you were currently viewing left the sidebar showing a hidden view with no tab selected.
+
 ## [1.38.0] - 2026-08-15
 
 ### Added

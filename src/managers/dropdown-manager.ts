@@ -6,6 +6,11 @@ export interface DropdownItem {
     icon?: string;
     uncheckedIcon?: string;
     checked?: boolean;
+    /**
+     * Marks this item as one of a set where only one can be active. Clicking it
+     * selects it and clears its siblings, rather than toggling independently.
+     */
+    radioGroup?: string;
     className?: string;
     separator?: boolean;
     heading?: boolean;
@@ -288,6 +293,13 @@ export class DropdownManager {
 
                 if (item.checked !== undefined) {
                     const itemKey = item.id || `item-${index}`;
+
+                    if (item.radioGroup) {
+                        // One of a set: select it and clear the rest of the group
+                        this.selectRadioItem(item.radioGroup, itemKey);
+                        return;
+                    }
+
                     const newCheckedState = !item.checked;
                     item.checked = newCheckedState;
                     this.updateCheckboxState(itemKey, newCheckedState);
@@ -374,6 +386,22 @@ export class DropdownManager {
 
         this.secondaryPanel.style.setProperty('--dropdown-top', `${top}px`);
         this.secondaryPanel.style.setProperty('--dropdown-left', `${left}px`);
+    }
+
+    /** Check one item of a radio group and uncheck every other member of it. */
+    private selectRadioItem(group: string, selectedKey: string): void {
+        const applyTo = (items: DropdownItem[]): void => {
+            items.forEach((item, index) => {
+                if (item.children) applyTo(item.children);
+                if (item.radioGroup !== group) return;
+
+                const itemKey = item.id || `item-${index}`;
+                const isSelected = itemKey === selectedKey;
+                item.checked = isSelected;
+                this.updateCheckboxState(itemKey, isSelected);
+            });
+        };
+        applyTo(this.activeItems);
     }
 
     private updateCheckboxState(itemKey: string, checked: boolean): void {
