@@ -5,6 +5,14 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.1] - 2026-08-19
+
+### Fixed
+- Removed a leftover empty style element the plugin injected into the document head at startup. Custom colors and typography are applied through CSS variables, so the element never carried any styles and nothing changes visually. Injecting style elements is disallowed by Obsidian's plugin guidelines and was the one error failing this plugin's automated community review.
+
+### Changed
+- The author link in the plugin manifest now points to GitHub instead of LinkedIn, whose bot blocking made the community directory's link checker report the URL as unreachable.
+
 ## [1.39.0] - 2026-08-16
 
 ### Added

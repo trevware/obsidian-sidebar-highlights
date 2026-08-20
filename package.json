@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.5",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "obsidian-sidebar-highlights",
+	"version": "1.39.1",
+	"description": "View and manage text highlights, comments on highlights, native comments, and collections for your highlights.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

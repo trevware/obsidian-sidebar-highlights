@@ -349,7 +349,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
 
         this.addSettingTab(new HighlightSettingTab(this.app, this));
-        this.addStyles();
+        this.updateCustomColorStyles();
 
         // Register collection commands
         this.registerCollectionCommands();
@@ -480,38 +480,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.updateStyles();
     }
 
-    addStyles() {
-        const style = document.createElement('style');
-        style.id = 'highlight-comments-plugin-styles';
-
-        // Add dynamic custom color styles for sidebar
-        this.updateCustomColorStyles();
-
-        document.head.appendChild(style);
-    }
-
     updateStyles() {
         // Update custom color styles for sidebar
         this.updateCustomColorStyles();
-    }
-
-    removeStyles() {
-        const style = document.getElementById('highlight-comments-plugin-styles');
-        if (style) {
-            style.remove();
-        }
-
-        // Clean up CSS custom properties
-        document.body.style.removeProperty('--sh-highlight-yellow');
-        document.body.style.removeProperty('--sh-highlight-red');
-        document.body.style.removeProperty('--sh-highlight-teal');
-        document.body.style.removeProperty('--sh-highlight-blue');
-        document.body.style.removeProperty('--sh-highlight-green');
-        document.body.style.removeProperty('--sh-quote-font-size');
-        document.body.style.removeProperty('--sh-details-font-size');
-        document.body.style.removeProperty('--sh-comment-font-size');
-        document.body.style.removeProperty('--sh-highlight-font-weight');
-        document.body.style.removeProperty('--sh-task-font-weight');
     }
 
     private updateCustomColorStyles() {
