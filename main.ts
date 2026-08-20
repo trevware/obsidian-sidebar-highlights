@@ -1,5 +1,5 @@
 // main.ts
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ColorComponent } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
@@ -235,6 +235,26 @@ const MAX_AUTOMATIC_BACKUPS = 200;
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
+// Shapes of private Obsidian APIs this plugin touches (not part of the public typings).
+interface WorkspaceWithHoverLinkSource {
+    registerHoverLinkSource(id: string, info: { display: string; defaultMod: boolean }): void;
+}
+
+interface PrivateAppApis {
+    appVersion?: string;
+    isMobile?: boolean;
+    plugins?: { plugins?: Record<string, { settings?: { highlighters?: Record<string, string> } } | undefined> };
+}
+
+// Plugin data parsed from disk or a backup file: any subset of the current settings shape,
+// plus the metadata keys backup files carry alongside the settings payload.
+export type StoredPluginData = Partial<CommentPluginSettings> & {
+    backupCreatedAt?: number;
+    backupReason?: string;
+    retentionManaged?: boolean;
+    originalTimestamp?: string;
+};
+
 export default class HighlightCommentsPlugin extends Plugin {
     settings: CommentPluginSettings;
     highlights: Map<string, Highlight[]> = new Map();
@@ -276,7 +296,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Register hover source for link previews
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
         if ('registerHoverLinkSource' in this.app.workspace) {
-            (this.app.workspace as any).registerHoverLinkSource('sidebar-highlights', {
+            (this.app.workspace as unknown as WorkspaceWithHoverLinkSource).registerHoverLinkSource('sidebar-highlights', {
                 display: 'Sidebar Highlights',
                 defaultMod: true
             });
@@ -446,7 +466,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    safeMergeSettings(loadedData: any): CommentPluginSettings {
+    safeMergeSettings(loadedData: StoredPluginData | null | undefined): CommentPluginSettings {
         // Start with defaults
         const merged = { ...DEFAULT_SETTINGS };
 
@@ -703,7 +723,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 return null;
             }
 
-            const highlighters = (this.app as any).plugins?.plugins?.['highlightr-plugin']?.settings?.highlighters;
+            const highlighters = (this.app as App & PrivateAppApis).plugins?.plugins?.['highlightr-plugin']?.settings?.highlighters;
             if (!highlighters) {
                 return null;
             }
@@ -735,7 +755,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     // Build a stable fingerprint of the data a backup actually protects, ignoring
     // per-write metadata (reason, timestamps). Two backups with the same signature
     // are interchangeable as restore points.
-    getBackupSignature(data: any): string {
+    getBackupSignature(data: StoredPluginData | null | undefined): string {
         return JSON.stringify({
             settingsVersion: data?.settingsVersion ?? null,
             collections: data?.collections ?? {},
@@ -801,12 +821,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    async listBackups(): Promise<Array<{ path: string; filename: string; data: any }>> {
+    async listBackups(): Promise<Array<{ path: string; filename: string; data: StoredPluginData }>> {
         try {
             const backupsDir = this.getBackupsDir();
             const files = await this.app.vault.adapter.list(backupsDir);
 
-            const backups: Array<{ path: string; filename: string; data: any }> = [];
+            const backups: Array<{ path: string; filename: string; data: StoredPluginData }> = [];
 
             for (const file of files.files) {
                 if (file.endsWith('.json') && file.includes('data-backup-')) {
@@ -838,7 +858,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    async findBackupWithCollections(): Promise<{ path: string; filename: string; data: any } | null> {
+    async findBackupWithCollections(): Promise<{ path: string; filename: string; data: StoredPluginData } | null> {
         const backups = await this.listBackups();
 
         for (const backup of backups) {
@@ -867,8 +887,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Log environment information
             logLine(`\n--- ENVIRONMENT ---`);
             logLine(`Plugin version: ${this.manifest.version}`);
-            logLine(`Obsidian version: ${(this.app as any).appVersion || 'unknown'}`);
-            logLine(`Platform: ${(this.app as any).isMobile ? 'mobile' : 'desktop'}`);
+            logLine(`Obsidian version: ${(this.app as App & PrivateAppApis).appVersion || 'unknown'}`);
+            logLine(`Platform: ${(this.app as App & PrivateAppApis).isMobile ? 'mobile' : 'desktop'}`);
 
             // Extract just the filename from the path for privacy
             const backupFileName = backupPath.split('/').pop() || 'unknown';
@@ -878,7 +898,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             const content = await this.app.vault.adapter.read(backupPath);
             logLine(`Backup file size: ${content.length} bytes`);
 
-            const backupData = JSON.parse(content);
+            const backupData = JSON.parse(content) as StoredPluginData;
             logLine(`✓ Backup file read and parsed successfully`);
 
             // Log backup metadata
@@ -939,7 +959,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             let orphanedCount = 0;
             const filesInBackup = backupData.highlights ? Object.keys(backupData.highlights).length : 0;
             const totalHighlightsInBackup = backupData.highlights
-                ? Object.values(backupData.highlights).reduce((sum: number, arr: any[]) => sum + arr.length, 0)
+                ? Object.values(backupData.highlights).reduce((sum: number, arr) => sum + arr.length, 0)
                 : 0;
             logLine(`Files with highlights in backup: ${filesInBackup}`);
             logLine(`Total highlights in backup: ${totalHighlightsInBackup}`);
@@ -1463,7 +1483,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    async migrateSettings(oldSettings: any) {
+    async migrateSettings(oldSettings: StoredPluginData) {
         try {
             // Always backup before migration
             await this.createBackup('migration');
@@ -2118,7 +2138,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const markdownLinkRanges = this.getMarkdownLinkRanges(content);
 
         // Process all highlight types
-        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string, isCustomPattern?: boolean}> = [];
+        const allMatches: Array<{match: RegExpExecArray, type: 'highlight' | 'comment' | 'html', color?: string, isCustomPattern?: boolean, skip?: boolean}> = [];
 
         // Find all highlight matches
         let match;
@@ -2234,7 +2254,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const htmlHighlights = HtmlHighlightParser.parseHighlights(content, excludedRanges);
         htmlHighlights.forEach(htmlMatch => {
             // Create a RegExpExecArray-like object for compatibility with existing code
-            const modifiedMatch: any = [htmlMatch.fullMatch, htmlMatch.text];
+            const modifiedMatch = [htmlMatch.fullMatch, htmlMatch.text] as unknown as RegExpExecArray;
             modifiedMatch.index = htmlMatch.startOffset;
             modifiedMatch.input = content;
             allMatches.push({match: modifiedMatch, type: 'html', color: htmlMatch.color});
@@ -2284,13 +2304,13 @@ export default class HighlightCommentsPlugin extends Plugin {
                             position: commentStart // Use the comment's actual position for sorting
                         });
                         // Mark the comment for skipping in main loop
-                        allMatches[i + 1] = { ...next, type: 'comment' as any, skip: true } as any;
+                        allMatches[i + 1] = { ...next, type: 'comment', skip: true };
                     }
                 }
             }
         }
 
-        allMatches.forEach(({match, type, color, skip, isCustomPattern}: any, index) => {
+        allMatches.forEach(({match, type, color, skip, isCustomPattern}, index) => {
             // Skip matches that were merged as adjacent comments
             if (skip) return;
             const [, highlightText] = match;
@@ -3444,7 +3464,7 @@ class HighlightSettingTab extends PluginSettingTab {
         new Setting(containerEl).setName(t('settings.colors.heading')).setHeading();
 
         let yellowNameSetting: Setting;
-        let yellowColorPicker: any; // Store reference to color picker
+        let yellowColorPicker: ColorComponent | undefined; // Store reference to color picker
 
         const yellowSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
@@ -3474,7 +3494,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         let redNameSetting: Setting;
-        let redColorPicker: any; // Store reference to color picker
+        let redColorPicker: ColorComponent | undefined; // Store reference to color picker
 
         const redSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
@@ -3504,7 +3524,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         let tealNameSetting: Setting;
-        let tealColorPicker: any; // Store reference to color picker
+        let tealColorPicker: ColorComponent | undefined; // Store reference to color picker
 
         const tealSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
@@ -3534,7 +3554,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         let blueNameSetting: Setting;
-        let blueColorPicker: any; // Store reference to color picker
+        let blueColorPicker: ColorComponent | undefined; // Store reference to color picker
 
         const blueSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
@@ -3564,7 +3584,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         let greenNameSetting: Setting;
-        let greenColorPicker: any; // Store reference to color picker
+        let greenColorPicker: ColorComponent | undefined; // Store reference to color picker
 
         const greenSetting = new Setting(containerEl)
             .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }))

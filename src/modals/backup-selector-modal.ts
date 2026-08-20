@@ -1,17 +1,20 @@
 import { Modal, App } from 'obsidian';
 import { t } from '../i18n';
+import type { StoredPluginData, Collection } from '../../main';
+
+type BackupData = StoredPluginData;
 
 export class BackupSelectorModal extends Modal {
-    private backups: Array<{ path: string; filename: string; data: any }>;
+    private backups: Array<{ path: string; filename: string; data: BackupData }>;
     private onRestore: (backupPath: string, collectionsCount: number, highlightsCount: number) => Promise<void>;
-    private countHighlights: (collections: { [id: string]: any }) => number;
-    private selectedBackup: { path: string; filename: string; data: any } | null = null;
+    private countHighlights: (collections: { [id: string]: Collection }) => number;
+    private selectedBackup: { path: string; filename: string; data: BackupData } | null = null;
     private restoreButton: HTMLButtonElement | null = null;
 
     constructor(
         app: App,
-        backups: Array<{ path: string; filename: string; data: any }>,
-        countHighlights: (collections: { [id: string]: any }) => number,
+        backups: Array<{ path: string; filename: string; data: BackupData }>,
+        countHighlights: (collections: { [id: string]: Collection }) => number,
         onRestore: (backupPath: string, collectionsCount: number, highlightsCount: number) => Promise<void>
     ) {
         super(app);
@@ -169,14 +172,14 @@ export class BackupSelectorModal extends Modal {
         });
     }
 
-    private formatBackupDate(timestamp: number): string {
+    private formatBackupDate(timestamp?: number): string {
         if (!timestamp) return t('settings.backupRestore.unknownDate');
 
         const date = new Date(timestamp);
         return date.toLocaleString();
     }
 
-    private getBackupTypeLabel(backupReason: string): string {
+    private getBackupTypeLabel(backupReason?: string): string {
         if (backupReason === 'manual') {
             return t('modals.backupSelector.manual');
         }

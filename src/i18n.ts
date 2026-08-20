@@ -79,11 +79,11 @@ class I18n {
 	 */
 	private getNestedValue(obj: Translations, path: string): string | undefined {
 		const keys = path.split('.');
-		let current: any = obj;
+		let current: unknown = obj;
 
 		for (const key of keys) {
 			if (current && typeof current === 'object' && key in current) {
-				current = current[key];
+				current = (current as Record<string, unknown>)[key];
 			} else {
 				return undefined;
 			}
@@ -102,7 +102,7 @@ class I18n {
 	 *   t('settings.display.showTitles') -> "Show note titles"
 	 *   t('notices.refreshed', { count: 3 }) -> "Refreshed 3 feeds"
 	 */
-	t(key: string, vars?: Record<string, any>): string {
+	t(key: string, vars?: Record<string, unknown>): string {
 		// Try to get translation from current locale
 		let translation = this.getNestedValue(this.translations, key);
 
@@ -129,7 +129,7 @@ class I18n {
 	 * Interpolate variables in a translation string
 	 * Supports {{variable}} syntax
 	 */
-	private interpolate(str: string, vars: Record<string, any>): string {
+	private interpolate(str: string, vars: Record<string, unknown>): string {
 		return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
 			return vars[key] !== undefined ? String(vars[key]) : match;
 		});
@@ -147,4 +147,4 @@ class I18n {
 export const i18n = new I18n();
 
 // Export the translation function for convenience
-export const t = (key: string, vars?: Record<string, any>) => i18n.t(key, vars);
+export const t = (key: string, vars?: Record<string, unknown>) => i18n.t(key, vars);

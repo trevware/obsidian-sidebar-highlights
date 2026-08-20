@@ -30,6 +30,18 @@ import { HtmlHighlightParser } from '../utils/html-highlight-parser';
 import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
 
+// Private Obsidian APIs used by the sidebar (not part of the public typings).
+interface PrivateCommandsApi {
+    commands: { executeCommandById: (id: string) => void };
+}
+
+// The CodeMirror 6 EditorView behind an Obsidian markdown editor.
+interface CodeMirrorEditorView {
+    state: { doc: { lineAt(pos: number): { number: number } } };
+    scrollDOM: HTMLElement;
+    posAtCoords(coords: { x: number; y: number }): number | null;
+}
+
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
 /**
@@ -4886,7 +4898,7 @@ export class HighlightsSidebarView extends ItemView {
             editor.setCursor(insertPos);
             editor.focus();
 
-            (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
+            (this.plugin.app as App & PrivateCommandsApi).commands.executeCommandById('editor:insert-footnote');
             // Wait for the footnote command to complete
             window.setTimeout(() => void (async () => {
                 await this.updateSingleHighlightFromEditor(highlight, file);
@@ -5369,7 +5381,7 @@ export class HighlightsSidebarView extends ItemView {
         // Auto-unfold if setting is enabled
         if (this.plugin.settings.autoToggleFold) {
             try {
-                (this.plugin.app as any).commands.executeCommandById('editor:toggle-fold');
+                (this.plugin.app as App & PrivateCommandsApi).commands.executeCommandById('editor:toggle-fold');
             } catch (error) {
                 console.warn('Failed to execute toggle fold command:', error);
             }
@@ -7506,11 +7518,11 @@ export class HighlightsSidebarView extends ItemView {
         const targetView = this.getTargetMarkdownView();
         if (!targetView || !targetView.editor) return null;
 
-        const cm = (targetView.editor as any).cm;
+        const cm = (targetView.editor as unknown as { cm?: CodeMirrorEditorView }).cm;
         if (!cm || !cm.state || !cm.scrollDOM) return null;
 
         try {
-            const rect = (cm.scrollDOM as HTMLElement).getBoundingClientRect();
+            const rect = cm.scrollDOM.getBoundingClientRect();
             const middleY = (rect.top + rect.bottom) / 2;
             const x = rect.left + 1;
 
@@ -7693,10 +7705,10 @@ export class HighlightsSidebarView extends ItemView {
         }
         this.attachedMarkdownView = null;
 
-        const cm = (targetView.editor as any).cm;
+        const cm = (targetView.editor as unknown as { cm?: CodeMirrorEditorView }).cm;
         if (!cm || !cm.scrollDOM) return;
 
-        const scrollEl = cm.scrollDOM as HTMLElement;
+        const scrollEl = cm.scrollDOM;
 
         const onScroll = () => {
             if (this.followScrollDebounce != null) {

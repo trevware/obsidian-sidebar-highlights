@@ -10,6 +10,7 @@ export default tseslint.config(
 			'backups/**',
 			'**/*.test.ts',
 			'jest.config.js',
+			'jest.setup.js',
 			'esbuild.config.mjs',
 			'version-bump.mjs',
 			'test-*.js',
