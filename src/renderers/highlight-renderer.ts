@@ -31,7 +31,7 @@ export class HighlightRenderer {
             item.setTitle('Open in new tab')
                 .setIcon('lucide-plus')
                 .onClick(() => {
-                    this.plugin.app.workspace.openLinkText(file.path, '', 'tab');
+                    void this.plugin.app.workspace.openLinkText(file.path, '', 'tab');
                 });
         });
         
@@ -39,7 +39,7 @@ export class HighlightRenderer {
             item.setTitle('Open to the right')
                 .setIcon('lucide-separator-vertical')
                 .onClick(() => {
-                    this.plugin.app.workspace.openLinkText(file.path, '', 'split');
+                    void this.plugin.app.workspace.openLinkText(file.path, '', 'split');
                 });
         });
         
@@ -504,7 +504,7 @@ export class HighlightRenderer {
                     linkEl.addEventListener('click', (event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        this.plugin.app.workspace.openLinkText(url, '', event.ctrlKey || event.metaKey);
+                        void this.plugin.app.workspace.openLinkText(url, '', event.ctrlKey || event.metaKey);
                     });
                 }
             }

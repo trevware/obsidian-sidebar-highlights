@@ -291,14 +291,14 @@ export default class HighlightCommentsPlugin extends Plugin {
         );
 
         this.ribbonIconEl = this.addRibbonIcon('highlighter', 'Open highlights', () => {
-            this.activateView();
+            void this.activateView();
         });
 
         this.addCommand({
             id: 'create-highlight',
             name: t('commands.createHighlight'),
             editorCallback: (editor: Editor) => {
-                this.createHighlight(editor);
+                void this.createHighlight(editor);
             }
         });
 
@@ -306,7 +306,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             id: 'open-highlights-sidebar',
             name: t('commands.toggle'),
             callback: () => {
-                this.toggleView();
+                void this.toggleView();
             }
         });
 
@@ -318,7 +318,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                             .setTitle('Create highlight')
                             .setIcon('highlighter')
                             .onClick(() => {
-                                this.createHighlight(editor);
+                                void this.createHighlight(editor);
                             });
                     });
                 }
@@ -328,7 +328,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.registerEvent(
             this.app.workspace.on('file-open', (file) => {
                 if (file) {
-                    this.loadHighlightsFromFile(file);
+                    void this.loadHighlightsFromFile(file);
                 } else {
                     // Clear selection but preserve highlights when no file is active
                     this.selectedHighlightId = null;
@@ -362,7 +362,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Fix any duplicate timestamps from previous versions
             await this.fixDuplicateTimestamps();
 
-            this.scanAllFilesForHighlights();
+            void this.scanAllFilesForHighlights();
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
@@ -371,7 +371,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.registerEvent(
                 this.app.vault.on('create', (file) => {
                     if (file instanceof TFile && this.shouldProcessFile(file)) {
-                        this.handleFileCreate(file);
+                        void this.handleFileCreate(file);
                     }
                 })
             );
@@ -379,7 +379,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.registerEvent(
                 this.app.vault.on('rename', (file, oldPath) => {
                     if (file instanceof TFile && this.shouldProcessFile(file)) {
-                        this.handleFileRename(file, oldPath);
+                        void this.handleFileRename(file, oldPath);
                     }
                 })
             );
@@ -520,7 +520,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             await leaf?.setViewState({ type: VIEW_TYPE_HIGHLIGHTS, active: true });
         }
         if (leaf) {
-            workspace.revealLeaf(leaf);
+            void workspace.revealLeaf(leaf);
         }
     }
 
@@ -661,7 +661,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 id: `apply-display-mode-${mode.id}`,
                 name: t('commands.applyDisplayMode', { name: mode.name }),
                 callback: () => {
-                    this.applyDisplayMode(mode);
+                    void this.applyDisplayMode(mode);
                     new Notice(t('notices.displayModeApplied', { name: mode.name }));
                 }
             });
@@ -1645,7 +1645,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 id: goToId,
                 name: t('commands.goToCollection', { name: collection.name }),
                 callback: () => {
-                    this.goToCollection(collection.id);
+                    void this.goToCollection(collection.id);
                 }
             });
             
@@ -1715,7 +1715,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             newFileHighlightsList[highlightIndex] = updatedHighlight;
             
             this.highlights.set(determinedFilePath, newFileHighlightsList);
-            this.saveSettings(); 
+            void this.saveSettings(); 
             
             // Update individual item instead of full refresh to preserve scroll position
             if (this.sidebarView) {
@@ -1938,7 +1938,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             window.clearTimeout(this.detectHighlightsTimeout);
         }
         this.detectHighlightsTimeout = window.setTimeout(() => {
-            this.detectMarkdownHighlights(editor, view);
+            void this.detectMarkdownHighlights(editor, view);
         }, 1000); // 1 second
     }
 
@@ -2438,7 +2438,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (oldHighlightsJSON !== newHighlightsJSON) {
             this.highlights.set(file.path, newHighlights);
             if (shouldRefresh) {
-                this.saveSettings(); // Save to disk after detecting changes
+                void this.saveSettings(); // Save to disk after detecting changes
                 this.smartUpdateSidebar(existingHighlightsForFile, newHighlights);
             }
         }
@@ -2582,7 +2582,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 );
             }
             
-            this.saveSettings();
+            void this.saveSettings();
             this.refreshSidebar();
         }
     }
@@ -3340,7 +3340,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     const modal = new DisplayModeNameModal(this.app, (name) => {
                         const displayMode = this.plugin.createDisplayModeFromCurrent(name);
                         this.plugin.settings.displayModes.push(displayMode);
-                        this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                         this.plugin.registerDisplayModeCommands();
                         this.display();  // Refresh settings to show new display mode
                         new Notice(t('notices.displayModeSaved', { name: name }));
@@ -3698,7 +3698,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.detectHtmlComments = value;
                     await this.plugin.saveSettings();
                     // Re-scan all files to apply new detection setting
-                    this.plugin.scanAllFilesForHighlights();
+                    void this.plugin.scanAllFilesForHighlights();
                 }));
 
         new Setting(containerEl)
@@ -3710,7 +3710,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.detectAdjacentNativeComments = value;
                     await this.plugin.saveSettings();
                     // Re-scan all files to apply new detection setting
-                    this.plugin.scanAllFilesForHighlights();
+                    void this.plugin.scanAllFilesForHighlights();
                 }));
 
         // CUSTOM PATTERNS SECTION
@@ -3765,7 +3765,7 @@ class HighlightSettingTab extends PluginSettingTab {
                                 this.plugin.settings.customPatterns[index] = edited;
                                 await this.plugin.saveSettings();
                                 renderPatterns();
-                                this.plugin.scanAllFilesForHighlights();
+                                void this.plugin.scanAllFilesForHighlights();
                             }).open();
                         }))
                     .addButton(button => button
@@ -3775,7 +3775,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             this.plugin.settings.customPatterns.splice(index, 1);
                             await this.plugin.saveSettings();
                             renderPatterns();
-                            this.plugin.scanAllFilesForHighlights();
+                            void this.plugin.scanAllFilesForHighlights();
                         }));
             });
 
@@ -3789,7 +3789,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             this.plugin.settings.customPatterns.push(newPattern);
                             await this.plugin.saveSettings();
                             renderPatterns();
-                            this.plugin.scanAllFilesForHighlights();
+                            void this.plugin.scanAllFilesForHighlights();
                         }).open();
                     }));
         };
@@ -3808,7 +3808,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.excludeExcalidraw = value;
                     await this.plugin.saveSettings();
                     // Refresh highlights to apply the new exclusion setting
-                    this.plugin.scanAllFilesForHighlights();
+                    void this.plugin.scanAllFilesForHighlights();
                 }));
 
         new Setting(containerEl)
@@ -3825,7 +3825,7 @@ class HighlightSettingTab extends PluginSettingTab {
                                 this.plugin.settings.fileFilters = fileFilters;
                                 await this.plugin.saveSettings();
                                 // Re-scan all files to apply new exclusions
-                                this.plugin.scanAllFilesForHighlights();
+                                void this.plugin.scanAllFilesForHighlights();
                                 // Refresh sidebar to update tasks from newly included/excluded files
                                 // (invalidates task cache and re-renders)
                                 this.plugin.refreshSidebar();
@@ -4157,7 +4157,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     .onClick(() => {
                         const modal = new DisplayModeNameModal(this.app, (newName) => {
                             mode.name = newName;
-                            this.plugin.saveSettings();
+                            void this.plugin.saveSettings();
                             this.plugin.registerDisplayModeCommands();
                             this.renderDisplayModes(container);
                             new Notice(t('notices.displayModeRenamed', { name: newName }));
@@ -4173,7 +4173,7 @@ class HighlightSettingTab extends PluginSettingTab {
                         if (this.plugin.settings.currentDisplayModeId === mode.id) {
                             this.plugin.settings.currentDisplayModeId = null;
                         }
-                        this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                         this.plugin.registerDisplayModeCommands();
                         this.renderDisplayModes(container);
                         new Notice(t('notices.displayModeDeleted', { name: mode.name }));
@@ -4206,7 +4206,7 @@ class CollectionsManager {
         };
         
         this.plugin.collections.set(collection.id, collection);
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
         
         // Update dynamic commands after creating collection
         this.plugin.registerCollectionCommands();
@@ -4223,7 +4223,7 @@ class CollectionsManager {
         }
         
         this.plugin.collections.delete(collectionId);
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
     }
 
     async deleteCollectionWithConfirmation(collectionId: string): Promise<boolean> {
@@ -4242,7 +4242,7 @@ class CollectionsManager {
         const collection = this.plugin.collections.get(collectionId);
         if (collection && !collection.highlightIds.includes(highlightId)) {
             collection.highlightIds.push(highlightId);
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
         }
     }
 
@@ -4250,7 +4250,7 @@ class CollectionsManager {
         const collection = this.plugin.collections.get(collectionId);
         if (collection) {
             collection.highlightIds = collection.highlightIds.filter(id => id !== highlightId);
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
         }
     }
 

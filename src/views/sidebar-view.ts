@@ -208,7 +208,7 @@ export class HighlightsSidebarView extends ItemView {
             selectedColors: Array.from(this.selectedColors)
         };
 
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
     }
 
     /**
@@ -1162,7 +1162,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // Skip initial render in onOpen - we'll render after restoring state
-        this.onOpen(true);
+        void this.onOpen(true);
 
         // Restore the view mode and collection state after DOM recreation
         this.viewMode = currentViewMode;
@@ -1434,7 +1434,7 @@ export class HighlightsSidebarView extends ItemView {
             }
         } else if (this.viewMode === 'tasks') {
             this.enableSearchAndToolbar();
-            this.renderTasksView();
+            void this.renderTasksView();
         } else {
             this.enableSearchAndToolbar();
             this.renderFilteredList();
@@ -3413,7 +3413,7 @@ export class HighlightsSidebarView extends ItemView {
      */
     private openNoteReusingLeaf(filePath: string, event?: MouseEvent) {
         if (event && Keymap.isModEvent(event)) {
-            this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
+            void this.plugin.app.workspace.openLinkText(filePath, filePath, Keymap.isModEvent(event));
             return;
         }
 
@@ -3421,7 +3421,7 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        this.plugin.app.workspace.openLinkText(filePath, filePath, false);
+        void this.plugin.app.workspace.openLinkText(filePath, filePath, false);
     }
 
     private handleTaskClick(task: Task, event?: MouseEvent) {
@@ -3438,7 +3438,7 @@ export class HighlightsSidebarView extends ItemView {
             return;
         }
 
-        this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
+        void this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
             const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
             if (activeView) {
                 this.focusTaskInView(activeView, task);
@@ -4179,7 +4179,7 @@ export class HighlightsSidebarView extends ItemView {
 
     private saveTaskSecondaryGroupingModeToSettings() {
         this.plugin.settings.taskSecondaryGroupingMode = this.taskSecondaryGroupingMode;
-        this.plugin.saveSettings();
+        void this.plugin.saveSettings();
     }
 
     /**
@@ -4504,7 +4504,7 @@ export class HighlightsSidebarView extends ItemView {
                     this.updateActionsButtonVisibility();
                 } else {
                     // Normal click - focus in editor
-                    this.focusHighlightInEditor(highlight, event);
+                    void this.focusHighlightInEditor(highlight, event);
                 }
             },
             onAddComment: async (highlight) => {
@@ -4515,7 +4515,7 @@ export class HighlightsSidebarView extends ItemView {
                 // First focus the highlight in editor and wait for file switch to complete
                 await this.focusHighlightInEditor(highlight);
                 // Then add the footnote with targeted update
-                this.addFootnoteToHighlightWithTargetedUpdate(highlight);
+                void this.addFootnoteToHighlightWithTargetedUpdate(highlight);
             },
             onCommentClick: (highlight, commentIndex, event) => {
                 // Find the original index in highlight.footnoteContents
@@ -4531,7 +4531,7 @@ export class HighlightsSidebarView extends ItemView {
                     }
                 }
                 if (originalIndex !== -1) {
-                    this.focusFootnoteInEditor(highlight, originalIndex, event);
+                    void this.focusFootnoteInEditor(highlight, originalIndex, event);
                 }
             },
             onTagClick: (tag) => {
@@ -6341,7 +6341,7 @@ export class HighlightsSidebarView extends ItemView {
         });
         
         if (hasChanges) {
-            this.plugin.saveSettings(); // Save changes to disk
+            void this.plugin.saveSettings(); // Save changes to disk
             this.renderContent(); // Use renderContent instead of renderFilteredList
         }
     }
@@ -7041,7 +7041,7 @@ export class HighlightsSidebarView extends ItemView {
             // Update collection properties
             collection.name = name;
             collection.description = description;
-            this.plugin.saveSettings();
+            void this.plugin.saveSettings();
             this.plugin.refreshSidebar();
         }).open();
     }
@@ -7336,9 +7336,9 @@ export class HighlightsSidebarView extends ItemView {
 
         const copy = (format: CopyFormat) => {
             if (isTasks) {
-                this.copyVisibleTasksToClipboard(format);
+                void this.copyVisibleTasksToClipboard(format);
             } else {
-                this.copyVisibleHighlightsToClipboard(format);
+                void this.copyVisibleHighlightsToClipboard(format);
             }
         };
 

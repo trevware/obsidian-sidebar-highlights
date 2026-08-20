@@ -328,7 +328,7 @@ export class TaskRenderer {
                     linkEl.addEventListener('click', (event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        this.plugin.app.workspace.openLinkText(url, '', event.ctrlKey || event.metaKey);
+                        void this.plugin.app.workspace.openLinkText(url, '', event.ctrlKey || event.metaKey);
                     });
                 }
             }
