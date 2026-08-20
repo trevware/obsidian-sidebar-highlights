@@ -66,7 +66,7 @@ export class BackupSelectorModal extends Modal {
         });
         this.restoreButton.disabled = true; // Disabled until selection is made
 
-        this.restoreButton.addEventListener('click', async () => {
+        this.restoreButton.addEventListener('click', () => void (async () => {
             if (!this.selectedBackup) return;
 
             const collectionsCount = Object.keys(this.selectedBackup.data.collections || {}).length;
@@ -74,7 +74,7 @@ export class BackupSelectorModal extends Modal {
 
             await this.onRestore(this.selectedBackup.path, collectionsCount, highlightsCount);
             this.close();
-        });
+        })());
     }
 
     private renderBackupList(containerEl: HTMLElement) {

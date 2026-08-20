@@ -973,7 +973,7 @@ export class HighlightsSidebarView extends ItemView {
                     if (this.taskRefreshTimeout) {
                         window.clearTimeout(this.taskRefreshTimeout);
                     }
-                    this.taskRefreshTimeout = window.setTimeout(async () => {
+                    this.taskRefreshTimeout = window.setTimeout(() => void (async () => {
                         // Get current content and update cache for comparison
                         const newContent = await this.app.vault.cachedRead(file);
                         this.fileTaskCache.set(file.path, this.extractTaskLines(newContent));
@@ -999,7 +999,7 @@ export class HighlightsSidebarView extends ItemView {
 
                         // Re-render with updated cache (no full rescan!)
                         this.renderContent();
-                    }, 300); // 300ms - more responsive than 1 second
+                    })(), 300); // 300ms - more responsive than 1 second
                 }
             })
         );
@@ -1402,7 +1402,7 @@ export class HighlightsSidebarView extends ItemView {
 
         apply(this.collapsedGroups.has(groupId));
 
-        groupHeader.addEventListener('click', async () => {
+        groupHeader.addEventListener('click', () => void (async () => {
             const collapsed = !this.collapsedGroups.has(groupId);
             if (collapsed) {
                 this.collapsedGroups.add(groupId);
@@ -1413,7 +1413,7 @@ export class HighlightsSidebarView extends ItemView {
 
             this.plugin.settings.collapsedGroups = Array.from(this.collapsedGroups);
             await this.plugin.saveSettings();
-        });
+        })());
     }
 
     private renderContent() {
@@ -4874,9 +4874,9 @@ export class HighlightsSidebarView extends ItemView {
                 }, 50);
 
                 // Update highlight data after positioning cursor
-                window.setTimeout(async () => {
+                window.setTimeout(() => void (async () => {
                     await this.updateSingleHighlightFromEditor(highlight, file);
-                }, 100);
+                })(), 100);
             } else {
                 new Notice('Could not insert inline footnote.');
             }
@@ -4888,9 +4888,9 @@ export class HighlightsSidebarView extends ItemView {
 
             (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
             // Wait for the footnote command to complete
-            window.setTimeout(async () => {
+            window.setTimeout(() => void (async () => {
                 await this.updateSingleHighlightFromEditor(highlight, file);
-            }, 100);
+            })(), 100);
         }
     }
 
@@ -5482,7 +5482,7 @@ export class HighlightsSidebarView extends ItemView {
             if (fileToOpen instanceof TFile) {
                 await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, event ? Keymap.isModEvent(event) : false);
                 // Wait for file to open and retry
-                window.setTimeout(() => this.focusFootnoteInEditor(highlight, footnoteIndex, event), 200);
+                window.setTimeout(() => void this.focusFootnoteInEditor(highlight, footnoteIndex, event), 200);
                 return;
             }
         }
@@ -7930,10 +7930,10 @@ export class HighlightsSidebarView extends ItemView {
 class DateInputModal extends Modal {
     private dateFormat: string;
     private currentDate: string;
-    private onSubmit: (date: string | null) => void;
+    private onSubmit: (date: string | null) => void | Promise<void>;
     private dateSuggest: DateSuggest;
 
-    constructor(app: App, dateFormat: string, currentDate: string, onSubmit: (date: string | null) => void) {
+    constructor(app: App, dateFormat: string, currentDate: string, onSubmit: (date: string | null) => void | Promise<void>) {
         super(app);
         this.dateFormat = dateFormat;
         this.currentDate = currentDate;
@@ -8086,7 +8086,7 @@ class DateInputModal extends Modal {
                     }
                 }
 
-                this.onSubmit(finalDate);
+                void this.onSubmit(finalDate);
                 this.close();
             } else {
                 showError(`Invalid date format. Please use ${this.dateFormat} or natural language (e.g., "today", "2 weeks from now")`);
@@ -8104,7 +8104,7 @@ class DateInputModal extends Modal {
         if (this.currentDate) {
             const removeButton = buttonContainer.createEl('button', { text: 'Remove Date', cls: 'mod-warning' });
             removeButton.addEventListener('click', () => {
-                this.onSubmit(null);
+                void this.onSubmit(null);
                 this.close();
             });
         }

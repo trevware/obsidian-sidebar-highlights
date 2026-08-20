@@ -2930,12 +2930,12 @@ export default class HighlightCommentsPlugin extends Plugin {
 
 class CustomPatternModal extends Modal {
     pattern: CustomPattern | null;
-    onSubmit: (pattern: CustomPattern) => void;
+    onSubmit: (pattern: CustomPattern) => void | Promise<void>;
     nameInput: HTMLInputElement;
     patternInput: HTMLInputElement;
     typeSelect: HTMLSelectElement;
 
-    constructor(app: App, pattern: CustomPattern | null, onSubmit: (pattern: CustomPattern) => void) {
+    constructor(app: App, pattern: CustomPattern | null, onSubmit: (pattern: CustomPattern) => void | Promise<void>) {
         super(app);
         this.pattern = pattern;
         this.onSubmit = onSubmit;
@@ -3082,7 +3082,7 @@ class CustomPatternModal extends Modal {
                 return;
             }
 
-            this.onSubmit({ name, pattern, type });
+            void this.onSubmit({ name, pattern, type });
             this.close();
         });
     }
@@ -4000,10 +4000,10 @@ class HighlightSettingTab extends PluginSettingTab {
                     text: t('settings.backupRestore.restore'),
                     cls: 'mod-cta'
                 });
-                restoreBtn.addEventListener('click', async () => {
+                restoreBtn.addEventListener('click', () => void (async () => {
                     modal.close();
                     await performRestore(latestBackup.path, collectionsCount, highlightsCount);
-                });
+                })());
 
                 modal.open();
             }));
@@ -4055,10 +4055,10 @@ class HighlightSettingTab extends PluginSettingTab {
                             text: t('settings.backupRestore.restore'),
                             cls: 'mod-cta'
                         });
-                        restoreBtn.addEventListener('click', async () => {
+                        restoreBtn.addEventListener('click', () => void (async () => {
                             confirmModal.close();
                             await performRestore(backupPath, collectionsCount, highlightsCount);
-                        });
+                        })());
 
                         confirmModal.open();
                     }

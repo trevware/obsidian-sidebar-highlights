@@ -6,7 +6,7 @@ import type { FileFilter } from '../../main';
 export class ExcludedFilesModal extends Modal {
     private fileFilters: FileFilter[];
     private fileFilterMode: 'exclude' | 'include';
-    private onUpdate: (fileFilters: FileFilter[]) => void;
+    private onUpdate: (fileFilters: FileFilter[]) => void | Promise<void>;
     private filterInput: HTMLInputElement;
     private fileFolderSuggest: FileFolderSuggest;
 
@@ -14,7 +14,7 @@ export class ExcludedFilesModal extends Modal {
         app: App,
         fileFilters: FileFilter[],
         fileFilterMode: 'exclude' | 'include',
-        onUpdate: (fileFilters: FileFilter[]) => void
+        onUpdate: (fileFilters: FileFilter[]) => void | Promise<void>
     ) {
         super(app);
         this.fileFilters = [...fileFilters];
@@ -36,7 +36,7 @@ export class ExcludedFilesModal extends Modal {
         // If any paths were removed, update the settings
         if (this.fileFilters.length < initialCount) {
             const removedCount = initialCount - this.fileFilters.length;
-            this.onUpdate(this.fileFilters);
+            void this.onUpdate(this.fileFilters);
             new Notice(t('modals.excludedFiles.removedNonExistent', {
                 count: removedCount,
                 paths: removedCount === 1 ? 'path' : 'paths'
@@ -221,13 +221,13 @@ export class ExcludedFilesModal extends Modal {
         });
         this.filterInput.value = '';
         this.refreshContent();
-        this.onUpdate(this.fileFilters);
+        void this.onUpdate(this.fileFilters);
     }
 
     private removeFilter(path: string) {
         this.fileFilters = this.fileFilters.filter(f => f.path !== path);
         this.refreshContent();
-        this.onUpdate(this.fileFilters);
+        void this.onUpdate(this.fileFilters);
     }
 
     private refreshContent() {

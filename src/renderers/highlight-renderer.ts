@@ -13,7 +13,7 @@ export interface HighlightRenderOptions {
     onCollectionsMenu?: (event: MouseEvent, highlight: Highlight) => void;
     onColorChange?: (highlight: Highlight, color: string) => void;
     onHighlightClick?: (highlight: Highlight, event?: MouseEvent) => void;
-    onAddComment?: (highlight: Highlight) => void;
+    onAddComment?: (highlight: Highlight) => void | Promise<void>;
     onCommentClick?: (highlight: Highlight, commentIndex: number, event?: MouseEvent) => void;
     onTagClick?: (tag: string) => void;
     onFileNameClick?: (filePath: string, event: MouseEvent) => void;
@@ -293,7 +293,7 @@ export class HighlightRenderer {
         const icon = copyButton.createDiv({ cls: 'copy-icon' });
         setIcon(icon, 'copy');
 
-        copyButton.addEventListener('click', async (event) => {
+        copyButton.addEventListener('click', (event) => void (async () => {
             event.stopPropagation();
 
             // Build the markdown text based on highlight type
@@ -339,7 +339,7 @@ export class HighlightRenderer {
                 }
                 document.body.removeChild(textArea);
             }
-        });
+        })());
 
         return copyButton;
     }
@@ -404,7 +404,7 @@ export class HighlightRenderer {
         // Add click handler for all highlights (native comments and regular highlights)
         addCommentLine.addEventListener('click', (event) => {
             event.stopPropagation();
-            options.onAddComment?.(highlight);
+            void options.onAddComment?.(highlight);
         });
     }
 

@@ -6,11 +6,11 @@ import type HighlightCommentsPlugin from '../../main';
 
 export interface TaskRenderOptions {
     searchTerm?: string;
-    onTaskToggle?: (task: Task, checkboxEl: HTMLElement) => void;
+    onTaskToggle?: (task: Task, checkboxEl: HTMLElement) => void | Promise<void>;
     onTaskClick?: (task: Task, event?: MouseEvent) => void;
     onFileNameClick?: (filePath: string, event?: MouseEvent) => void;
-    onFlagToggle?: (task: Task, event?: MouseEvent) => void;
-    onCalendarToggle?: (task: Task) => void;
+    onFlagToggle?: (task: Task, event?: MouseEvent) => void | Promise<void>;
+    onCalendarToggle?: (task: Task) => void | Promise<void>;
     hideFilename?: boolean; // Hide filename when grouped
     hideDateBadge?: boolean; // Hide date badge when grouped by date
     parentTask?: Task; // Parent task info for sub-tasks rendered as standalone
@@ -128,7 +128,7 @@ export class TaskRenderer {
 
         checkboxIcon.addEventListener('click', (event) => {
             event.stopPropagation();
-            options.onTaskToggle?.(task, checkboxIcon);
+            void options.onTaskToggle?.(task, checkboxIcon);
         });
 
         // Text content wrapper (allows proper wrapping)
@@ -218,7 +218,7 @@ export class TaskRenderer {
 
         flagButton.addEventListener('click', (event) => {
             event.stopPropagation();
-            options.onFlagToggle?.(task, event);
+            void options.onFlagToggle?.(task, event);
         });
 
         // Calendar button (appears on hover, shows calendar-cog if task has a date)
@@ -233,7 +233,7 @@ export class TaskRenderer {
 
         calendarButton.addEventListener('click', (event) => {
             event.stopPropagation();
-            options.onCalendarToggle?.(task);
+            void options.onCalendarToggle?.(task);
         });
 
         // Click to navigate to task
