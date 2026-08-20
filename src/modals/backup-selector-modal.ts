@@ -25,7 +25,7 @@ export class BackupSelectorModal extends Modal {
         contentEl.empty();
 
         // Set the modal title
-        const titleEl = contentEl.createEl('div', {
+        const titleEl = contentEl.createDiv({
             cls: 'modal-title',
             text: t('modals.backupSelector.title')
         });

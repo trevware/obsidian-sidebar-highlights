@@ -306,7 +306,7 @@ export class TaskRenderer {
                 const delEl = element.createEl('del');
                 this.renderTextWithTags(delEl, segment.content || '', searchTerm);
             } else if (segment.type === 'highlight') {
-                const highlightEl = element.createEl('span', { cls: 'cm-highlight' });
+                const highlightEl = element.createSpan({ cls: 'cm-highlight' });
                 this.renderTextWithTags(highlightEl, segment.content || '', searchTerm);
             } else if (segment.type === 'link') {
                 const linkEl = element.createEl('a');

@@ -2946,7 +2946,7 @@ class CustomPatternModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: this.pattern ? t('modals.customPattern.editTitle') : t('modals.customPattern.addTitle') });
+        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: this.pattern ? t('modals.customPattern.editTitle') : t('modals.customPattern.addTitle') });
         titleEl.style.marginBottom = '20px';
 
         // Name input (Setting component adds divider automatically)
@@ -2960,15 +2960,15 @@ class CustomPatternModal extends Modal {
             });
 
         // Pattern input
-        const patternDesc = document.createDocumentFragment();
+        const patternDesc = createFragment();
         patternDesc.append(
             t('modals.customPattern.patternDesc'),
-            document.createElement('br'),
-            document.createElement('code'),
+            createEl('br'),
+            createEl('code'),
         );
         patternDesc.lastChild!.textContent = '//(.+)//';
         patternDesc.append(' or ');
-        const code2 = document.createElement('code');
+        const code2 = createEl('code');
         code2.textContent = '\\[\\[(.+?)\\]\\]';
         patternDesc.append(code2);
 
@@ -3109,7 +3109,7 @@ class DisplayModeNameModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: this.currentName ? t('modals.displayMode.renameTitle') : t('modals.displayMode.createTitle') });
+        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: this.currentName ? t('modals.displayMode.renameTitle') : t('modals.displayMode.createTitle') });
         titleEl.style.marginBottom = '20px';
 
         new Setting(contentEl)
@@ -3715,9 +3715,9 @@ class HighlightSettingTab extends PluginSettingTab {
 
         // CUSTOM PATTERNS SECTION
         // Create heading with experimental badge
-        const customPatternsHeadingName = document.createDocumentFragment();
+        const customPatternsHeadingName = createFragment();
         customPatternsHeadingName.append(t('settings.detection.customPatterns.heading') + ' ');
-        const headingBadge = document.createElement('span');
+        const headingBadge = createSpan();
         headingBadge.textContent = t('settings.detection.customPatterns.experimental');
         headingBadge.style.fontSize = '0.8em';
         headingBadge.style.padding = '2px 6px';
@@ -3731,16 +3731,16 @@ class HighlightSettingTab extends PluginSettingTab {
         new Setting(containerEl).setHeading().setName(customPatternsHeadingName);
 
         // Custom patterns description
-        const customPatternsDesc = document.createDocumentFragment();
+        const customPatternsDesc = createFragment();
         customPatternsDesc.append(
             t('settings.detection.customPatterns.desc'),
-            document.createElement('br'),
+            createEl('br'),
             t('settings.detection.customPatterns.examples'),
-            document.createElement('code'),
+            createEl('code'),
         );
         customPatternsDesc.lastChild!.textContent = '//(.+)//';
         customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forRegexMark') + ' ');
-        const code2 = document.createElement('code');
+        const code2 = createEl('code');
         code2.textContent = '\\[\\[(.+?)\\]\\]';
         customPatternsDesc.append(code2);
         customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forWikilinks'));

@@ -87,7 +87,7 @@ export class DropdownManager {
         const buttonRect = triggerElement.getBoundingClientRect();
 
         // Create dropdown
-        const dropdown = document.createElement('div');
+        const dropdown = createDiv();
         dropdown.className = `menu highlights-dropdown-menu ${options.className || ''}`;
         dropdown.classList.add('dropdown-positioned');
 
@@ -184,7 +184,7 @@ export class DropdownManager {
         // Add mouseleave handler to close secondary panel
         dropdown.addEventListener('mouseleave', (e: MouseEvent) => {
             // Give a delay to check if entering secondary panel
-            setTimeout(() => {
+            window.setTimeout(() => {
                 const relatedTarget = e.relatedTarget as Node;
                 const isEnteringSecondary = this.secondaryPanel && this.secondaryPanel.contains(relatedTarget);
                 if (!isEnteringSecondary) {
@@ -197,14 +197,14 @@ export class DropdownManager {
     private renderItems(container: HTMLElement, items: DropdownItem[], renderChildren: boolean, depth: number = 0, isSecondaryPanel: boolean = false): void {
         items.forEach((item, index) => {
             if (item.separator) {
-                const element = document.createElement('div');
+                const element = createDiv();
                 element.className = 'menu-separator';
                 container.appendChild(element);
                 return;
             }
 
             if (item.heading) {
-                const element = document.createElement('div');
+                const element = createDiv();
                 element.className = 'highlights-dropdown-heading';
                 element.textContent = item.text;
                 container.appendChild(element);
@@ -223,7 +223,7 @@ export class DropdownManager {
     }
 
     private renderItem(container: HTMLElement, item: DropdownItem, index: number, depth: number, isSecondaryPanel: boolean = false): void {
-        const element = document.createElement('div');
+        const element = createDiv();
         element.className = `menu-item ${item.className || 'highlights-dropdown-item'}`;
 
         if (depth > 0) {
@@ -236,14 +236,14 @@ export class DropdownManager {
 
             // Add item icon if provided
             if (item.icon) {
-                const iconDiv = document.createElement('div');
+                const iconDiv = createDiv();
                 iconDiv.className = 'menu-item-icon';
                 setIcon(iconDiv, item.icon);
                 element.appendChild(iconDiv);
             }
 
             // Add label
-            const label = document.createElement('span');
+            const label = createSpan();
             label.textContent = item.text;
             element.appendChild(label);
 
@@ -258,7 +258,7 @@ export class DropdownManager {
             // Regular item (non-expandable)
             if (item.checked !== undefined) {
                 // Add checkbox for checkable items
-                const checkDiv = document.createElement('div');
+                const checkDiv = createDiv();
                 checkDiv.className = 'highlights-dropdown-check';
 
                 if (item.checked) {
@@ -272,13 +272,13 @@ export class DropdownManager {
                 const itemKey = item.id || `item-${index}`;
                 this.checkboxElements.set(itemKey, { element, checkDiv });
             } else if (item.icon) {
-                const iconDiv = document.createElement('div');
+                const iconDiv = createDiv();
                 iconDiv.className = 'menu-item-icon';
                 setIcon(iconDiv, item.icon);
                 element.appendChild(iconDiv);
             }
 
-            const label = document.createElement('span');
+            const label = createSpan();
             label.textContent = item.text;
             element.appendChild(label);
 
@@ -341,7 +341,7 @@ export class DropdownManager {
 
         // Create secondary panel if it doesn't exist
         if (!this.secondaryPanel) {
-            const panel = document.createElement('div');
+            const panel = createDiv();
             panel.className = 'menu highlights-dropdown-menu highlights-dropdown-secondary';
             this.secondaryPanel = panel;
             document.body.appendChild(panel);

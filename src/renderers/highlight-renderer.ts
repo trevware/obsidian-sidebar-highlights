@@ -151,7 +151,7 @@ export class HighlightRenderer {
         if (tags.length > 0) {
             const tagsContainer = quoteEl.createDiv({ cls: 'highlight-tags' });
             tags.forEach(tag => {
-                const tagEl = tagsContainer.createEl('span', {
+                const tagEl = tagsContainer.createSpan({
                     cls: 'highlight-tag',
                     text: tag
                 });
@@ -325,7 +325,7 @@ export class HighlightRenderer {
                 new Notice('Copied to clipboard');
             } catch {
                 // Fallback for browsers that don't support clipboard API
-                const textArea = document.createElement('textarea');
+                const textArea = createEl('textarea');
                 textArea.value = textToCopy;
                 textArea.style.position = 'fixed';
                 textArea.style.left = '-999999px';
@@ -434,7 +434,7 @@ export class HighlightRenderer {
                 if (match.index > lastIndex) {
                     newNodes.push(document.createTextNode(text.substring(lastIndex, match.index)));
                 }
-                const span = document.createElement('span');
+                const span = createSpan();
                 span.className = 'search-term-highlight';
                 span.textContent = match[0];
                 newNodes.push(span);

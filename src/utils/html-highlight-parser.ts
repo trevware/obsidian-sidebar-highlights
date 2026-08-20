@@ -299,7 +299,7 @@ export class HtmlHighlightParser {
 
         try {
             // Create temporary element to test the class
-            const tempEl = document.createElement(tagName);
+            const tempEl = createEl(tagName as keyof HTMLElementTagNameMap);
             tempEl.className = className;
             tempEl.style.visibility = 'hidden';
             tempEl.style.position = 'absolute';

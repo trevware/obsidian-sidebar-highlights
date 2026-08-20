@@ -44,7 +44,7 @@ export class ExcludedFilesModal extends Modal {
         }
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: t('modals.excludedFiles.title') });
+        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: t('modals.excludedFiles.title') });
         titleEl.style.marginBottom = '20px';
 
         // Add divider after title (only if there are filters)

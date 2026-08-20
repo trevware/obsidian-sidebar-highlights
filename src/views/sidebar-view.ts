@@ -1190,7 +1190,7 @@ export class HighlightsSidebarView extends ItemView {
         // Restore appropriate scroll position after full rebuild
         if (shouldUseHighlightScroll) {
             // Use the preserved highlight scroll position
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 if (this.contentAreaEl) {
                     this.contentAreaEl.scrollTop = highlightScrollPosition;
                 }
@@ -1245,7 +1245,7 @@ export class HighlightsSidebarView extends ItemView {
     private restoreScrollPosition(): void {
         if (this.contentAreaEl && !this.isHighlightFocusing && !this.isColorChanging) {
             // Use requestAnimationFrame to ensure DOM is updated before restoring scroll
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.contentAreaEl.scrollTop = this.savedScrollPosition;
             });
         }
@@ -1257,7 +1257,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // Use requestAnimationFrame to ensure DOM is ready
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             // Clear all existing selections first to prevent multiples
             const allSelectedElements = this.containerEl.querySelectorAll('.selected, .highlight-selected');
             allSelectedElements.forEach(el => {
@@ -1322,7 +1322,7 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         // Create new element with updated data
-        const tempContainer = document.createElement('div');
+        const tempContainer = createDiv();
         const showFilename = this.viewMode === 'all' || this.viewMode === 'folder';
         this.createHighlightItem(tempContainer, updatedHighlight, this.getSearchTerm(), showFilename);
         
@@ -1684,7 +1684,7 @@ export class HighlightsSidebarView extends ItemView {
             cls: 'highlight-group-header current-note-group-header'
         });
 
-        const headerContent = headerEl.createEl('span');
+        const headerContent = headerEl.createSpan();
 
         // Add icon and filename
         const iconSpan = headerContent.createSpan({ cls: 'tree-item-icon' });
@@ -1970,12 +1970,12 @@ export class HighlightsSidebarView extends ItemView {
      */
     private applyTaskFlashAnimation(taskId: string) {
         // Wait for next frame to ensure DOM is ready
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             const taskElement = this.listContainerEl.querySelector(`[data-task-id="${taskId}"]`) as HTMLElement;
             if (taskElement) {
                 taskElement.addClass('task-flash');
                 // Remove class after animation completes
-                setTimeout(() => {
+                window.setTimeout(() => {
                     taskElement.removeClass('task-flash');
                 }, 600); // Match CSS animation duration
             }
@@ -2100,7 +2100,7 @@ export class HighlightsSidebarView extends ItemView {
         sortedGroups.forEach(([groupName, groupTasks]) => {
             // Create group header
             const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
-            const headerContent = groupHeader.createEl('span');
+            const headerContent = groupHeader.createSpan();
 
             // Everything this group renders below its header, so the header can
             // hide the group as a whole. Sections keep collapsing independently.
@@ -2861,7 +2861,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Remove animation class after animation completes
         const animationDuration = newCompletedState ? 600 : 400;
-        setTimeout(() => {
+        window.setTimeout(() => {
             checkboxEl.removeClass(animationClass);
         }, animationDuration);
 
@@ -3343,7 +3343,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentTaskPage(this.getSearchTerm());
                 this.renderTaskPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -3368,7 +3368,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentTaskPage(this.getSearchTerm());
                 this.renderTaskPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -3730,7 +3730,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentPage(this.getSearchTerm());
                 this.renderPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -3755,7 +3755,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentPage(this.getSearchTerm());
                 this.renderPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -4111,7 +4111,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentGroupPage(this.getSearchTerm());
                 this.renderGroupPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -4136,7 +4136,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.renderCurrentGroupPage(this.getSearchTerm());
                 this.renderGroupPaginationControls();
                 // Ensure scroll to top happens after DOM updates
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     this.contentAreaEl.scrollTop = 0;
                 });
             }
@@ -4466,7 +4466,7 @@ export class HighlightsSidebarView extends ItemView {
                 this.rerenderCurrentView();
                 
                 // Restore scroll position after DOM rebuild and clear flag
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     if (this.contentAreaEl && this.isColorChanging) {
                         this.contentAreaEl.scrollTop = this.preservedScrollTop;
                         this.isColorChanging = false;
@@ -4853,7 +4853,7 @@ export class HighlightsSidebarView extends ItemView {
             const result = this.plugin.inlineFootnoteManager.insertInlineFootnote(editor, highlight, '');
             if (result.success && result.insertPos) {
                 // Position cursor inside the brackets after a delay for editor to process
-                setTimeout(() => {
+                window.setTimeout(() => {
                     if (result.contentLength > 0) {
                         // Select the footnote content for easy editing
                         const contentStartCh = result.insertPos!.ch + 2; // After "^["
@@ -4874,7 +4874,7 @@ export class HighlightsSidebarView extends ItemView {
                 }, 50);
 
                 // Update highlight data after positioning cursor
-                setTimeout(async () => {
+                window.setTimeout(async () => {
                     await this.updateSingleHighlightFromEditor(highlight, file);
                 }, 100);
             } else {
@@ -4888,7 +4888,7 @@ export class HighlightsSidebarView extends ItemView {
 
             (this.plugin.app as any).commands.executeCommandById('editor:insert-footnote');
             // Wait for the footnote command to complete
-            setTimeout(async () => {
+            window.setTimeout(async () => {
                 await this.updateSingleHighlightFromEditor(highlight, file);
             }, 100);
         }
@@ -5154,7 +5154,7 @@ export class HighlightsSidebarView extends ItemView {
         if (targetView) {
             const view = targetView;
             // Use requestAnimationFrame for smoother focus
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.performHighlightFocus(view, highlight);
             });
         }
@@ -5178,7 +5178,7 @@ export class HighlightsSidebarView extends ItemView {
         
         if (needsScrollRestore) {
             // Use requestAnimationFrame to restore scroll position after any potential DOM updates
-            requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
                 this.contentAreaEl.scrollTop = this.preservedScrollTop;
                 // Clear the flag after restoration is complete
                 this.isHighlightFocusing = false;
@@ -7052,14 +7052,14 @@ export class HighlightsSidebarView extends ItemView {
         this.plugin.refreshSidebar();
         
         // Wait for DOM update, then find and animate the new collection
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
             const collectionCard = this.contentAreaEl.querySelector(`[data-collection-id="${collectionId}"]`) as HTMLElement;
             if (collectionCard) {
                 // Start from scaled down state
                 collectionCard.classList.add('preparing-animation');
                 
                 // Trigger animation on next frame
-                requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
                     collectionCard.classList.remove('preparing-animation');
                     collectionCard.classList.add('animating-in');
                     
@@ -7445,7 +7445,7 @@ export class HighlightsSidebarView extends ItemView {
             // Fall through to the textarea approach below.
         }
 
-        const textArea = document.createElement('textarea');
+        const textArea = createEl('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
         textArea.style.left = '-999999px';
@@ -7945,7 +7945,7 @@ class DateInputModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createEl('div', { cls: 'modal-title', text: t('modals.taskDate.title') });
+        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: t('modals.taskDate.title') });
         titleEl.style.marginBottom = '20px';
 
         // Date input field container
@@ -7969,7 +7969,7 @@ class DateInputModal extends Modal {
         input.focus();
 
         // Only trigger input event to show suggestions if there's no current date
-        setTimeout(() => {
+        window.setTimeout(() => {
             if (!this.currentDate) {
                 input.dispatchEvent(new Event('input'));
             }
@@ -8119,7 +8119,7 @@ class DateInputModal extends Modal {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 // Small delay to allow AbstractInputSuggest to handle selection first
-                setTimeout(() => {
+                window.setTimeout(() => {
                     handleSave();
                 }, 0);
             } else if (e.key === 'Escape') {
