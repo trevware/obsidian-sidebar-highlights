@@ -323,7 +323,7 @@ export class HighlightRenderer {
             try {
                 await navigator.clipboard.writeText(textToCopy);
                 new Notice('Copied to clipboard');
-            } catch (err) {
+            } catch {
                 // Fallback for browsers that don't support clipboard API
                 const textArea = document.createElement('textarea');
                 textArea.value = textToCopy;
@@ -334,7 +334,7 @@ export class HighlightRenderer {
                 try {
                     document.execCommand('copy');
                     new Notice('Copied to clipboard');
-                } catch (e) {
+                } catch {
                     new Notice('Failed to copy to clipboard');
                 }
                 document.body.removeChild(textArea);
@@ -351,7 +351,7 @@ export class HighlightRenderer {
             
             // Create a separate timestamp container div
             const timestampContainer = infoLineContainer.createDiv({ cls: 'highlight-timestamp-container' });
-            const timestampEl = timestampContainer.createDiv({
+            timestampContainer.createDiv({
                 cls: 'highlight-timestamp-info',
                 text: timeString,
                 attr: { title: `Created: ${timeString}` }
@@ -360,7 +360,7 @@ export class HighlightRenderer {
     }
 
     private addActionButtons(actions: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
-        const buttonContainer = actions.createDiv({ cls: 'comment-buttons' });
+        actions.createDiv({ cls: 'comment-buttons' });
     }
 
     private createCommentsSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
@@ -822,7 +822,7 @@ export class HighlightRenderer {
         const icon = emptyState.createDiv({ cls: 'highlight-empty-icon' });
         setIcon(icon, 'highlighter');
 
-        const text = emptyState.createEl('p', {
+        emptyState.createEl('p', {
             cls: 'highlight-empty-text',
             text: message
         });

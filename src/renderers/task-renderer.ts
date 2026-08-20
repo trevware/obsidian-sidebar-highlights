@@ -1,4 +1,4 @@
-import { setIcon, Menu, Notice, moment } from 'obsidian';
+import { setIcon, moment } from 'obsidian';
 import type { Task, TaskStatus } from '../../main';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import { squircleifyIcon } from '../utils/squircle-icon';
@@ -173,7 +173,7 @@ export class TaskRenderer {
             setIcon(fileIcon, 'file-text');
 
             // Add filename text
-            const fileNameText = fileNameContainer.createSpan({
+            fileNameContainer.createSpan({
                 cls: 'task-filename-text',
                 text: fileName,
                 attr: { title: task.filePath }
@@ -271,7 +271,7 @@ export class TaskRenderer {
         const infoLineContainer = infoContainer.createDiv({ cls: 'task-info-line' });
 
         // Stats section (like highlight-stats-section)
-        const statsSection = infoLineContainer.createDiv({ cls: 'task-stats-section' });
+        infoLineContainer.createDiv({ cls: 'task-stats-section' });
 
         // Line number info removed for tasks - not needed since tasks are less complex than highlights
     }
@@ -356,12 +356,12 @@ export class TaskRenderer {
             const fullTag = `#${tagName}`;
             const tagMatches = searchTerm && fullTag.toLowerCase().includes(searchTerm.toLowerCase());
 
-            const tagBegin = element.createSpan({
+            element.createSpan({
                 cls: `cm-hashtag cm-hashtag-begin cm-meta${tagMatches ? ' task-search-match-tag' : ''}`,
                 text: '#'
             });
 
-            const tagEnd = element.createSpan({
+            element.createSpan({
                 cls: `cm-hashtag cm-hashtag-end${tagMatches ? ' task-search-match-tag' : ''}`,
                 text: tagName,
                 attr: { 'data-tag': tagName }
@@ -581,7 +581,7 @@ export class TaskRenderer {
             }
 
             // Add highlighted match
-            const mark = element.createEl('mark', {
+            element.createEl('mark', {
                 cls: 'task-search-match',
                 text: match[0]
             });
@@ -610,7 +610,7 @@ export class TaskRenderer {
         const icon = emptyState.createDiv({ cls: 'task-empty-icon' });
         setIcon(icon, 'check-square');
 
-        const text = emptyState.createEl('p', {
+        emptyState.createEl('p', {
             cls: 'task-empty-text',
             text: message
         });

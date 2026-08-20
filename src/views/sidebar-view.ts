@@ -1,10 +1,10 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import type { Highlight, Collection, CommentPluginSettings, Task, TaskStatus } from '../../main';
+import type { Highlight, Collection, Task, TaskStatus } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
-import { TaskRenderer, TaskRenderOptions } from '../renderers/task-renderer';
+import { TaskRenderer } from '../renderers/task-renderer';
 import { TaskManager } from '../managers/task-manager';
 import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
@@ -2273,10 +2273,10 @@ export class HighlightsSidebarView extends ItemView {
                     }
 
                     // Add section name
-                    const sectionText = sectionHeader.createSpan({ text: sectionName });
+                    sectionHeader.createSpan({ text: sectionName });
 
                     // Add ellipsis indicator for collapsed sections with items
-                    const ellipsis = sectionHeader.createSpan({
+                    sectionHeader.createSpan({
                         cls: 'task-section-ellipsis',
                         text: '...'
                     });
@@ -2869,7 +2869,7 @@ export class HighlightsSidebarView extends ItemView {
         this.updateGroupProgressCircle(task, newCompletedState);
 
         try {
-            const updatedTask = await this.taskManager.toggleTaskCompletion(task);
+            await this.taskManager.toggleTaskCompletion(task);
             new Notice('Task updated');
             // Don't call renderTasksView() here - the file modification will trigger
             // a file change event which will call renderContent() automatically
@@ -3350,7 +3350,7 @@ export class HighlightsSidebarView extends ItemView {
         });
 
         // Page info
-        const pageInfo = paginationContainer.createSpan({
+        paginationContainer.createSpan({
             text: `${this.currentTaskPage + 1}/${totalPages}`,
             cls: 'pagination-info pagination-info-compact'
         });
@@ -3574,7 +3574,7 @@ export class HighlightsSidebarView extends ItemView {
         } else if (this.viewMode === 'all') {
             // Get all highlights from all files
             allHighlights = [];
-            for (const [filePath, highlights] of this.plugin.highlights) {
+            for (const highlights of this.plugin.highlights.values()) {
                 allHighlights.push(...highlights);
             }
         } else {
@@ -3737,7 +3737,7 @@ export class HighlightsSidebarView extends ItemView {
         });
         
         // Page info
-        const pageInfo = paginationContainer.createSpan({
+        paginationContainer.createSpan({
             text: `${this.currentPage + 1}/${totalPages}`,
             cls: 'pagination-info pagination-info-compact'
         });
@@ -3925,7 +3925,6 @@ export class HighlightsSidebarView extends ItemView {
         this.listContainerEl.empty();
         
         let currentHighlightIndex = 0;
-        let renderedHighlightCount = 0;
         
         // Iterate through groups and render highlights until we reach our limit
         for (const [groupName, groupHighlights] of this.totalGroups) {
@@ -3951,7 +3950,6 @@ export class HighlightsSidebarView extends ItemView {
                     // Render the subset of highlights for this page (already sorted)
                     groupHighlightsToShow.forEach(highlight => {
                         this.createHighlightItem(itemsContainer, highlight, searchTerm, true);
-                        renderedHighlightCount++;
                     });
 
                     this.makeGroupCollapsible(groupHeader, [itemsContainer], groupName);
@@ -4120,7 +4118,7 @@ export class HighlightsSidebarView extends ItemView {
         });
         
         // Page info
-        const pageInfo = paginationContainer.createSpan({
+        paginationContainer.createSpan({
             text: `${this.currentGroupPage + 1}/${totalPages}`,
             cls: 'pagination-info pagination-info-compact'
         });
@@ -4267,7 +4265,6 @@ export class HighlightsSidebarView extends ItemView {
     private showActionsMenu(event: MouseEvent) {
         if (this.selectedHighlightIds.size === 0) return;
 
-        const selectedCount = this.selectedHighlightIds.size;
         const allCollections = this.plugin.collectionsManager.getAllCollections();
 
         // Create menu items
@@ -5041,7 +5038,7 @@ export class HighlightsSidebarView extends ItemView {
                                         });
                                     }
                                 }
-                            } catch (e) {
+                            } catch {
                                 // Skip invalid custom patterns
                             }
                         }
@@ -5095,7 +5092,6 @@ export class HighlightsSidebarView extends ItemView {
         });
         
         // Update selection state
-        const prevId = this.plugin.selectedHighlightId;
         this.plugin.selectedHighlightId = highlight.id;
         
         const newEl = this.containerEl.querySelector(`[data-highlight-id="${highlight.id}"]`) as HTMLElement;
@@ -5136,7 +5132,7 @@ export class HighlightsSidebarView extends ItemView {
         if (!targetView) {
             const fileToOpen = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
             if (fileToOpen instanceof TFile) {
-                const openResult = await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, event ? Keymap.isModEvent(event) : false);
+                await this.plugin.app.workspace.openLinkText(highlight.filePath, highlight.filePath, event ? Keymap.isModEvent(event) : false);
                 
                 // Wait for the file to be properly opened and active
                 return new Promise<void>((resolve) => {
@@ -6387,7 +6383,7 @@ export class HighlightsSidebarView extends ItemView {
             });
         } else if (this.viewMode === 'all') {
             // Get tags from all highlights across all files
-            for (const [filePath, highlights] of this.plugin.highlights) {
+            for (const highlights of this.plugin.highlights.values()) {
                 highlights.forEach(highlight => {
                     const tags = this.extractTagsFromHighlight(highlight);
                     tags.forEach(tag => allTags.add(tag));
@@ -7445,7 +7441,7 @@ export class HighlightsSidebarView extends ItemView {
             await navigator.clipboard.writeText(text);
             new Notice(t('notices.copiedHighlights', { count }));
             return;
-        } catch (err) {
+        } catch {
             // Fall through to the textarea approach below.
         }
 
@@ -7458,7 +7454,7 @@ export class HighlightsSidebarView extends ItemView {
         try {
             document.execCommand('copy');
             new Notice(t('notices.copiedHighlights', { count }));
-        } catch (e) {
+        } catch {
             new Notice(t('notices.copyFailed'));
         }
         document.body.removeChild(textArea);
@@ -7534,7 +7530,7 @@ export class HighlightsSidebarView extends ItemView {
                 middle: middleLine,
                 bottom: Math.max(topLine, bottomLine),
             };
-        } catch (e) {
+        } catch {
             return null;
         }
     }
@@ -7781,7 +7777,7 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private getHighlightById(highlightId: string): Highlight | null {
-        for (const [filePath, highlights] of this.plugin.highlights) {
+        for (const highlights of this.plugin.highlights.values()) {
             const highlight = highlights.find(h => h.id === highlightId);
             if (highlight) {
                 return highlight;

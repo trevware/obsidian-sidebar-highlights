@@ -1,5 +1,5 @@
 // main.ts
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, debounce } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
@@ -775,7 +775,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             const backupsDir = this.getBackupsDir();
             try {
                 await this.app.vault.adapter.mkdir(backupsDir);
-            } catch (e) {
+            } catch {
                 // Folder might already exist, that's ok
             }
 
@@ -1254,7 +1254,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     countOrphanedReferences(): number {
         // Build a set of all valid highlight IDs that exist in markdown files
         const validHighlightIds = new Set<string>();
-        for (const [filePath, highlights] of this.highlights) {
+        for (const highlights of this.highlights.values()) {
             for (const highlight of highlights) {
                 validHighlightIds.add(highlight.id);
             }
@@ -1263,7 +1263,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         let orphanedCount = 0;
 
         // Count orphaned references in each collection
-        for (const [collectionId, collection] of this.collections) {
+        for (const collection of this.collections.values()) {
             for (const id of collection.highlightIds) {
                 const isValid = validHighlightIds.has(id);
                 if (!isValid) {
@@ -1278,7 +1278,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     cleanupOrphanedReferences(): number {
         // Build a set of all valid highlight IDs that exist in markdown files
         const validHighlightIds = new Set<string>();
-        for (const [filePath, highlights] of this.highlights) {
+        for (const highlights of this.highlights.values()) {
             for (const highlight of highlights) {
                 validHighlightIds.add(highlight.id);
             }
@@ -1367,7 +1367,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Ensure backups folder exists
             try {
                 await this.app.vault.adapter.mkdir(backupsDir);
-            } catch (e) {
+            } catch {
                 // Folder might already exist, that's ok
             }
 
@@ -1385,7 +1385,6 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
 
             // Move each backup file to the backups folder
-            let migratedCount = 0;
             for (const oldPath of backupFiles) {
                 try {
                     const filename = oldPath.split('/').pop();
@@ -1400,7 +1399,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Delete old file
                     await this.app.vault.adapter.remove(oldPath);
 
-                    migratedCount++;
                 } catch (error) {
                     console.error(`Failed to migrate backup file ${oldPath}:`, error);
                 }
@@ -2022,7 +2020,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (oldHighlightsJSON !== newHighlightsJSON) {
                     hasChanges = true;
                 }
-            } catch (error) {
+            } catch {
                 // Continue on error
             }
         }
@@ -2033,7 +2031,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             const originalLength = collection.highlightIds.length;
             collection.highlightIds = collection.highlightIds.filter(highlightId => {
                 // Check if this highlight still exists in any file
-                for (const [filePath, fileHighlights] of this.highlights) {
+                for (const fileHighlights of this.highlights.values()) {
                     if (fileHighlights.some(h => h.id === highlightId)) {
                         return true; // Keep this highlight ID
                     }
@@ -2273,7 +2271,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                 const hasBlankLine = /\n\s*\n/.test(afterFootnotes);
                 if (/^\s*$/.test(afterFootnotes) && !hasBlankLine) {
                     // Check if this is a native comment (%% %%)
-                    const isNativeComment = next.match[0].startsWith('%%') && next.match[0].endsWith('%%');
 
                     // Apply adjacency logic for both native and HTML comments based on the setting
                     const shouldApplyAdjacency = this.settings.detectAdjacentNativeComments;
@@ -2542,7 +2539,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 await this.saveSettings();
                 this.refreshSidebar();
             }
-        } catch (error) {
+        } catch {
             // Continue on error
         }
     }
@@ -2579,16 +2576,10 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.highlights.delete(file.path);
             
             // Clean up collection references to these specific highlights
-            let collectionsModified = false;
             for (const collection of this.collections.values()) {
-                const originalLength = collection.highlightIds.length;
                 collection.highlightIds = collection.highlightIds.filter(
                     highlightId => !deletedHighlightIds.has(highlightId)
                 );
-                
-                if (collection.highlightIds.length !== originalLength) {
-                    collectionsModified = true;
-                }
             }
             
             this.saveSettings();
@@ -2740,7 +2731,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     return true;
                 }
             }
-        } catch (error) {
+        } catch {
             // If we can't read the file, don't exclude it
         }
         
@@ -2754,7 +2745,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     async fixDuplicateTimestamps(): Promise<void> {
         let hasChanges = false;
         
-        for (const [filePath, highlights] of this.highlights) {
+        for (const highlights of this.highlights.values()) {
             const timestampCounts = new Map<number, Highlight[]>();
             
             // Group highlights by timestamp to find duplicates
@@ -3032,9 +3023,8 @@ class CustomPatternModal extends Modal {
             }
 
             // Test if pattern is valid regex
-            let regex: RegExp;
             try {
-                regex = new RegExp(pattern, 'g');
+                new RegExp(pattern, 'g');
             } catch (e) {
                 new Notice(t('modals.customPattern.invalidRegex') + ': ' + e.message);
                 return;
@@ -3755,7 +3745,7 @@ class HighlightSettingTab extends PluginSettingTab {
         customPatternsDesc.append(code2);
         customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forWikilinks'));
 
-        const customPatternsSetting = new Setting(containerEl)
+        new Setting(containerEl)
             .setDesc(customPatternsDesc);
 
         // Container for custom pattern list
@@ -3765,7 +3755,7 @@ class HighlightSettingTab extends PluginSettingTab {
             patternsContainer.empty();
 
             this.plugin.settings.customPatterns.forEach((pattern, index) => {
-                const patternSetting = new Setting(patternsContainer)
+                new Setting(patternsContainer)
                     .setName(pattern.name || `Pattern ${index + 1}`)
                     .setDesc(`Type: ${pattern.type} | Pattern: ${pattern.pattern}`)
                     .addButton(button => button
@@ -3882,7 +3872,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.refreshSidebar();
                 }));
 
-        const currentNoteSectionSetting = new Setting(containerEl)
+        new Setting(containerEl)
             .setName(t('settings.tasks.showCurrentNoteSection.name'))
             .setDesc(t('settings.tasks.showCurrentNoteSection.desc'))
             .addToggle(toggle => toggle
@@ -4310,7 +4300,7 @@ class CollectionsManager {
         const highlights: Highlight[] = [];
         for (const highlightId of collection.highlightIds) {
             // Find the highlight across all files
-            for (const [filePath, fileHighlights] of this.plugin.highlights) {
+            for (const fileHighlights of this.plugin.highlights.values()) {
                 const highlight = fileHighlights.find(h => h.id === highlightId);
                 if (highlight) {
                     highlights.push(highlight);

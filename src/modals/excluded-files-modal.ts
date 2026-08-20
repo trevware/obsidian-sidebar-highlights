@@ -85,8 +85,8 @@ export class ExcludedFilesModal extends Modal {
         const modeDropdown = inputContainer.createEl('select');
         modeDropdown.style.minWidth = '100px';
 
-        const excludeOption = modeDropdown.createEl('option', { value: 'exclude', text: t('modals.excludedFiles.exclude') });
-        const includeOption = modeDropdown.createEl('option', { value: 'include', text: t('modals.excludedFiles.include') });
+        modeDropdown.createEl('option', { value: 'exclude', text: t('modals.excludedFiles.exclude') });
+        modeDropdown.createEl('option', { value: 'include', text: t('modals.excludedFiles.include') });
 
         modeDropdown.value = this.fileFilterMode;
 

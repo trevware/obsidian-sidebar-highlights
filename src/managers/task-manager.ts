@@ -124,7 +124,6 @@ export class TaskManager {
         // Create regex pattern to find dates in the configured format
         // This is a simplified approach - we'll look for patterns that could be dates
         // Based on the format YYYY-MM-DD, we look for 4 digits, dash, 2 digits, dash, 2 digits
-        const formatParts = dateFormat.split(/[-/\s.]/);
 
         // Build a regex based on the format
         // For YYYY-MM-DD: match 4 digits-2 digits-2 digits

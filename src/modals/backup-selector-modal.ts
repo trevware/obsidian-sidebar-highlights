@@ -1,4 +1,4 @@
-import { Modal, App, Notice } from 'obsidian';
+import { Modal, App } from 'obsidian';
 import { t } from '../i18n';
 
 export class BackupSelectorModal extends Modal {
