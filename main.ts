@@ -1345,7 +1345,6 @@ export default class HighlightCommentsPlugin extends Plugin {
                 for (const backup of toDelete) {
                     try {
                         await this.app.vault.adapter.remove(backup.path);
-                        console.log(`Deleted old backup: ${backup.filename}`);
                     } catch (e) {
                         console.error(`Failed to delete backup ${backup.filename}:`, e);
                     }
@@ -1459,7 +1458,6 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
 
             if (recoveredCount > 0) {
-                console.log(`Recovered ${recoveredCount} backup(s) from ${LEGACY_BACKUPS_DIR}`);
                 new Notice(`Recovered ${recoveredCount} Sidebar Highlights backup(s) from your previous config folder.`);
             }
         } catch (error) {
@@ -1956,7 +1954,6 @@ export default class HighlightCommentsPlugin extends Plugin {
     async scanAllFilesForHighlights() {
         // Prevent concurrent scans - if already scanning, skip this call
         if (this.isScanningFiles) {
-            console.log('Scan already in progress, skipping concurrent scan request');
             return;
         }
 
@@ -2373,7 +2370,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (adjacentComments.has(index)) {
                     const adjacentComment = adjacentComments.get(index)!;
                     allFootnotes.push({
-                        type: 'inline' as 'inline',
+                        type: 'inline' as const,
                         index: adjacentComment.position, // Use the actual position for correct sorting
                         content: adjacentComment.text
                     });
@@ -2605,7 +2602,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     generateId(): string {
-        return Math.random().toString(36).substr(2, 9);
+        return Math.random().toString(36).slice(2, 11);
     }
 
     /**
@@ -2883,7 +2880,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Match markdown links: [text](url), allowing single-level nested
         // brackets in the label so [![alt](img)](dest) is captured whole.
-        const linkRegex = /\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)]+)\)/g;
+        const linkRegex = /\[(?:[^[\]]|\[[^\]]*\])*\]\(([^)]+)\)/g;
         let match;
 
         while ((match = linkRegex.exec(content)) !== null) {
@@ -3741,7 +3738,7 @@ class HighlightSettingTab extends PluginSettingTab {
         headingBadge.style.marginLeft = '6px';
         customPatternsHeadingName.appendChild(headingBadge);
 
-        new Setting(containerEl).setHeading().setName(customPatternsHeadingName as any);
+        new Setting(containerEl).setHeading().setName(customPatternsHeadingName);
 
         // Custom patterns description
         const customPatternsDesc = document.createDocumentFragment();

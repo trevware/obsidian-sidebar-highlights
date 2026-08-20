@@ -1604,12 +1604,13 @@ export class HighlightsSidebarView extends ItemView {
                         case 'flagged':
                             return task.flagged;
 
-                        case 'upcoming':
+                        case 'upcoming': {
                             if (!task.date) return false;
                             const taskDate = moment(task.date, 'YYYY-MM-DD');
                             const startOfWeek = moment().startOf('week'); // Sunday
                             const endOfWeek = moment().endOf('week'); // Saturday
                             return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
+                        }
 
                         case 'completed':
                             return task.completed;
@@ -1617,15 +1618,17 @@ export class HighlightsSidebarView extends ItemView {
                         case 'incomplete':
                             return !task.completed;
 
-                        case 'due-today':
+                        case 'due-today': {
                             if (!task.date) return false;
                             const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
                             return dueTodayDate.isSame(today, 'day');
+                        }
 
-                        case 'overdue':
+                        case 'overdue': {
                             if (!task.date) return false;
                             const overdueDate = moment(task.date, 'YYYY-MM-DD');
                             return overdueDate.isBefore(today) && !task.completed;
+                        }
 
                         case 'no-date':
                             return !task.date;
@@ -1856,12 +1859,13 @@ export class HighlightsSidebarView extends ItemView {
                             case 'flagged':
                                 return task.flagged;
 
-                            case 'upcoming':
+                            case 'upcoming': {
                                 if (!task.date) return false;
                                 const taskDate = moment(task.date, 'YYYY-MM-DD');
                                 const startOfWeek = moment().startOf('week'); // Sunday
                                 const endOfWeek = moment().endOf('week'); // Saturday
                                 return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
+                            }
 
                             case 'completed':
                                 return task.completed;
@@ -1869,15 +1873,17 @@ export class HighlightsSidebarView extends ItemView {
                             case 'incomplete':
                                 return !task.completed;
 
-                            case 'due-today':
+                            case 'due-today': {
                                 if (!task.date) return false;
                                 const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
                                 return dueTodayDate.isSame(today, 'day');
+                            }
 
-                            case 'overdue':
+                            case 'overdue': {
                                 if (!task.date) return false;
                                 const overdueDate = moment(task.date, 'YYYY-MM-DD');
                                 return overdueDate.isBefore(today) && !task.completed;
+                            }
 
                             case 'no-date':
                                 return !task.date;
@@ -5150,9 +5156,10 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         if (targetView) {
+            const view = targetView;
             // Use requestAnimationFrame for smoother focus
             requestAnimationFrame(() => {
-                this.performHighlightFocus(targetView!, highlight);
+                this.performHighlightFocus(view, highlight);
             });
         }
     }
@@ -7591,9 +7598,9 @@ export class HighlightsSidebarView extends ItemView {
         // If we're already on this highlight, nothing to do.
         if (this.followScrollSelectedId === target.id) return;
 
-        const targetEl = this.containerEl.querySelector(
+        const targetEl = this.containerEl.querySelector<HTMLElement>(
             `[data-highlight-id="${target.id}"]`
-        ) as HTMLElement | null;
+        );
         if (!targetEl) return;
 
         // Apply selected styling, clearing any previous follow-scroll selection.
@@ -7641,9 +7648,9 @@ export class HighlightsSidebarView extends ItemView {
      */
     private clearFollowScrollSelection() {
         if (!this.followScrollSelectedId) return;
-        const el = this.containerEl.querySelector(
+        const el = this.containerEl.querySelector<HTMLElement>(
             `[data-highlight-id="${this.followScrollSelectedId}"]`
-        ) as HTMLElement | null;
+        );
         if (el) {
             el.classList.remove('selected', 'highlight-selected');
             el.style.removeProperty('border-left-color');

@@ -417,7 +417,7 @@ export class HighlightRenderer {
         let node;
         const nodesToProcess: Text[] = [];
         
-        while (node = walker.nextNode()) {
+        while ((node = walker.nextNode()) !== null) {
             if (node.nodeValue && node.nodeValue.trim() !== '' && 
                 !(node.parentElement && node.parentElement.classList.contains('search-term-highlight'))) {
                 nodesToProcess.push(node as Text);
@@ -445,9 +445,10 @@ export class HighlightRenderer {
                 newNodes.push(document.createTextNode(text.substring(lastIndex)));
             }
             
-            if (newNodes.length > 0 && textNode.parentNode) {
-                newNodes.forEach(newNode => textNode.parentNode!.insertBefore(newNode, textNode));
-                textNode.parentNode!.removeChild(textNode);
+            const parent = textNode.parentNode;
+            if (newNodes.length > 0 && parent) {
+                newNodes.forEach(newNode => parent.insertBefore(newNode, textNode));
+                parent.removeChild(textNode);
             }
         });
     }
@@ -516,7 +517,7 @@ export class HighlightRenderer {
         // First, handle backslash escaping by replacing escaped sequences with placeholders
         const escapeMap = new Map<string, string>();
         let escapeCounter = 0;
-        text = text.replace(/\\([*_~`\[\]\\])/g, (match, char) => {
+        text = text.replace(/\\([*_~`[\]\\])/g, (match, char) => {
             const placeholder = `\u0000ESC${escapeCounter}\u0000`;
             escapeMap.set(placeholder, char);
             escapeCounter++;

@@ -131,7 +131,7 @@ export class SearchParser {
             }
 
             // Handle filters and text
-            const match = query.substr(i).match(/^(-?)([#@])([a-zA-Z0-9_/-]+)/);
+            const match = query.slice(i).match(/^(-?)([#@])([a-zA-Z0-9_/-]+)/);
             if (match) {
                 const exclude = match[1] === '-';
                 const symbol = match[2];
@@ -162,7 +162,7 @@ export class SearchParser {
                 
                 // Check for other special tokens
                 if (query[i] === '(' || query[i] === ')' || query[i] === '"' ||
-                    query.substr(i).match(/^(-?)([#@])([a-zA-Z0-9_-]+)/)) {
+                    query.slice(i).match(/^(-?)([#@])([a-zA-Z0-9_-]+)/)) {
                     break;
                 }
                 

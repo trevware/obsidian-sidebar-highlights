@@ -130,7 +130,7 @@ export class TaskManager {
         // For YYYY-MM-DD: match 4 digits-2 digits-2 digits
         const separatorMatch = dateFormat.match(/[^YMDymd]/);
         const separator = separatorMatch ? separatorMatch[0] : '-';
-        const escapedSeparator = separator.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedSeparator = separator.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 
         let pattern = dateFormat
             .replace(/YYYY/g, '(\\d{4})')

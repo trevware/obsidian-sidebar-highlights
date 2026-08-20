@@ -460,7 +460,7 @@ export class DropdownManager {
         this.activeItems.forEach((item, index) => {
             if (item.checked !== undefined) {
                 const itemKey = item.id || `item-${index}`;
-                if (newStates.hasOwnProperty(itemKey)) {
+                if (Object.prototype.hasOwnProperty.call(newStates, itemKey)) {
                     item.checked = newStates[itemKey];
                     this.updateCheckboxState(itemKey, newStates[itemKey]);
                 }
