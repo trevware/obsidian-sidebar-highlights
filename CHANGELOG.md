@@ -5,6 +5,16 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-08-20
+
+### Fixed
+- **Adding an inline comment to a highlight with a custom color failed** with "Could not insert inline footnote." Since 1.17.0 the footnote manager identified HTML highlights by whether the highlight carried a color, a rule from when only HTML highlights could. A standard highlight that had been given a custom color was therefore routed to the HTML tag parser and never matched. It now keys off the detected highlight type, so colored highlights accept inline comments like any other.
+
+### Changed
+- **Release assets are now cryptographically attested.** Starting with this release, GitHub build provenance attestations are published for main.js, manifest.json, and styles.css, so you can verify the files you install were built from this repository's source.
+- Timers and DOM element creation now go through Obsidian's window-scoped helpers, improving correctness when the sidebar lives in a popout window.
+- A large internal cleanup pass driven by the community plugin review: fire-and-forget saves and refreshes are explicitly marked, UI callbacks that do async work are typed as such, and the remaining loosely typed internals were given real types. No behavior changes are intended from this pass.
+
 ## [1.39.1] - 2026-08-19
 
 ### Fixed

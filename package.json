@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-sidebar-highlights",
-	"version": "1.39.1",
+	"version": "1.40.0",
 	"description": "View and manage text highlights, comments on highlights, native comments, and collections for your highlights.",
 	"main": "main.js",
 	"scripts": {
