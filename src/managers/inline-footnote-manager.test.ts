@@ -544,3 +544,33 @@ describe('InlineFootnoteManager', () => {
         });
     });
 });
+
+describe('Colored markdown highlights', () => {
+    // Regression: isHtmlHighlight used "has a color" as its heuristic, so a plain
+    // ==markdown== highlight carrying a custom color was routed to the HTML tag
+    // parser and insertion failed with "Could not insert inline footnote."
+    test('colored ==highlight== with an existing standard footnote accepts an inline footnote', () => {
+        const content = '==brief bits of writing==[^1]\n\nBody text\n\n[^1]: Hi there!';
+        const editor = new MockEditor(content);
+        const manager = new InlineFootnoteManager();
+        const highlight = {
+            id: '1',
+            text: 'brief bits of writing',
+            startOffset: 0,
+            endOffset: 25,
+            line: 0,
+            tags: [],
+            filePath: 'note.md',
+            isNativeComment: false,
+            type: 'highlight' as const,
+            color: '#ffd700'
+        };
+
+        const result = manager.insertInlineFootnote(editor as any, highlight, '');
+
+        expect(result.success).toBe(true);
+        expect(editor.getValue().split('\n')[0]).toBe('==brief bits of writing==[^1]^[]');
+        // The footnote definition at EOF is untouched
+        expect(editor.getValue().split('\n').slice(-1)[0]).toBe('[^1]: Hi there!');
+    });
+});

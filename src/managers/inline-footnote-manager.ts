@@ -68,8 +68,9 @@ export class InlineFootnoteManager {
     }
 
     private isHtmlHighlight(highlight: Highlight): boolean {
-        // HTML highlights have a color property and are not native comments
-        return !highlight.isNativeComment && !!highlight.color;
+        // Match on the detected type, not on color: a plain ==markdown== highlight can
+        // carry a custom color, and routing it to the HTML parser makes insertion fail.
+        return highlight.type === 'html';
     }
     
     /**
