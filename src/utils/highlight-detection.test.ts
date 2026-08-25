@@ -4,11 +4,12 @@
  */
 
 import { hasDelimiterInsideRanges } from './range-exclusion';
+import { createMarkdownHighlightRegex } from './regex-patterns';
 
 describe('Highlights containing inline code (issue #102)', () => {
-    // Production copies, kept adjacent so drift is obvious:
-    // main.ts markdownHighlightRegex, and the inline-code half of getCodeBlockRanges.
-    const HIGHLIGHT_REGEX = /==((?:[^=]|=[^=])+?)==/g;
+    // The highlight regex is the production one; the inline-code regex is a
+    // copy of the inline-code half of getCodeBlockRanges in main.ts.
+    const HIGHLIGHT_REGEX = createMarkdownHighlightRegex();
     const INLINE_CODE_REGEX = /`([^`\n]+?)`/g;
 
     const codeRanges = (content: string) => {
@@ -62,6 +63,63 @@ describe('Highlights containing inline code (issue #102)', () => {
 
     it('should detect a highlight containing several code spans', () => {
         expect(detect('==compare `a` with `b` now==')).toEqual(['compare `a` with `b` now']);
+    });
+});
+
+describe('Delimiter flanking rules (issue: literal == misread as highlights)', () => {
+    // Obsidian only renders ==text== when the delimiters touch the text on
+    // both sides, like * emphasis. Spaced or stray == must stay literal.
+    const detect = (content: string): string[] => {
+        const regex = createMarkdownHighlightRegex();
+        const found: string[] = [];
+        let match;
+        while ((match = regex.exec(content)) !== null) {
+            found.push(match[1]);
+        }
+        return found;
+    };
+
+    it('should not match when both delimiters have inner spaces', () => {
+        expect(detect('Here is == like this == spaced.')).toEqual([]);
+    });
+
+    it('should not pair two stray == markers across a sentence', () => {
+        expect(detect('foo == bar and later baz == qux end.')).toEqual([]);
+    });
+
+    it('should not pair stray == markers across paragraphs', () => {
+        const note = 'Here is some text with == spaces inside == the markers.\n\n' +
+            'Later on there is another stray == in a different sentence.\n\n' +
+            'This line and everything between the two == above should be normal text.';
+        expect(detect(note)).toEqual([]);
+    });
+
+    it('should not match with a space only after the opening ==', () => {
+        expect(detect('== leading==')).toEqual([]);
+    });
+
+    it('should not match with a space only before the closing ==', () => {
+        expect(detect('==trailing ==')).toEqual([]);
+    });
+
+    it('should not match content starting with a newline', () => {
+        expect(detect('==\ntext==')).toEqual([]);
+    });
+
+    it('should still match a real highlight', () => {
+        expect(detect('A real ==highlight== stays.')).toEqual(['highlight']);
+    });
+
+    it('should still match a highlight with interior spaces', () => {
+        expect(detect('==multi word highlight==')).toEqual(['multi word highlight']);
+    });
+
+    it('should still match a highlight flush against surrounding text', () => {
+        expect(detect('x==y==z contiguous.')).toEqual(['y']);
+    });
+
+    it('should still match a multi-paragraph highlight', () => {
+        expect(detect('Multi ==first line\n\nsecond line== ok.')).toEqual(['first line\n\nsecond line']);
     });
 });
 

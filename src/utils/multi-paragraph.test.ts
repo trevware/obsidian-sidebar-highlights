@@ -1,8 +1,10 @@
+import { createMarkdownHighlightRegex } from './regex-patterns';
+
 describe('Multi-paragraph Highlights', () => {
 
     // Helper to simulate highlight detection
     const detectHighlights = (content: string) => {
-        const markdownHighlightRegex = /==((?:[^=]|=[^=])+?)==/g;
+        const markdownHighlightRegex = createMarkdownHighlightRegex();
         const matches: Array<{ text: string, start: number, end: number }> = [];
         let match;
 
@@ -173,14 +175,15 @@ Second paragraph with x=y.`);
             expect(matches).toHaveLength(0);
         });
 
-        it('should handle highlight with only newlines', () => {
+        it('should not match a highlight containing only newlines', () => {
+            // Delimiters must touch text (flanking rule) — whitespace-only
+            // content means two stray == markers, not a highlight.
             const content = `==
 
 ==`;
 
             const matches = detectHighlights(content);
-            expect(matches).toHaveLength(1);
-            expect(matches[0].text).toBe('\n\n');
+            expect(matches).toHaveLength(0);
         });
 
         it('should stop at double equals', () => {

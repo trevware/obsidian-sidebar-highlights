@@ -13,3 +13,14 @@ export const STANDARD_FOOTNOTE_REGEX = /(\s*\[\^(\w+)\])(?!:)/g;
  * Used to determine if footnotes are in a valid sequence
  */
 export const FOOTNOTE_VALIDATION_REGEX = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/;
+
+/**
+ * Matches markdown highlights (==text==), including across newlines for
+ * multi-paragraph highlights. Content may contain single = but not ==.
+ * The delimiters must touch the text on both sides ((?!\s) / (?<!\s)),
+ * matching Obsidian's rendering rule, so literal == in prose stays literal.
+ * Returned as a factory because the g flag makes the regex stateful.
+ */
+export function createMarkdownHighlightRegex(): RegExp {
+    return /==(?!\s)((?:[^=]|=[^=])+?)(?<!\s)==/g;
+}

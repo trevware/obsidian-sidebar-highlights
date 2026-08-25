@@ -402,7 +402,7 @@ export class TaskRenderer {
             { regex: /\*\*(.*?)\*\*/g, type: 'strong' },
             { regex: /__(.*?)__/g, type: 'strong' },
             { regex: /~~(.*?)~~/g, type: 'del' },
-            { regex: /==(.*?)==/g, type: 'highlight' },
+            { regex: /==(?!\s)(.*?)(?<!\s)==/g, type: 'highlight' },
             { regex: /`([^`]+?)`/g, type: 'code' },
             { regex: /\[\[([^\]]+?)\]\]/g, type: 'wikilink' },
             { regex: /\[([^\]]+)\]\(([^)]+)\)/g, type: 'link' }

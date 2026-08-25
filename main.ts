@@ -4,7 +4,7 @@ import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 import { BackupSelectorModal } from './src/modals/backup-selector-modal';
-import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from './src/utils/regex-patterns';
+import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX, createMarkdownHighlightRegex } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
 import { SortMode } from './src/utils/sort-order';
@@ -2077,7 +2077,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
         // Support multi-paragraph highlights by allowing newlines
-        const markdownHighlightRegex = /==((?:[^=]|=[^=])+?)==/g;
+        const markdownHighlightRegex = createMarkdownHighlightRegex();
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
 
         const newHighlights: Highlight[] = [];

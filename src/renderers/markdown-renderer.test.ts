@@ -484,3 +484,31 @@ describe('Markdown Renderer', () => {
         });
     });
 });
+
+describe('Task text highlight pattern (task-renderer.ts)', () => {
+    // Replica of the highlight entry in task-renderer's inline pattern table —
+    // kept in sync by hand (task-renderer.ts cannot be imported in tests).
+    const highlightRegex = () => /==(?!\s)(.*?)(?<!\s)==/g;
+
+    const matches = (text: string): string[] => {
+        const found: string[] = [];
+        const regex = highlightRegex();
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+            found.push(match[1]);
+        }
+        return found;
+    };
+
+    it('should render a real highlight in task text', () => {
+        expect(matches('Do the ==important== thing')).toEqual(['important']);
+    });
+
+    it('should leave spaced literal == in task text alone', () => {
+        expect(matches('Check a == b comparison == later')).toEqual([]);
+    });
+
+    it('should not pair stray == markers in task text', () => {
+        expect(matches('one == here and two == there')).toEqual([]);
+    });
+});
