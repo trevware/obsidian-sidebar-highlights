@@ -389,7 +389,7 @@ export class TaskRenderer {
         // Handle backslash escaping
         const escapeMap = new Map<string, string>();
         let escapeCounter = 0;
-        text = text.replace(/\\([*_~`[\]\\])/g, (match, char) => {
+        text = text.replace(/\\([*_~`[\]\\=])/g, (match, char) => {
             const placeholder = `\u0000ESC${escapeCounter}\u0000`;
             escapeMap.set(placeholder, char);
             escapeCounter++;

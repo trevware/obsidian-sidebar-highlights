@@ -19,8 +19,24 @@ export const FOOTNOTE_VALIDATION_REGEX = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\
  * multi-paragraph highlights. Content may contain single = but not ==.
  * The delimiters must touch the text on both sides ((?!\s) / (?<!\s)),
  * matching Obsidian's rendering rule, so literal == in prose stays literal.
+ * A backslash before either delimiter ((?<!\\) / (?<![\s\\])) escapes it,
+ * as it does in Obsidian's renderer.
  * Returned as a factory because the g flag makes the regex stateful.
  */
 export function createMarkdownHighlightRegex(): RegExp {
-    return /==(?!\s)((?:[^=]|=[^=])+?)(?<!\s)==/g;
+    return /(?<!\\)==(?!\s)((?:[^=]|=[^=])+?)(?<![\s\\])==/g;
+}
+
+/**
+ * Matches inline code spans on a single line, for building excluded ranges.
+ * Run-aware per CommonMark: an opening run of N backticks is closed by the
+ * next run of exactly N (the lookarounds and the non-backtick content edges
+ * keep both runs exact). Pairing single ticks instead shifted every range on
+ * a line containing ``…`` or a stray backtick, letting == inside code
+ * escape the exclusion as a phantom highlight.
+ * Group 1 is the backtick run (backreferenced as \1); content is group 2.
+ * Returned as a factory because the g flag makes the regex stateful.
+ */
+export function createInlineCodeRegex(): RegExp {
+    return /(?<!`)(`+)([^`\n](?:[^\n]*?[^`\n])??)\1(?!`)/g;
 }

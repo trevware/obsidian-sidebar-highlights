@@ -4,13 +4,12 @@
  */
 
 import { hasDelimiterInsideRanges } from './range-exclusion';
-import { createMarkdownHighlightRegex } from './regex-patterns';
+import { createMarkdownHighlightRegex, createInlineCodeRegex } from './regex-patterns';
 
 describe('Highlights containing inline code (issue #102)', () => {
-    // The highlight regex is the production one; the inline-code regex is a
-    // copy of the inline-code half of getCodeBlockRanges in main.ts.
+    // Both regexes are the production ones from regex-patterns.ts.
     const HIGHLIGHT_REGEX = createMarkdownHighlightRegex();
-    const INLINE_CODE_REGEX = /`([^`\n]+?)`/g;
+    const INLINE_CODE_REGEX = createInlineCodeRegex();
 
     const codeRanges = (content: string) => {
         const ranges: Array<{ start: number; end: number }> = [];
@@ -63,6 +62,53 @@ describe('Highlights containing inline code (issue #102)', () => {
 
     it('should detect a highlight containing several code spans', () => {
         expect(detect('==compare `a` with `b` now==')).toEqual(['compare `a` with `b` now']);
+    });
+
+    describe('backtick runs (issue: phantom highlight from == inside ``…`` spans)', () => {
+        // CommonMark: a run of N backticks is closed by the next run of exactly
+        // N. Pairing single ticks shifts every range on the line and lets the
+        // == inside code escape the exclusion.
+        const codeSpans = (content: string): string[] => {
+            const regex = createInlineCodeRegex();
+            const found: string[] = [];
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                found.push(match[0]);
+            }
+            return found;
+        };
+
+        it('should not produce a phantom from == inside double-backtick spans', () => {
+            expect(detect("Type ``==x==`` then use `grep '==y=='` on it.")).toEqual([]);
+        });
+
+        it('should still exclude == in code with single-tick spans (control)', () => {
+            expect(detect("Type `==x==` then use `grep '==y=='` on it.")).toEqual([]);
+        });
+
+        it('should keep a real highlight next to a tick-in-code span', () => {
+            expect(detect('Write `` `code` `` and ==real== stays.')).toEqual(['real']);
+        });
+
+        it('should pair a double-backtick run as one span', () => {
+            expect(codeSpans('``x``')).toEqual(['``x``']);
+        });
+
+        it('should pair sibling single-tick spans separately', () => {
+            expect(codeSpans('a `b` c `d` e')).toEqual(['`b`', '`d`']);
+        });
+
+        it('should not pair runs of different lengths', () => {
+            expect(codeSpans('a``b`')).toEqual([]);
+        });
+
+        it('should pair a double run past an unmatched single tick', () => {
+            expect(codeSpans('`edge`` case``')).toEqual(['`` case``']);
+        });
+
+        it('should span a backtick shown inside double-tick code', () => {
+            expect(codeSpans('`` `code` ``')).toEqual(['`` `code` ``']);
+        });
     });
 });
 
@@ -120,6 +166,18 @@ describe('Delimiter flanking rules (issue: literal == misread as highlights)', (
 
     it('should still match a multi-paragraph highlight', () => {
         expect(detect('Multi ==first line\n\nsecond line== ok.')).toEqual(['first line\n\nsecond line']);
+    });
+
+    it('should honor an escaped opening delimiter', () => {
+        expect(detect('\\==not a highlight\\==')).toEqual([]);
+    });
+
+    it('should honor an escaped closing delimiter', () => {
+        expect(detect('==x\\==')).toEqual([]);
+    });
+
+    it('should keep a real highlight next to an escaped one', () => {
+        expect(detect('==real== and \\==literal\\==')).toEqual(['real']);
     });
 });
 
@@ -422,16 +480,17 @@ Text after`;
         });
 
         it('should detect inline code pattern', () => {
-            const inlineCodeRegex = /`([^`\n]+?)`/g;
+            const inlineCodeRegex = createInlineCodeRegex();
             const text = 'some `inline code` here';
             const match = inlineCodeRegex.exec(text);
 
             expect(match).not.toBeNull();
-            expect(match![1]).toBe('inline code');
+            // Group 1 is the backtick run (backreferenced); content is group 2.
+            expect(match![2]).toBe('inline code');
         });
 
         it('should not match code across newlines', () => {
-            const inlineCodeRegex = /`([^`\n]+?)`/g;
+            const inlineCodeRegex = createInlineCodeRegex();
             const text = '`code\nmore`';
             const match = inlineCodeRegex.exec(text);
 

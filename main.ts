@@ -4,7 +4,7 @@ import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
 import { BackupSelectorModal } from './src/modals/backup-selector-modal';
-import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX, createMarkdownHighlightRegex } from './src/utils/regex-patterns';
+import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX, createMarkdownHighlightRegex, createInlineCodeRegex } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
 import { SortMode } from './src/utils/sort-order';
@@ -2865,7 +2865,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
 
         // Find inline code blocks (`code`)
-        const inlineCodeRegex = /`([^`\n]+?)`/g;
+        const inlineCodeRegex = createInlineCodeRegex();
         let inlineMatch;
         while ((inlineMatch = inlineCodeRegex.exec(content)) !== null) {
             ranges.push({

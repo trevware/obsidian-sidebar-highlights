@@ -512,3 +512,41 @@ describe('Task text highlight pattern (task-renderer.ts)', () => {
         expect(matches('one == here and two == there')).toEqual([]);
     });
 });
+
+describe('Task text escape handling (task-renderer.ts)', () => {
+    // Replica of task-renderer's escape pass — kept in sync by hand
+    // (task-renderer.ts cannot be imported in tests).
+    const escapeRegex = /\\([*_~`[\]\\=])/g;
+    const highlightRegex = () => /==(?!\s)(.*?)(?<!\s)==/g;
+
+    const stripEscapes = (text: string) => {
+        const map = new Map<string, string>();
+        let n = 0;
+        const stripped = text.replace(escapeRegex, (_m, char: string) => {
+            const placeholder = ` ESC${n} `;
+            map.set(placeholder, char);
+            n++;
+            return placeholder;
+        });
+        return { stripped, map };
+    };
+
+    it('should not form a highlight from escaped == in task text', () => {
+        const { stripped } = stripEscapes('do \\==not this\\== thing');
+        expect(highlightRegex().exec(stripped)).toBeNull();
+    });
+
+    it('should restore escaped == as literal text', () => {
+        const { stripped, map } = stripEscapes('\\==x\\==');
+        let restored = stripped;
+        for (const [placeholder, char] of map) {
+            restored = restored.replace(placeholder, char);
+        }
+        expect(restored).toBe('==x==');
+    });
+
+    it('should leave a real highlight in task text alone', () => {
+        const { stripped } = stripEscapes('do ==this== thing');
+        expect(highlightRegex().exec(stripped)![1]).toBe('this');
+    });
+});
