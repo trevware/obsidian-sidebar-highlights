@@ -5,6 +5,12 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.2] - 2026-08-25
+
+### Fixed
+- **Phantom highlights from `==` inside inline code containing backtick runs.** The inline-code exclusion paired backticks one at a time, so a double-backtick span (the standard way to show code containing a backtick) or any stray backtick shifted every computed code range on the line — `==` markers inside code then escaped the exclusion and paired into phantom highlights spanning prose. Inline code is now matched the way Obsidian renders it: a run of N backticks closes at the next run of exactly N.
+- **Escaped highlight delimiters are honored.** `\==not a highlight\==` now stays literal, matching Obsidian's rendering. Task text gets the same treatment, where an escaped `=` is also now displayed without its backslash, as Obsidian displays it.
+
 ## [1.40.1] - 2026-08-25
 
 ### Fixed
