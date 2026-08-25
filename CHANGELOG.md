@@ -5,6 +5,11 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.1] - 2026-08-25
+
+### Fixed
+- **Literal `==` in notes was misread as highlights.** The detector accepted `== spaced ==` as a highlight, and even paired two stray `==` markers from different parts of a note into one highlight spanning everything between them — none of which Obsidian actually renders. Highlight delimiters now must touch the text on both sides, the same flanking rule Obsidian applies to `==`, so literal `==` stays literal. Real highlights are unaffected, including multi-paragraph highlights. `%%` comments are intentionally unchanged, since Obsidian renders `%% spaced %%` comments just fine. Note: anything the old rule wrongly detected disappears from the sidebar on the next scan, along with any comments or collection membership attached to it.
+
 ## [1.40.0] - 2026-08-20
 
 ### Fixed
