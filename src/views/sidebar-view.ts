@@ -1113,6 +1113,10 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     async onClose() {
+        // Stop the plugin tracking this panel, so a closed view no longer
+        // receives updates and the panels still open keep receiving theirs.
+        this.plugin.releaseSidebarView(this);
+
         // Clean up dropdown manager
         this.dropdownManager.cleanup();
 

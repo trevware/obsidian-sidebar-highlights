@@ -261,7 +261,13 @@ export default class HighlightCommentsPlugin extends Plugin {
     collections: Map<string, Collection> = new Map();
     collectionsManager: CollectionsManager;
     inlineFootnoteManager: InlineFootnoteManager;
-    private sidebarView: HighlightsSidebarView | null = null;
+    // Every sidebar view currently alive. Obsidian runs the registerView
+    // factory for each one it builds, and it can build more than one: a second
+    // pane, a pop-out window, or another plugin hosting the view in a detached
+    // leaf. Holding a single reference meant the newest instance replaced the
+    // previous one, so updates went to a panel the user was not looking at, and
+    // closing that instance left the reference pointing at a dead view.
+    private sidebarViews: Set<HighlightsSidebarView> = new Set();
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
     public selectedHighlightId: string | null = null;
@@ -305,8 +311,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.registerView(
             VIEW_TYPE_HIGHLIGHTS,
             (leaf) => {
-                this.sidebarView = new HighlightsSidebarView(leaf, this);
-                return this.sidebarView;
+                const view = new HighlightsSidebarView(leaf, this);
+                this.sidebarViews.add(view);
+                return view;
             }
         );
 
@@ -352,9 +359,8 @@ export default class HighlightCommentsPlugin extends Plugin {
                 } else {
                     // Clear selection but preserve highlights when no file is active
                     this.selectedHighlightId = null;
-                    if (this.sidebarView) {
-                        this.sidebarView.updateContent(); // Content update instead of full refresh
-                    }
+                    // Content update instead of full refresh
+                    this.forEachSidebarView(view => view.updateContent());
                 }
             })
         );
@@ -420,6 +426,10 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.ribbonIconEl.remove();
             this.ribbonIconEl = null;
         }
+
+        // Drop the tracked views. Obsidian detaches the leaves it owns, but a view
+        // another plugin hosts on a detached leaf never gets that onClose.
+        this.sidebarViews.clear();
 
         // Cleanup is mostly automatic due to using registerEvent() and addCommand()
         // The sidebar view's onClose() method will handle its own cleanup
@@ -526,7 +536,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         document.body.style.setProperty('--sh-task-font-weight', `${this.settings.taskFontWeight}`);
     }
 
-    async activateView() {
+    // Returns the leaf it revealed, so a caller that must act on exactly one
+    // panel acts on the one the user was just shown.
+    async activateView(): Promise<WorkspaceLeaf | null> {
         const { workspace } = this.app;
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_HIGHLIGHTS);
@@ -540,8 +552,11 @@ export default class HighlightCommentsPlugin extends Plugin {
             await leaf?.setViewState({ type: VIEW_TYPE_HIGHLIGHTS, active: true });
         }
         if (leaf) {
-            void workspace.revealLeaf(leaf);
+            // Awaited: revealLeaf loads a deferred view, so leaf.view is the real
+            // panel by the time we return it rather than a deferred placeholder.
+            await workspace.revealLeaf(leaf);
         }
+        return leaf;
     }
 
     async toggleView() {
@@ -596,10 +611,20 @@ export default class HighlightCommentsPlugin extends Plugin {
         new Notice('Highlight created');
     }
 
-    refreshSidebar() {
-        if (this.sidebarView) {
-            this.sidebarView.refresh();
+    // Run fn against every open panel, so they all stay in step.
+    private forEachSidebarView(fn: (view: HighlightsSidebarView) => void): void {
+        for (const view of [...this.sidebarViews]) {
+            fn(view);
         }
+    }
+
+    // Called by a view as it closes, so a closed panel stops being tracked.
+    releaseSidebarView(view: HighlightsSidebarView): void {
+        this.sidebarViews.delete(view);
+    }
+
+    refreshSidebar() {
+        this.forEachSidebarView(view => view.refresh());
     }
 
     // Display Mode methods
@@ -646,9 +671,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         await this.saveSettings();
 
         // Reset view mode to first visible tab if current tab is hidden
-        if (this.sidebarView) {
-            this.sidebarView.resetToFirstVisibleTab();
-        }
+        this.forEachSidebarView(view => view.resetToFirstVisibleTab());
 
         this.refreshSidebar();
     }
@@ -1685,12 +1708,13 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     // Navigate to a specific collection in the sidebar
     private async goToCollection(collectionId: string) {
-        // First, make sure the sidebar is open
-        await this.activateView();
-        
-        // Then navigate to the collection
-        if (this.sidebarView) {
-            this.sidebarView.navigateToCollection(collectionId);
+        // Navigate the panel that was actually revealed. Picking a view out of
+        // the tracked set instead could switch a panel the user is not looking
+        // at, or one another plugin hosts outside the workspace.
+        const leaf = await this.activateView();
+        const view = leaf?.view;
+        if (view instanceof HighlightsSidebarView) {
+            view.navigateToCollection(collectionId);
         }
     }
 
@@ -1738,9 +1762,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             void this.saveSettings(); 
             
             // Update individual item instead of full refresh to preserve scroll position
-            if (this.sidebarView) {
-                this.sidebarView.updateItem(highlightId);
-            }
+            this.forEachSidebarView(view => view.updateItem(highlightId));
         }
     }
 
@@ -1764,9 +1786,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (!this.shouldProcessFile(file)) {
             // Clear any existing highlights for this file and update content
             this.highlights.delete(file.path);
-            if (this.sidebarView) {
-                this.sidebarView.updateContent(); // Content update instead of full refresh
-            }
+            // Content update instead of full refresh
+            this.forEachSidebarView(view => view.updateContent());
             return;
         }
         
@@ -1774,9 +1795,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         if (await this.isExcalidrawFile(file)) {
             // Clear any existing highlights for this file and update content
             this.highlights.delete(file.path);
-            if (this.sidebarView) {
-                this.sidebarView.updateContent(); // Content update instead of full refresh
-            }
+            // Content update instead of full refresh
+            this.forEachSidebarView(view => view.updateContent());
             return;
         }
         
@@ -1784,9 +1804,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         // detectAndStoreMarkdownHighlights will call refreshSidebar if changes are detected
         this.detectAndStoreMarkdownHighlights(content, file);
         // Always update content when file changes, even if no highlights detected
-        if (this.sidebarView) {
-            this.sidebarView.updateContent(); // Content update instead of full refresh
-        }
+        // Content update instead of full refresh
+        this.forEachSidebarView(view => view.updateContent());
     }
 
     /**
@@ -2468,17 +2487,20 @@ export default class HighlightCommentsPlugin extends Plugin {
      * Smart sidebar update: use targeted updates when possible, full refresh only when necessary
      */
     private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
-        if (!this.sidebarView) {
-            return;
-        }
+        // Panels on a tab that doesn't display highlights take no update. Decided
+        // per panel rather than once: two panels can be on different tabs, and one
+        // sitting on Tasks shouldn't hold back another on Highlights. Gathered
+        // before the diff so a layout with nothing to update stays free, and data
+        // is still updated in storage either way.
+        const targets: HighlightsSidebarView[] = [];
+        this.forEachSidebarView(view => {
+            const viewMode = view.getViewMode();
+            if (viewMode !== 'tasks' && viewMode !== 'collections') {
+                targets.push(view);
+            }
+        });
 
-        // Skip refresh if we're in a tab that doesn't display highlights
-        // Tasks and Collections tabs don't show highlights, so no need to refresh UI
-        const viewMode = this.sidebarView.getViewMode();
-
-        if (viewMode === 'tasks' || viewMode === 'collections') {
-            // Data is still updated in storage, but UI doesn't refresh
-            // This prevents unnecessary flashing when working in these tabs
+        if (targets.length === 0) {
             return;
         }
 
@@ -2496,12 +2518,9 @@ export default class HighlightCommentsPlugin extends Plugin {
                                    [...oldIDs].some(id => !newIDs.has(id)) ||
                                    [...newIDs].some(id => !oldIDs.has(id));
 
-        if (hasStructuralChanges) {
-            // New or deleted highlights - use updateContent() instead of full refresh
-            // This avoids clearing task cache and rebuilding entire DOM
-            this.sidebarView.updateContent();
-        } else {
-            // Only content changes - use targeted updates
+        // Work out which highlights changed once, then apply that to each panel.
+        const changedIDs: string[] = [];
+        if (!hasStructuralChanges) {
             for (const [id, newHighlight] of newByID) {
                 const oldHighlight = oldByID.get(id);
                 if (oldHighlight) {
@@ -2522,10 +2541,23 @@ export default class HighlightCommentsPlugin extends Plugin {
                     });
                     
                     if (oldJSON !== newJSON) {
-                        // This highlight changed - update just this item
-                        this.sidebarView.updateItem(id);
+                        changedIDs.push(id);
                     }
                 }
+            }
+        }
+
+        for (const view of targets) {
+            if (hasStructuralChanges) {
+                // New or deleted highlights - use updateContent() instead of full
+                // refresh. This avoids clearing task cache and rebuilding entire DOM
+                view.updateContent();
+                continue;
+            }
+
+            // Only content changes - use targeted updates
+            for (const id of changedIDs) {
+                view.updateItem(id);
             }
         }
     }
