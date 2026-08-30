@@ -427,6 +427,10 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.ribbonIconEl = null;
         }
 
+        // Drop the tracked views. Obsidian detaches the leaves it owns, but a view
+        // another plugin hosts on a detached leaf never gets that onClose.
+        this.sidebarViews.clear();
+
         // Cleanup is mostly automatic due to using registerEvent() and addCommand()
         // The sidebar view's onClose() method will handle its own cleanup
         // Obsidian automatically handles:
@@ -532,7 +536,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         document.body.style.setProperty('--sh-task-font-weight', `${this.settings.taskFontWeight}`);
     }
 
-    async activateView() {
+    // Returns the leaf it revealed, so a caller that must act on exactly one
+    // panel acts on the one the user was just shown.
+    async activateView(): Promise<WorkspaceLeaf | null> {
         const { workspace } = this.app;
         let leaf: WorkspaceLeaf | null = null;
         const leaves = workspace.getLeavesOfType(VIEW_TYPE_HIGHLIGHTS);
@@ -546,8 +552,11 @@ export default class HighlightCommentsPlugin extends Plugin {
             await leaf?.setViewState({ type: VIEW_TYPE_HIGHLIGHTS, active: true });
         }
         if (leaf) {
-            void workspace.revealLeaf(leaf);
+            // Awaited: revealLeaf loads a deferred view, so leaf.view is the real
+            // panel by the time we return it rather than a deferred placeholder.
+            await workspace.revealLeaf(leaf);
         }
+        return leaf;
     }
 
     async toggleView() {
@@ -600,23 +609,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         editor.replaceSelection(highlightedText);
         this.refreshSidebar();
         new Notice('Highlight created');
-    }
-
-    // The view a user-initiated command acts on. Prefers one whose leaf is
-    // really in the workspace, so a copy hosted outside the layout by another
-    // plugin is never what a command navigates or reveals.
-    private get sidebarView(): HighlightsSidebarView | null {
-        let fallback: HighlightsSidebarView | null = null;
-        const inWorkspace = this.app.workspace.getLeavesOfType(VIEW_TYPE_HIGHLIGHTS);
-        for (const view of this.sidebarViews) {
-            if (inWorkspace.includes(view.leaf)) {
-                return view;
-            }
-            if (!fallback) {
-                fallback = view;
-            }
-        }
-        return fallback;
     }
 
     // Run fn against every open panel, so they all stay in step.
@@ -1716,12 +1708,13 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     // Navigate to a specific collection in the sidebar
     private async goToCollection(collectionId: string) {
-        // First, make sure the sidebar is open
-        await this.activateView();
-        
-        // Then navigate to the collection
-        if (this.sidebarView) {
-            this.sidebarView.navigateToCollection(collectionId);
+        // Navigate the panel that was actually revealed. Picking a view out of
+        // the tracked set instead could switch a panel the user is not looking
+        // at, or one another plugin hosts outside the workspace.
+        const leaf = await this.activateView();
+        const view = leaf?.view;
+        if (view instanceof HighlightsSidebarView) {
+            view.navigateToCollection(collectionId);
         }
     }
 
@@ -2494,7 +2487,20 @@ export default class HighlightCommentsPlugin extends Plugin {
      * Smart sidebar update: use targeted updates when possible, full refresh only when necessary
      */
     private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
-        if (this.sidebarViews.size === 0) {
+        // Panels on a tab that doesn't display highlights take no update. Decided
+        // per panel rather than once: two panels can be on different tabs, and one
+        // sitting on Tasks shouldn't hold back another on Highlights. Gathered
+        // before the diff so a layout with nothing to update stays free, and data
+        // is still updated in storage either way.
+        const targets: HighlightsSidebarView[] = [];
+        this.forEachSidebarView(view => {
+            const viewMode = view.getViewMode();
+            if (viewMode !== 'tasks' && viewMode !== 'collections') {
+                targets.push(view);
+            }
+        });
+
+        if (targets.length === 0) {
             return;
         }
 
@@ -2541,28 +2547,19 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
         }
 
-        this.forEachSidebarView(view => {
-            // Skip panels on a tab that doesn't display highlights. Checked per
-            // panel rather than once: two panels can be on different tabs, and one
-            // sitting on Tasks shouldn't hold back the other. Data is still
-            // updated in storage either way.
-            const viewMode = view.getViewMode();
-            if (viewMode === 'tasks' || viewMode === 'collections') {
-                return;
-            }
-
+        for (const view of targets) {
             if (hasStructuralChanges) {
                 // New or deleted highlights - use updateContent() instead of full
                 // refresh. This avoids clearing task cache and rebuilding entire DOM
                 view.updateContent();
-                return;
+                continue;
             }
 
             // Only content changes - use targeted updates
             for (const id of changedIDs) {
                 view.updateItem(id);
             }
-        });
+        }
     }
 
 
