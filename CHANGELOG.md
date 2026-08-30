@@ -5,6 +5,12 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.3] - 2026-08-30
+
+### Fixed
+- **Only one Highlights panel received live updates.** When more than one Highlights view existed in a session, whether a second pane, a pop-out window, or a view another plugin hosts inside its own layout, only the most recently created one kept updating. Every other open panel rendered once and then sat frozen, and closing the newest one stopped updates everywhere until the plugin was reloaded. Changing a panel's view mode forced a redraw and made the missing highlights appear, which is what made this look intermittent rather than consistent. Every open panel now updates together, a closed panel stops being tracked, and a panel sitting on Tasks or Collections no longer holds back another panel that is showing highlights.
+- **"Go to collection" could act on a panel you were not looking at.** With two panels open, the command revealed one panel and switched a different one to the collection. It now navigates the panel it just revealed.
+
 ## [1.40.2] - 2026-08-25
 
 ### Fixed
