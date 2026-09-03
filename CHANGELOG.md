@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Group highlights by heading.** The group menu has a new Heading option that files each highlight under the heading it sits beneath, the way Kindle groups notes by chapter. Groups follow the order of the note, and anything above the first heading lands in a "No section" group at the top. In the Folder and All notes tabs each group carries the note's name in front, so identical headings in different notes stay apart.
+- **You can now group highlights by heading.** Pick Heading from the group menu and each highlight files under the heading it sits beneath, much like Kindle groups your notes by chapter. The groups run in the same order as the note, so reading down the sidebar is reading down the page, and anything above the first heading collects in a "No section" group at the top. In the Folder and All notes tabs each group carries the note's name in front, so two notes with an "Introduction" heading don't end up muddled together.
 
 ## [1.40.3] - 2026-08-30
 
