@@ -16,6 +16,7 @@ import { compareHighlights, compareTasks, SortFallback, SortMode } from '../util
 import { squircleifyIcon } from '../utils/squircle-icon';
 import { isCommentsToggleOn, nextCommentsToggleState } from '../utils/comments-toggle';
 import { isInFolder, parentFolderPath } from '../utils/folder-scope';
+import { headingForLine, headingGroupKey, compareDocumentOrder, DocumentPosition } from '../utils/heading-group';
 import { firstVisibleTab, tabIndex, visibleTabs } from '../utils/tab-order';
 import { HighlightTypeFilter, matchesTypeFilter, migrateLegacyTypeFilter } from '../utils/type-filter';
 import { colorLabel, resolveHighlightColor } from '../utils/color-labels';
@@ -56,7 +57,7 @@ export class HighlightsSidebarView extends ItemView {
     private listContainerEl!: HTMLElement;
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
-    private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
+    private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
     private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
     private sortMode: SortMode = 'none';
     /** Per-render cache of note creation times; null means the file was not resolvable. */
@@ -586,6 +587,23 @@ export class HighlightsSidebarView extends ItemView {
                             .setChecked(this.groupingMode === 'collection')
                             .onClick(() => {
                                 this.groupingMode = 'collection';
+                                this.updateGroupButtonState(groupButton);
+                                this.updateSortButtonState(this.sortButton);
+                                this.saveGroupingModeToSettings();
+                                this.renderContent();
+                            });
+                    });
+                }
+
+                // Only show heading grouping for highlights (tasks already group by section)
+                if (!isTasksView) {
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('grouping.heading'))
+                            .setIcon('heading')
+                            .setChecked(this.groupingMode === 'heading')
+                            .onClick(() => {
+                                this.groupingMode = 'heading';
                                 this.updateGroupButtonState(groupButton);
                                 this.updateSortButtonState(this.sortButton);
                                 this.saveGroupingModeToSettings();
@@ -3787,6 +3805,8 @@ export class HighlightsSidebarView extends ItemView {
         // First, process highlights into groups (same logic as renderGroupedHighlights)
         const groups = new Map<string, Highlight[]>();
         const groupColors = new Map<string, string>();
+        const groupPositions = new Map<string, DocumentPosition>();
+        const multiNote = new Set(highlights.map(h => h.filePath)).size > 1;
 
         // Group highlights based on grouping mode (same grouping logic)
         highlights.forEach(highlight => {
@@ -3832,6 +3852,10 @@ export class HighlightsSidebarView extends ItemView {
                 } else {
                     groupKey = 'No Date';
                 }
+            } else if (this.groupingMode === 'heading') {
+                const group = this.headingGroupFor(highlight, multiNote);
+                groupKey = group.key;
+                groupPositions.set(groupKey, group.position);
             } else {
                 groupKey = 'Default';
             }
@@ -3890,6 +3914,9 @@ export class HighlightsSidebarView extends ItemView {
                 if (a === 'No Collections') return 1;
                 if (b === 'No Collections') return -1;
                 return a.localeCompare(b);
+            } else if (this.groupingMode === 'heading') {
+                // Reading order: the note's position, never alphabetical
+                return compareDocumentOrder(groupPositions.get(a)!, groupPositions.get(b)!);
             } else if (this.groupingMode === 'filename') {
                 return a.localeCompare(b);
             } else if (this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc') {
@@ -5886,6 +5913,22 @@ export class HighlightsSidebarView extends ItemView {
         return hex;
     }
 
+    /**
+     * Group key and reading-order position for a highlight when grouping by heading.
+     * Uses the metadata cache so headings inside code blocks are already excluded.
+     * Across several notes the key carries the note name so identical headings stay apart.
+     */
+    private headingGroupFor(highlight: Highlight, multiNote: boolean): { key: string; position: DocumentPosition } {
+        const file = this.plugin.app.vault.getAbstractFileByPath(highlight.filePath);
+        const cached = file instanceof TFile ? (this.plugin.app.metadataCache.getFileCache(file)?.headings ?? []) : [];
+        const heading = headingForLine(cached.map(h => ({ heading: h.heading, line: h.position.start.line })), highlight.line);
+        const noteName = multiNote ? (highlight.filePath.split('/').pop() || highlight.filePath).replace(/\.md$/, '') : null;
+        return {
+            key: headingGroupKey(heading?.heading ?? null, noteName),
+            position: { file: highlight.filePath, line: heading?.line ?? -1 }
+        };
+    }
+
     private getGroupDisplayName(groupKey: string): string {
         // Translate special group keys to localized display names
         switch (groupKey) {
@@ -5969,6 +6012,8 @@ export class HighlightsSidebarView extends ItemView {
     private renderGroupedHighlights(highlights: Highlight[], searchTerm?: string, showFilename: boolean = false) {
         const groups = new Map<string, Highlight[]>();
         const groupColors = new Map<string, string>(); // Track the actual hex color for each group
+        const groupPositions = new Map<string, DocumentPosition>();
+        const multiNote = new Set(highlights.map(h => h.filePath)).size > 1;
 
         // Group highlights based on grouping mode
         highlights.forEach(highlight => {
@@ -6020,6 +6065,10 @@ export class HighlightsSidebarView extends ItemView {
                 } else {
                     groupKey = 'No Date';
                 }
+            } else if (this.groupingMode === 'heading') {
+                const group = this.headingGroupFor(highlight, multiNote);
+                groupKey = group.key;
+                groupPositions.set(groupKey, group.position);
             } else {
                 groupKey = 'Default';
             }
@@ -6060,6 +6109,9 @@ export class HighlightsSidebarView extends ItemView {
                 if (a === 'No Collections') return 1;
                 if (b === 'No Collections') return -1;
                 return a.localeCompare(b);
+            } else if (this.groupingMode === 'heading') {
+                // Reading order: the note's position, never alphabetical
+                return compareDocumentOrder(groupPositions.get(a)!, groupPositions.get(b)!);
             } else if (this.groupingMode === 'filename') {
                 // Sort filename groups alphabetically
                 return a.localeCompare(b);

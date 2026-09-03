@@ -293,6 +293,7 @@
     "parent": "Parent",
     "collection": "Collection",
     "filename": "Filename",
+    "heading": "Heading",
     "tag": "Tag",
     "date": "Date",
     "flagged": "Flagged"

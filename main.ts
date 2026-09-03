@@ -93,7 +93,7 @@ export interface DisplayMode {
 }
 
 export interface TabSettings {
-    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
     sortMode: SortMode;
     commentsExpanded: boolean;
     searchExpanded: boolean;
@@ -109,7 +109,7 @@ export interface CommentPluginSettings {
     sidebarPosition: 'left' | 'right';
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
-    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
+    groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
     taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
     sortMode: SortMode; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
     tabSettings: { [key in 'current' | 'folder' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage

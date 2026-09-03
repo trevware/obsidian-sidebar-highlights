@@ -278,6 +278,7 @@
     "parent": "父级",
     "collection": "合集",
     "filename": "文件名",
+    "heading": "标题",
     "tag": "标签",
     "date": "日期",
     "flagged": "已标记"
