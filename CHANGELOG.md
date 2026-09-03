@@ -5,7 +5,7 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.41.0] - 2026-09-03
 
 ### Added
 - **You can now group highlights by heading.** Pick Heading from the group menu and each highlight files under the heading it sits beneath, much like Kindle groups your notes by chapter. The groups run in the same order as the note, so reading down the sidebar is reading down the page, and anything above the first heading collects in a "No section" group at the top. In the Folder and All notes tabs each group carries the note's name in front, so two notes with an "Introduction" heading don't end up muddled together.
