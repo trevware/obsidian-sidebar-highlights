@@ -9,7 +9,7 @@ import { TaskManager } from '../managers/task-manager';
 import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
-import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
+import { FOOTNOTE_SEQUENCE_REGEX, STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
 import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
@@ -4712,7 +4712,7 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the line at the end position
                 const line = editor.getLine(highlightEndPos.line);
                 const afterHighlight = line.substring(highlightEndPos.ch);
-                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                const footnoteEndMatch = afterHighlight.match(FOOTNOTE_SEQUENCE_REGEX);
                 let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
 
                 // If there are footnotes and content continues after them, don't include trailing whitespace
@@ -4763,7 +4763,7 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the line at the end position
                 const line = editor.getLine(highlightEndPos.line);
                 const afterHighlight = line.substring(highlightEndPos.ch);
-                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                const footnoteEndMatch = afterHighlight.match(FOOTNOTE_SEQUENCE_REGEX);
                 let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
 
                 // If there are footnotes and content continues after them, don't include trailing whitespace
@@ -4806,7 +4806,7 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the line at the end position
                 const line = editor.getLine(highlightEndPos.line);
                 const afterHighlight = line.substring(highlightEndPos.ch);
-                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                const footnoteEndMatch = afterHighlight.match(FOOTNOTE_SEQUENCE_REGEX);
                 let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
 
                 // If there are footnotes and content continues after them, don't include trailing whitespace
@@ -4857,7 +4857,7 @@ export class HighlightsSidebarView extends ItemView {
                 // Get the line at the end position
                 const line = editor.getLine(highlightEndPos.line);
                 const afterHighlight = line.substring(highlightEndPos.ch);
-                const footnoteEndMatch = afterHighlight.match(/^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\]))*/);
+                const footnoteEndMatch = afterHighlight.match(FOOTNOTE_SEQUENCE_REGEX);
                 let footnoteEndLength = footnoteEndMatch ? footnoteEndMatch[0].length : 0;
 
                 // If there are footnotes and content continues after them, don't include trailing whitespace

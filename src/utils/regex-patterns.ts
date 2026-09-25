@@ -9,10 +9,16 @@
 export const STANDARD_FOOTNOTE_REGEX = /(\s*\[\^(\w+)\])(?!:)/g;
 
 /**
- * Validates that a text segment contains only footnote references (standard or inline)
- * Used to determine if footnotes are in a valid sequence
+ * Matches a leading sequence of standard or inline footnote references.
+ * Inline footnotes may be empty while the user is typing a new comment.
  */
-export const FOOTNOTE_VALIDATION_REGEX = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]+\])\s*)*\s*$/;
+export const FOOTNOTE_SEQUENCE_REGEX = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]*\]))*/;
+
+/**
+ * Validates that a text segment contains only footnote references (standard or inline).
+ * Used to determine if footnotes are in a valid sequence.
+ */
+export const FOOTNOTE_VALIDATION_REGEX = /^(\s*(\[\^[a-zA-Z0-9_-]+\]|\^\[[^\]]*\])\s*)*\s*$/;
 
 /**
  * Matches markdown highlights (==text==), including across newlines for

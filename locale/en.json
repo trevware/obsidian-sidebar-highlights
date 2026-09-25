@@ -1,6 +1,7 @@
 {
   "commands": {
     "createHighlight": "Create highlight from selection",
+    "createHighlightWithComment": "Create highlight from selection with comment",
     "toggle": "Toggle",
     "goToCollection": "Go to {{name}}",
     "applyDisplayMode": "Apply display mode: {{name}}"
