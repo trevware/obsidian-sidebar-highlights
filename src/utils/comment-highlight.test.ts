@@ -1,16 +1,16 @@
 import { createCommentHighlight } from './comment-highlight';
 
 describe('comment highlight creation', () => {
-    it('uses an empty inline footnote when inline comments are enabled', () => {
-        expect(createCommentHighlight('source', true)).toEqual({
+    it('uses an empty inline footnote when the inline style is requested', () => {
+        expect(createCommentHighlight('source', 'inline')).toEqual({
             replacement: '==source==^[]',
             cursorOffset: 12,
             commentStyle: 'inline'
         });
     });
 
-    it('leaves the cursor after the highlight when standard footnotes are enabled', () => {
-        expect(createCommentHighlight('source', false)).toEqual({
+    it('leaves the cursor after the highlight when the standard style is requested', () => {
+        expect(createCommentHighlight('source', 'standard')).toEqual({
             replacement: '==source==',
             cursorOffset: 10,
             commentStyle: 'standard'
@@ -18,7 +18,7 @@ describe('comment highlight creation', () => {
     });
 
     it('calculates the standard-footnote cursor position for a multiline selection', () => {
-        expect(createCommentHighlight('first\nsecond', false)).toEqual({
+        expect(createCommentHighlight('first\nsecond', 'standard')).toEqual({
             replacement: '==first\nsecond==',
             cursorOffset: 16,
             commentStyle: 'standard'

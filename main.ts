@@ -8,12 +8,14 @@ import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX, createMarkdownHighl
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
 import { SortMode } from './src/utils/sort-order';
-import { createCommentHighlight } from './src/utils/comment-highlight';
+import { CommentStyle, createCommentHighlight } from './src/utils/comment-highlight';
 import { i18n, t } from './src/i18n';
 
 interface PrivateCommandsApi {
     commands: { executeCommandById: (id: string) => void };
 }
+
+type CommentHighlightMode = CommentStyle | 'setting';
 
 export interface Highlight {
     id: string;
@@ -340,7 +342,25 @@ export default class HighlightCommentsPlugin extends Plugin {
             name: t('commands.createHighlightWithComment'),
             icon: 'message-square-text',
             editorCallback: (editor: Editor) => {
-                void this.createHighlight(editor, true);
+                void this.createHighlight(editor, 'setting');
+            }
+        });
+
+        this.addCommand({
+            id: 'create-highlight-with-inline-comment',
+            name: t('commands.createHighlightWithInlineComment'),
+            icon: 'message-square-text',
+            editorCallback: (editor: Editor) => {
+                void this.createHighlight(editor, 'inline');
+            }
+        });
+
+        this.addCommand({
+            id: 'create-highlight-with-footnote-comment',
+            name: t('commands.createHighlightWithFootnoteComment'),
+            icon: 'notebook-pen',
+            editorCallback: (editor: Editor) => {
+                void this.createHighlight(editor, 'standard');
             }
         });
 
@@ -357,7 +377,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (editor.getSelection()) {
                     menu.addItem((item) => {
                         item
-                            .setTitle('Create highlight')
+                            .setTitle(t('commands.createHighlight'))
                             .setIcon('highlighter')
                             .onClick(() => {
                                 void this.createHighlight(editor);
@@ -368,7 +388,23 @@ export default class HighlightCommentsPlugin extends Plugin {
                             .setTitle(t('commands.createHighlightWithComment'))
                             .setIcon('message-square-text')
                             .onClick(() => {
-                                void this.createHighlight(editor, true);
+                                void this.createHighlight(editor, 'setting');
+                            });
+                    });
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('commands.createHighlightWithInlineComment'))
+                            .setIcon('message-square-text')
+                            .onClick(() => {
+                                void this.createHighlight(editor, 'inline');
+                            });
+                    });
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(t('commands.createHighlightWithFootnoteComment'))
+                            .setIcon('notebook-pen')
+                            .onClick(() => {
+                                void this.createHighlight(editor, 'standard');
                             });
                     });
                 }
@@ -595,7 +631,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    async createHighlight(editor: Editor, withComment = false) {
+    async createHighlight(editor: Editor, commentMode?: CommentHighlightMode) {
         const selection = editor.getSelection();
         if (!selection) {
             new Notice('Please select some text first');
@@ -628,8 +664,11 @@ export default class HighlightCommentsPlugin extends Plugin {
         fileHighlights.push(highlight);
         this.highlights.set(file.path, fileHighlights);
 
-        const commentHighlight = withComment
-            ? createCommentHighlight(selection, this.settings.useInlineFootnotes)
+        const commentStyle = commentMode === 'setting'
+            ? (this.settings.useInlineFootnotes ? 'inline' : 'standard')
+            : commentMode;
+        const commentHighlight = commentStyle
+            ? createCommentHighlight(selection, commentStyle)
             : null;
         editor.replaceSelection(commentHighlight?.replacement ?? `==${selection}==`);
         if (commentHighlight) {

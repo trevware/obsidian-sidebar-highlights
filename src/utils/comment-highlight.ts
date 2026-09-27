@@ -6,10 +6,10 @@ export interface CommentHighlight {
     commentStyle: CommentStyle;
 }
 
-export function createCommentHighlight(selection: string, useInlineFootnotes: boolean): CommentHighlight {
+export function createCommentHighlight(selection: string, commentStyle: CommentStyle): CommentHighlight {
     const highlightedText = `==${selection}==`;
 
-    if (useInlineFootnotes) {
+    if (commentStyle === 'inline') {
         const replacement = `${highlightedText}^[]`;
         return {
             replacement,
