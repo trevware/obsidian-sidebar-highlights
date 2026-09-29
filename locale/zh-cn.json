@@ -1,6 +1,9 @@
 {
   "commands": {
     "createHighlight": "从选中文本创建高亮",
+    "createHighlightWithComment": "从选中文本创建带评论的高亮",
+    "createHighlightWithInlineComment": "从选中文本创建带内联评论的高亮",
+    "createHighlightWithFootnoteComment": "从选中文本创建带脚注评论的高亮",
     "toggle": "切换",
     "goToCollection": "转到{{name}}",
     "applyDisplayMode": "应用显示模式：{{name}}"
