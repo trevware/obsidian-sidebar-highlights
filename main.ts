@@ -333,7 +333,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.addRibbonIcon('message-square-text', t('commands.createHighlightWithComment'), () => {
             void this.createHighlightFromActiveEditor('setting');
         });
-        this.addRibbonIcon('message-square-text', t('commands.createHighlightWithInlineComment'), () => {
+        this.addRibbonIcon('message-square-plus', t('commands.createHighlightWithInlineComment'), () => {
             void this.createHighlightFromActiveEditor('inline');
         });
         this.addRibbonIcon('notebook-pen', t('commands.createHighlightWithFootnoteComment'), () => {
@@ -361,7 +361,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.addCommand({
             id: 'create-highlight-with-inline-comment',
             name: t('commands.createHighlightWithInlineComment'),
-            icon: 'message-square-text',
+            icon: 'message-square-plus',
             editorCallback: (editor: Editor) => {
                 void this.createHighlight(editor, 'inline');
             }
@@ -407,7 +407,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                     menu.addItem((item) => {
                         item
                             .setTitle(t('commands.createHighlightWithInlineComment'))
-                            .setIcon('message-square-text')
+                            .setIcon('message-square-plus')
                             .onClick(() => {
                                 void this.createHighlight(editor, 'inline');
                             });

@@ -30,7 +30,7 @@ Select text, then choose **Create highlight from selection with comment** from t
 - **Inline comments on**: creates `==Selected text==^[]` and places the cursor inside the brackets.
 - **Inline comments off**: creates a standard footnote and moves the cursor to its definition.
 
-To override that setting for one highlight, choose **Create highlight from selection with inline comment** or **Create highlight from selection with footnote comment**. The inline command uses the `message-square-text` icon. The footnote command uses the `notebook-pen` icon.
+To override that setting for one highlight, choose **Create highlight from selection with inline comment** or **Create highlight from selection with footnote comment**. The default command uses the `message-square-text` icon. The inline command uses the `message-square-plus` icon. The footnote command uses the `notebook-pen` icon.
 
 On desktop, all highlight commands are available in the ribbon. On mobile, drag any of the comment commands where you want them in the Ribbon Menu. You can add **Create highlight from selection** and **Open highlights** there too. The right-click menu, Command palette, and any hotkey you assign remain available on desktop.
 
