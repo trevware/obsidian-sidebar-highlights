@@ -32,7 +32,7 @@ Select text, then choose **Create highlight from selection with comment** from t
 
 To override that setting for one highlight, choose **Create highlight from selection with inline comment** or **Create highlight from selection with footnote comment**. The inline command uses the `message-square-text` icon. The footnote command uses the `notebook-pen` icon.
 
-On mobile, drag any of the comment commands where you want them in the Ribbon Menu. You can add **Create highlight from selection** there too. On desktop, use the right-click menu, Command palette, or a hotkey you assign.
+On desktop, all highlight commands are available in the ribbon. On mobile, drag any of the comment commands where you want them in the Ribbon Menu. You can add **Create highlight from selection** and **Open highlights** there too. The right-click menu, Command palette, and any hotkey you assign remain available on desktop.
 
 | Syntax | Notes |
 | --- | --- |

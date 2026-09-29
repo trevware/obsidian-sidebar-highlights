@@ -327,6 +327,18 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.ribbonIconEl = this.addRibbonIcon('highlighter', 'Open highlights', () => {
             void this.activateView();
         });
+        this.addRibbonIcon('highlighter', t('commands.createHighlight'), () => {
+            void this.createHighlightFromActiveEditor();
+        });
+        this.addRibbonIcon('message-square-text', t('commands.createHighlightWithComment'), () => {
+            void this.createHighlightFromActiveEditor('setting');
+        });
+        this.addRibbonIcon('message-square-text', t('commands.createHighlightWithInlineComment'), () => {
+            void this.createHighlightFromActiveEditor('inline');
+        });
+        this.addRibbonIcon('notebook-pen', t('commands.createHighlightWithFootnoteComment'), () => {
+            void this.createHighlightFromActiveEditor('standard');
+        });
 
         this.addCommand({
             id: 'create-highlight',
@@ -367,6 +379,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.addCommand({
             id: 'open-highlights-sidebar',
             name: t('commands.toggle'),
+            icon: 'panel-left-open',
             callback: () => {
                 void this.toggleView();
             }
@@ -629,6 +642,16 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Sidebar is closed, open it
             await this.activateView();
         }
+    }
+
+    private async createHighlightFromActiveEditor(commentMode?: CommentHighlightMode) {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view) {
+            new Notice('Open a Markdown note first');
+            return;
+        }
+
+        await this.createHighlight(view.editor, commentMode);
     }
 
     async createHighlight(editor: Editor, commentMode?: CommentHighlightMode) {
