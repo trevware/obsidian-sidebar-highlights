@@ -5,6 +5,12 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.2] - 2026-10-04
+
+### Fixed
+- **Highlight cards have their colour stripe back.** Since Obsidian 1.14, the coloured edge down the left side of each card had disappeared, and hovering a card showed a square corner inside its rounded edge. Both look the way they used to.
+- **Highlighted words in the Tasks tab and search matches show their yellow background again.** This one only affected the default theme, so if you use a theme like Minimal you may not have noticed it.
+
 ## [1.41.1] - 2026-10-04
 
 ### Fixed
