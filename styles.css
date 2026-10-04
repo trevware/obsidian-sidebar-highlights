@@ -25,7 +25,7 @@
 /* Sidebar highlights in tasks - use same styling as editor */
 .task-text-content .cm-highlight,
 .task-context .cm-highlight {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
     color: inherit;
 }
 
@@ -51,12 +51,14 @@
 }
 
 .highlight-item-card.highlight-color-default {
-    border-left-color: rgb(var(--text-highlight-bg-rgb));
+    border-left-color: rgb(var(--text-highlight-bg-rgb, 255, 208, 0));
 }
 
-/* Support for custom colors via CSS custom properties */
+/* Support for custom colors via CSS custom properties.
+   Obsidian 1.14 no longer defines --text-highlight-bg-rgb, so every use of it
+   carries Obsidian's former default (255, 208, 0) as a fallback. */
 .highlight-item-card.highlight-color-custom {
-    border-left-color: var(--highlight-color, rgb(var(--text-highlight-bg-rgb)));
+    border-left-color: var(--highlight-color, rgb(var(--text-highlight-bg-rgb, 255, 208, 0)));
 }
 
 /* Override default view-content padding for highlights sidebar */
@@ -379,7 +381,7 @@
 }
 
 .search-term-highlight {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
     color: var(--text-normal);
     padding: 0;
     border-radius: 2px;
@@ -476,7 +478,10 @@
 .highlight-item-card {
     background: var(--background-secondary); 
     border: none; 
-    border-left: 5px solid rgb(var(--text-highlight-bg-rgb)); /* Default color, overridden by color classes */
+    /* Width and style apart from the colour, so a colour that fails to resolve
+       can't take the whole border with it */
+    border-left: 5px solid;
+    border-left-color: rgb(var(--text-highlight-bg-rgb, 255, 208, 0)); /* Default color, overridden by color classes */
     border-radius: 6px; 
     padding: 0; 
     margin-bottom: 10px; 
@@ -492,7 +497,7 @@
 }
 
 .highlight-item-card.highlight-selected {
-    box-shadow: 0 0 0 1.5px rgb(var(--text-highlight-bg-rgb)), var(--shadow-s); /* Default selection color, overridden by color classes */
+    box-shadow: 0 0 0 1.5px rgb(var(--text-highlight-bg-rgb, 255, 208, 0)), var(--shadow-s); /* Default selection color, overridden by color classes */
 }
 
 /* Color-specific selection box-shadows - use CSS custom properties */
@@ -518,7 +523,7 @@
 
 /* Support for custom colors in selection state */
 .highlight-item-card.highlight-color-custom.highlight-selected {
-    box-shadow: 0 0 0 1.5px var(--highlight-color, rgb(var(--text-highlight-bg-rgb))), var(--shadow-s);
+    box-shadow: 0 0 0 1.5px var(--highlight-color, rgb(var(--text-highlight-bg-rgb, 255, 208, 0))), var(--shadow-s);
 }
 
 /* Native comment highlight card styling - similar to regular highlights but with muted appearance */
@@ -2030,7 +2035,7 @@
 
 /* Search match highlighting in tasks */
 .task-search-match {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
     color: var(--text-normal);
     padding: 2px 4px;
     border-radius: 2px;
@@ -2303,12 +2308,12 @@
 
 /* Highlight tags that match search */
 .task-text-content .task-search-match-tag {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
 }
 
 /* Search match highlighting */
 .task-search-match {
-    background-color: var(--text-highlight-bg);
+    background-color: var(--text-highlight-bg, var(--highlight-background-yellow));
     color: var(--text-normal);
     padding: 1px 2px;
     border-radius: 2px;
