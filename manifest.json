@@ -6,6 +6,9 @@
 	"description": "View and manage text highlights, comments on highlights, native comments, and collections for your highlights.",
 	"author": "trevware",
 	"authorUrl": "https://github.com/trevware",
-	"fundingUrl": "https://buymeacoffee.com/trevware",
+	"fundingUrl": {
+		"GitHub Sponsors": "https://github.com/sponsors/trevware",
+		"Buy Me a Coffee": "https://buymeacoffee.com/trevware"
+	},
 	"isDesktopOnly": false
 }

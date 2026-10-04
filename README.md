@@ -10,12 +10,16 @@ Collect every highlight, comment and task in your vault into one sidebar, then f
 
 <p align="center">
   <b>Sidebar Highlights is free, and built in my spare time.</b><br>
-  If it earns a place in your vault, buying me a coffee keeps it going.
+  If it earns a place in your vault, sponsoring it on GitHub keeps it going.
 </p>
 
 <p align="center">
+  <a href="https://github.com/sponsors/trevware">
+    <img src="https://img.shields.io/badge/Sponsor_on_GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" height="40">
+  </a>
+  &nbsp;
   <a href="https://buymeacoffee.com/trevware">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50">
+    <img src="https://img.shields.io/badge/Buy_me_a_coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" height="40">
   </a>
 </p>
 
@@ -144,12 +148,16 @@ Bugs and feature requests are welcome on [GitHub Issues](https://github.com/trev
 This plugin is free and always will be. It's built and maintained in my own time, and support is what makes that sustainable.
 
 <p align="center">
+  <a href="https://github.com/sponsors/trevware">
+    <img src="https://img.shields.io/badge/Sponsor_on_GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" height="40">
+  </a>
+  &nbsp;
   <a href="https://buymeacoffee.com/trevware">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50">
+    <img src="https://img.shields.io/badge/Buy_me_a_coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee" height="40">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://buymeacoffee.com/trevware"><b>buymeacoffee.com/trevware</b></a><br>
-  Starring the repo helps too, and costs nothing.
+  <a href="https://github.com/sponsors/trevware"><b>github.com/sponsors/trevware</b></a><br>
+  You can also <a href="https://buymeacoffee.com/trevware">buy me a coffee</a>. Starring the repo helps too, and costs nothing.
 </p>
