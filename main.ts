@@ -7,6 +7,10 @@ import { BackupSelectorModal } from './src/modals/backup-selector-modal';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX, createMarkdownHighlightRegex, createInlineCodeRegex } from './src/utils/regex-patterns';
 import { HtmlHighlightParser } from './src/utils/html-highlight-parser';
 import { hasDelimiterInsideRanges } from './src/utils/range-exclusion';
+import { hasPersistentHighlightChanges } from './src/utils/highlight-persistence';
+import { findExistingHighlight } from './src/utils/highlight-matching';
+import { DeferredSave } from './src/utils/deferred-save';
+import { matchesDiskText } from './src/utils/change-origin';
 import { SortMode } from './src/utils/sort-order';
 import { i18n, t } from './src/i18n';
 
@@ -270,9 +274,22 @@ export default class HighlightCommentsPlugin extends Plugin {
     private sidebarViews: Set<HighlightsSidebarView> = new Set();
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
+    // Whether the edits waiting on detectHighlightsTimeout include the user's own
+    private pendingDetectionIsLocal = false;
     public selectedHighlightId: string | null = null;
     public collectionCommands: Set<string> = new Set(); // Track registered collection commands
     private isScanningFiles: boolean = false; // Prevent concurrent scans
+    // Highlights found while editing reach data.json after a quiet spell, so a
+    // burst of edits is one write. Every write is a chance to collide with
+    // another device syncing the same vault (issue #126).
+    private deferredSave = new DeferredSave(() => void this.saveSettings(), 10000);
+    // Notes whose highlights changed in memory since the last write, mapped to
+    // whether the change is this device's own edit and so still owes a write.
+    // Settings arriving from another device replace memory wholesale, so these
+    // are read again afterwards to keep what this device knows that the other
+    // didn't. Changes that arrived by sync never owe a write: the device they
+    // came from makes it.
+    private unsavedHighlightFiles: Map<string, boolean> = new Map();
 
     async onload() {
         await this.loadSettings();
@@ -368,7 +385,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor, view) => {
                 if (view instanceof MarkdownView) {
-                    this.debounceDetectMarkdownHighlights(editor, view);
+                    // An outside change to an open note is loaded into the editor and
+                    // reported here like typing; see change-origin.ts
+                    this.debounceDetectMarkdownHighlights(editor, view, !matchesDiskText(editor.getValue(), view.data));
                 }
             })
         );
@@ -403,6 +422,14 @@ export default class HighlightCommentsPlugin extends Plugin {
             );
 
             this.registerEvent(
+                this.app.vault.on('modify', (file) => {
+                    if (file instanceof TFile && this.shouldProcessFile(file)) {
+                        void this.handleFileModify(file);
+                    }
+                })
+            );
+
+            this.registerEvent(
                 this.app.vault.on('rename', (file, oldPath) => {
                     if (file instanceof TFile && this.shouldProcessFile(file)) {
                         void this.handleFileRename(file, oldPath);
@@ -430,6 +457,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Drop the tracked views. Obsidian detaches the leaves it owns, but a view
         // another plugin hosts on a detached leaf never gets that onClose.
         this.sidebarViews.clear();
+
+        // Write anything still waiting for its quiet spell.
+        this.deferredSave.flush();
 
         // Cleanup is mostly automatic due to using registerEvent() and addCommand()
         // The sidebar view's onClose() method will handle its own cleanup
@@ -503,6 +533,10 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async saveSettings() {
+        // This write carries everything in memory, so a deferred one is redundant
+        this.deferredSave.cancel();
+        this.unsavedHighlightFiles.clear();
+
         // Save highlights and collections to settings before saving
         this.settings.highlights = Object.fromEntries(this.highlights);
         this.settings.collections = Object.fromEntries(this.collections);
@@ -1653,10 +1687,18 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     // Implement onExternalSettingsChange to reload all settings when they change externally
     async onExternalSettingsChange() {
+        // Notes edited here since our last write. The reload below replaces memory
+        // with the other device's view, which may be older for these.
+        const localChanges = new Map(this.unsavedHighlightFiles);
+
         try {
             // Create backup before any changes
             await this.createBackup('external-sync');
-            
+
+            // A write still waiting here would send the incoming settings
+            // straight back to the device that wrote them
+            this.deferredSave.cancel();
+
             // Load external settings
             const externalSettings = await this.loadData();
             
@@ -1674,6 +1716,43 @@ export default class HighlightCommentsPlugin extends Plugin {
             console.error('Error handling external settings change:', error);
             // Fallback to normal reload
             await this.reloadAllSettings();
+        }
+
+        // Read the notes edited here again so those edits survive the reload. Any
+        // write queued during the reload was made from memory that has since been
+        // replaced, so it goes too; reading the notes queues one if still needed.
+        this.deferredSave.cancel();
+        for (const [path, owesWrite] of this.unsavedHighlightFiles) {
+            localChanges.set(path, owesWrite || localChanges.get(path) === true);
+        }
+        this.unsavedHighlightFiles.clear();
+        await this.rereadHighlightFiles(localChanges);
+    }
+
+    /**
+     * Detect highlights in these notes again from what is on disk. Used after
+     * settings arrive from another device, whose copy of a note edited here can
+     * be older than the note itself.
+     */
+    private async rereadHighlightFiles(paths: Map<string, boolean>) {
+        for (const [path, owesWrite] of paths) {
+            const file = this.app.vault.getAbstractFileByPath(path);
+            if (!(file instanceof TFile)) {
+                // Deleted here, but the incoming copy may still list it
+                if (this.removeFileHighlights(path)) {
+                    this.refreshSidebar();
+                }
+                continue;
+            }
+            try {
+                if (!this.shouldProcessFile(file) || await this.isExcalidrawFile(file)) {
+                    continue;
+                }
+                const content = await this.app.vault.read(file);
+                this.detectAndStoreMarkdownHighlights(content, file, true, owesWrite);
+            } catch {
+                // Continue on error
+            }
         }
     }
 
@@ -1885,9 +1964,10 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         await this.app.vault.modify(file, newContent);
 
-        // vault.modify doesn't trigger our highlight re-detection pipeline
-        // (that's only on editor-change), so refresh explicitly.
+        // Re-detect now and write straight away. This is the user's own edit
+        // from the sidebar, and the modify handler leaves changes unwritten.
         await this.loadHighlightsFromFile(file);
+        await this.saveSettings();
 
         return true;
     }
@@ -1972,20 +2052,24 @@ export default class HighlightCommentsPlugin extends Plugin {
         return newContent;
     }
 
-    debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView) {
+    debounceDetectMarkdownHighlights(editor: Editor, view: MarkdownView, isLocalEdit = true) {
         if (this.detectHighlightsTimeout) {
             window.clearTimeout(this.detectHighlightsTimeout);
         }
+        this.pendingDetectionIsLocal = this.pendingDetectionIsLocal || isLocalEdit;
         this.detectHighlightsTimeout = window.setTimeout(() => {
-            void this.detectMarkdownHighlights(editor, view);
+            const isLocal = this.pendingDetectionIsLocal;
+            this.pendingDetectionIsLocal = false;
+            void this.detectMarkdownHighlights(editor, view, isLocal);
         }, 1000); // 1 second
     }
 
-    async detectMarkdownHighlights(editor: Editor, view: MarkdownView) {
+    async detectMarkdownHighlights(editor: Editor, view: MarkdownView, isLocalEdit = true) {
         const file = view.file;
         if (!file) return;
         const content = editor.getValue();
-        this.detectAndStoreMarkdownHighlights(content, file);
+        // A change that came from disk is written by whoever made it (issue #126)
+        this.detectAndStoreMarkdownHighlights(content, file, true, isLocalEdit);
     }
 
     async scanAllFilesForHighlights() {
@@ -2015,6 +2099,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             const allFilesToProcess = [...normallyProcessableFiles, ...filteredFilesWithCollections];
             const existingFilePaths = new Set(allFilesToProcess.map(file => file.path));
             let hasChanges = false;
+            let needsRefresh = false;
 
         // First, clean up highlights for files that no longer exist OR no longer have collections
         for (const filePath of this.highlights.keys()) {
@@ -2045,18 +2130,14 @@ export default class HighlightCommentsPlugin extends Plugin {
                 }
                 
                 const content = await this.app.vault.read(file);
-                const oldHighlights = this.highlights.get(file.path) || [];
-                this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each file
-                const newHighlights = this.highlights.get(file.path) || [];
-                
-                // Check if any highlights were found or changed (more thorough than just count)
-                // Include color so a colour-only change (e.g. a highlight plugin's
-                // palette resolving differently) still counts as a change, matching
-                // the per-file comparison in detectAndStoreMarkdownHighlights.
-                const oldHighlightsJSON = JSON.stringify(oldHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
-                const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, text: h.text, start: h.startOffset, end: h.endOffset, footnotes: h.footnoteCount, color: h.color})));
-                
-                if (oldHighlightsJSON !== newHighlightsJSON) {
+                const result = this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each file
+
+                // Anything that moved or changed needs the sidebar redrawn, but only
+                // what a restart can't rebuild from the note is written (issue #126)
+                if (result.changed) {
+                    needsRefresh = true;
+                }
+                if (result.persistentChanged) {
                     hasChanges = true;
                 }
             } catch {
@@ -2086,6 +2167,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Save settings and refresh sidebar only once after scanning all files
             if (hasChanges) {
                 await this.saveSettings();
+            }
+            if (hasChanges || needsRefresh) {
                 this.refreshSidebar();
             }
         } finally {
@@ -2094,7 +2177,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
     }
 
-    detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true) {
+    detectAndStoreMarkdownHighlights(content: string, file: TFile, shouldRefresh: boolean = true, shouldSave: boolean = shouldRefresh): { changed: boolean; persistentChanged: boolean } {
         // Support multi-paragraph highlights by allowing newlines
         const markdownHighlightRegex = createMarkdownHighlightRegex();
         const commentHighlightRegex = /%%([^%](?:[^%]|%[^%])*?)%%/g;
@@ -2102,50 +2185,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         const newHighlights: Highlight[] = [];
         const existingHighlightsForFile = this.highlights.get(file.path) || [];
         const usedExistingHighlights = new Set<string>(); // Track which highlights we've already matched
-        
-        // Create a more robust matching system that considers text, position, and type
-        const findExistingHighlight = (text: string, startOffset: number, endOffset: number, isComment: boolean): Highlight | undefined => {
-            // First, try exact position match
-            let exactMatch = existingHighlightsForFile.find(h => 
-                !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
-                h.startOffset === startOffset && 
-                h.endOffset === endOffset &&
-                h.isNativeComment === isComment
-            );
-            if (exactMatch) {
-                usedExistingHighlights.add(exactMatch.id);
-                return exactMatch;
-            }
-            
-            // If no exact match, try fuzzy position match (within 50 characters)
-            let fuzzyMatch = existingHighlightsForFile.find(h => 
-                !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
-                Math.abs(h.startOffset - startOffset) <= 50 &&
-                h.isNativeComment === isComment
-            );
-            if (fuzzyMatch) {
-                usedExistingHighlights.add(fuzzyMatch.id);
-                return fuzzyMatch;
-            }
-            
-            // If still no match, try text-only match for highlights that might have moved significantly
-            let textMatch = existingHighlightsForFile.find(h => 
-                !usedExistingHighlights.has(h.id) &&
-                h.text === text && 
-                h.isNativeComment === isComment &&
-                !existingHighlightsForFile.some(other => 
-                    other !== h && other.text === text && other.isNativeComment === isComment
-                ) // Only if it's the only highlight with this text
-            );
-            if (textMatch) {
-                usedExistingHighlights.add(textMatch.id);
-                return textMatch;
-            }
-            
-            return undefined;
-        };
 
         // Extract all footnotes from the content
         const footnoteMap = this.extractFootnotes(content);
@@ -2341,7 +2380,9 @@ export default class HighlightCommentsPlugin extends Plugin {
             
             // Find existing highlight using improved matching
             const existingHighlight = findExistingHighlight(
-                highlightText, 
+                existingHighlightsForFile,
+                usedExistingHighlights,
+                highlightText,
                 match.index, 
                 match.index + match[0].length, 
                 type === 'comment'
@@ -2474,13 +2515,25 @@ export default class HighlightCommentsPlugin extends Plugin {
         const oldHighlightsJSON = JSON.stringify(existingHighlightsForFile.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
         const newHighlightsJSON = JSON.stringify(newHighlights.map(h => ({id: h.id, start: h.startOffset, end: h.endOffset, text: h.text, footnotes: h.footnoteCount, contents: h.footnoteContents?.filter(c => c.trim() !== ''), color: h.color, isNativeComment: h.isNativeComment})));
 
-        if (oldHighlightsJSON !== newHighlightsJSON) {
-            this.highlights.set(file.path, newHighlights);
-            if (shouldRefresh) {
-                void this.saveSettings(); // Save to disk after detecting changes
-                this.smartUpdateSidebar(existingHighlightsForFile, newHighlights);
-            }
+        if (oldHighlightsJSON === newHighlightsJSON) {
+            return { changed: false, persistentChanged: false };
         }
+
+        this.highlights.set(file.path, newHighlights);
+
+        // Only changes a restart can't rebuild from the note go to disk. A
+        // highlight that merely moved, or whose comments changed, is read
+        // back from the note on the next load (issue #126).
+        const persistentChanged = hasPersistentHighlightChanges(existingHighlightsForFile, newHighlights);
+        const owesWrite = shouldSave && persistentChanged;
+        this.unsavedHighlightFiles.set(file.path, owesWrite || this.unsavedHighlightFiles.get(file.path) === true);
+        if (owesWrite) {
+            this.deferredSave.request();
+        }
+        if (shouldRefresh) {
+            this.smartUpdateSidebar(existingHighlightsForFile, newHighlights);
+        }
+        return { changed: true, persistentChanged };
     }
 
     /**
@@ -2583,17 +2636,51 @@ export default class HighlightCommentsPlugin extends Plugin {
             
             // Scan for existing highlights in the new file
             this.detectAndStoreMarkdownHighlights(content, file, false); // Don't refresh sidebar for each scan
-            
+
             // Get the highlights found
             const highlights = this.highlights.get(file.path);
             if (highlights && highlights.length > 0) {
-                // Save settings and refresh sidebar since we found highlights
-                await this.saveSettings();
+                // Not written here. A note can arrive from another device, which
+                // records its highlights itself, and a second write races that
+                // one (issue #126). They're in memory, and the next write or the
+                // scan at startup records them.
                 this.refreshSidebar();
             }
         } catch {
             // Continue on error
         }
+    }
+
+    /**
+     * Pick up highlights in a note changed outside the editor: by a sync tool,
+     * another program, or another plugin. A note open for editing is left to the
+     * editor's own change handling, which is what records the user's typing.
+     *
+     * Not written here, for the same reason as a created note (issue #126). With
+     * positions and comments no longer travelling in data.json on every edit,
+     * reading the note is what keeps this device's view of it current.
+     */
+    private async handleFileModify(file: TFile) {
+        if (this.isOpenForEditing(file.path)) {
+            return;
+        }
+        try {
+            if (await this.isExcalidrawFile(file)) {
+                return;
+            }
+            const content = await this.app.vault.read(file);
+            this.detectAndStoreMarkdownHighlights(content, file, true, false);
+        } catch {
+            // Continue on error
+        }
+    }
+
+    private isOpenForEditing(path: string): boolean {
+        return this.app.workspace.getLeavesOfType('markdown').some(leaf =>
+            leaf.view instanceof MarkdownView &&
+            leaf.view.file?.path === path &&
+            leaf.view.getMode() === 'source'
+        );
     }
 
     async handleFileRename(file: TFile, oldPath: string) {
@@ -2616,27 +2703,41 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     private handleFileDelete(file: TFile) {
-        // Remove highlights for the deleted file
-        if (this.highlights.has(file.path)) {
-            
-            // Get the highlight IDs that will be removed
-            const deletedHighlightIds = new Set(
-                (this.highlights.get(file.path) || []).map(h => h.id)
-            );
-            
-            // Remove the file's highlights
-            this.highlights.delete(file.path);
-            
-            // Clean up collection references to these specific highlights
-            for (const collection of this.collections.values()) {
-                collection.highlightIds = collection.highlightIds.filter(
-                    highlightId => !deletedHighlightIds.has(highlightId)
-                );
-            }
-            
-            void this.saveSettings();
+        // Not written here, for the same reason as a created note: a deletion can
+        // come from another device, which records it itself (issue #126). Moving a
+        // note outside Obsidian also arrives as a delete and a create, and an early
+        // write here could replace the other device's record of the move.
+        if (this.removeFileHighlights(file.path)) {
             this.refreshSidebar();
         }
+    }
+
+    /**
+     * Forget a note's highlights and drop them from any collection, in memory.
+     * Returns whether there was anything to forget.
+     */
+    private removeFileHighlights(path: string): boolean {
+        const removed = this.highlights.get(path);
+        if (!removed) {
+            return false;
+        }
+
+        // Get the highlight IDs that will be removed
+        const deletedHighlightIds = new Set(removed.map(h => h.id));
+
+        // Remove the file's highlights
+        this.highlights.delete(path);
+        if (!this.unsavedHighlightFiles.has(path)) {
+            this.unsavedHighlightFiles.set(path, false);
+        }
+
+        // Clean up collection references to these specific highlights
+        for (const collection of this.collections.values()) {
+            collection.highlightIds = collection.highlightIds.filter(
+                highlightId => !deletedHighlightIds.has(highlightId)
+            );
+        }
+        return true;
     }
 
     getCurrentFileHighlights(): Highlight[] {
