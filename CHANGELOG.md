@@ -5,6 +5,13 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.1] - 2026-10-04
+
+### Fixed
+- **A vault synced between two computers no longer collects conflicted copies of the plugin's data.** If you keep the same vault open on two machines at once (with Syncthing, for example), Sidebar Highlights now saves only when something worth keeping changes, like a new highlight, and leaves a change made on the other machine for that machine to save. The daily conflict files should stop turning up.
+- **Highlights changed outside the editor show up straight away.** A note edited in another app, or updated by sync from another computer, now refreshes in the sidebar as soon as it changes on disk.
+- **Highlights with the same wording keep their collections after the note is edited elsewhere.** Two identical highlights in one note could drop out of their collections once enough text was added above them in another app or on another computer. They now hold on to them.
+
 ## [1.41.0] - 2026-09-03
 
 ### Added
