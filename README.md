@@ -67,6 +67,8 @@ Five tabs, each remembering its own filters, grouping and sort:
 
 Clicking anything takes you to it, in Editing or Reading view. **Follow editor scroll**, in the overflow menu, works the other way round: the sidebar tracks the highlight nearest what you're reading.
 
+The status bar keeps count of whatever the tab you're on is showing, after any search or filter: highlights, native comments and notes, or collections, or tasks. With the sidebar closed it counts the note you're in, and clicking it opens the sidebar.
+
 ### Search
 
 The search box takes text, tags, collections and boolean logic:
@@ -121,7 +123,7 @@ The Tasks tab collects every checkbox in the vault: `- [ ]`, `- [x]`, plus in-pr
 
 Everything lives under **Settings → Sidebar Highlights**.
 
-- **Views**: which of the five tabs appear
+- **Views**: which of the five tabs appear, and whether the status bar shows counts
 - **Display modes**: save your Display and Views settings as a named mode, and apply it from the command palette
 - **Detection**: whether HTML comments and adjacent native comments are picked up
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
