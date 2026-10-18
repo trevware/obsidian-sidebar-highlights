@@ -2367,3 +2367,25 @@
     font-size: var(--font-ui-small);
     margin-left: 12px;
 }
+/* Status bar counter (issue #129) */
+.sidebar-highlights-status-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-highlights-status-bar-segment {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.sidebar-highlights-status-bar-icon {
+    display: inline-flex;
+    align-items: center;
+}
+
+.sidebar-highlights-status-bar-icon svg {
+    width: var(--icon-xs, 14px);
+    height: var(--icon-xs, 14px);
+}

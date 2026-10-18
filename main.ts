@@ -12,6 +12,9 @@ import { findExistingHighlight } from './src/utils/highlight-matching';
 import { DeferredSave } from './src/utils/deferred-save';
 import { matchesDiskText } from './src/utils/change-origin';
 import { SortMode } from './src/utils/sort-order';
+import { countHighlights, StatusBarCounts } from './src/utils/status-bar-counts';
+import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
+import { StatusBarCounter } from './src/views/status-bar-counter';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -158,6 +161,7 @@ export interface CommentPluginSettings {
     showAllNotesTab: boolean; // Show/hide All Notes tab
     showCollectionsTab: boolean; // Show/hide Collections tab
     showTasksTab: boolean; // Show/hide Tasks tab
+    showStatusBarCounts: boolean; // Show the sidebar's counts in Obsidian's status bar
     showCompletedTasks: boolean; // Include completed tasks (- [x])
     showTaskContext: boolean; // Show indented text below tasks as context
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
@@ -221,6 +225,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showAllNotesTab: true, // Show All Notes tab by default
     showCollectionsTab: true, // Show Collections tab by default
     showTasksTab: false, // Tasks tab hidden by default (enable in Settings > Views)
+    showStatusBarCounts: true, // Status bar counter on by default
     showCompletedTasks: true, // Show completed tasks by default
     showTaskContext: true, // Show task context by default
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
@@ -272,6 +277,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     // previous one, so updates went to a panel the user was not looking at, and
     // closing that instance left the reference pointing at a dead view.
     private sidebarViews: Set<HighlightsSidebarView> = new Set();
+    private statusBarCounter: StatusBarCounter | null = null;
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
     // Whether the edits waiting on detectHighlightsTimeout include the user's own
@@ -338,6 +344,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             void this.activateView();
         });
 
+        this.statusBarCounter = new StatusBarCounter(
+            this.addStatusBarItem(),
+            () => this.getStatusBarCounts(),
+            () => void this.activateView()
+        );
+
         this.addCommand({
             id: 'create-highlight',
             name: t('commands.createHighlight'),
@@ -379,8 +391,14 @@ export default class HighlightCommentsPlugin extends Plugin {
                     // Content update instead of full refresh
                     this.forEachSidebarView(view => view.updateContent());
                 }
+                this.requestStatusBarUpdate();
             })
         );
+
+        // Opening, closing, hiding or switching to a sidebar panel changes which
+        // tab the status bar counter follows.
+        this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.requestStatusBarUpdate()));
+        this.registerEvent(this.app.workspace.on('layout-change', () => this.requestStatusBarUpdate()));
 
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor, view) => {
@@ -457,6 +475,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Drop the tracked views. Obsidian detaches the leaves it owns, but a view
         // another plugin hosts on a detached leaf never gets that onClose.
         this.sidebarViews.clear();
+
+        // Obsidian removes the status bar item itself; only a pending recount remains.
+        this.statusBarCounter?.destroy();
 
         // Write anything still waiting for its quiet spell.
         this.deferredSave.flush();
@@ -655,10 +676,44 @@ export default class HighlightCommentsPlugin extends Plugin {
     // Called by a view as it closes, so a closed panel stops being tracked.
     releaseSidebarView(view: HighlightsSidebarView): void {
         this.sidebarViews.delete(view);
+        this.requestStatusBarUpdate();
     }
 
     refreshSidebar() {
         this.forEachSidebarView(view => view.refresh());
+        this.requestStatusBarUpdate();
+    }
+
+    // Anything that can change what the counter shows asks for a recount here.
+    requestStatusBarUpdate(): void {
+        this.statusBarCounter?.requestUpdate();
+    }
+
+    private getStatusBarCounts(): StatusBarCounts {
+        if (!this.settings.showStatusBarCounts) return {};
+
+        const view = this.getStatusBarSourceView();
+        if (view) return view.getStatusBarCounts();
+
+        // No sidebar open: the note you're in, as its Current note tab shows it with no filters
+        const file = this.app.workspace.getActiveFile();
+        if (!file || !this.shouldProcessFile(file)) return {};
+        const minimum = this.settings.minimumCharacterCount;
+        return countHighlights(
+            this.getCurrentFileHighlights().filter(highlight => meetsMinimumCharacterCount(highlight, minimum)),
+            false
+        );
+    }
+
+    // The panel whose tab the counter follows: one on screen if there is one,
+    // otherwise any open panel (say, in a collapsed sidebar).
+    private getStatusBarSourceView(): HighlightsSidebarView | null {
+        let fallback: HighlightsSidebarView | null = null;
+        for (const view of this.sidebarViews) {
+            if (view.containerEl.isShown()) return view;
+            fallback ??= view;
+        }
+        return fallback;
     }
 
     // Display Mode methods
@@ -2520,6 +2575,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
 
         this.highlights.set(file.path, newHighlights);
+        this.requestStatusBarUpdate();
 
         // Only changes a restart can't rebuild from the note go to disk. A
         // highlight that merely moved, or whose comments changed, is read
@@ -3477,6 +3533,17 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.settings.showTasksTab = value;
                     await this.plugin.saveSettings();
                     this.plugin.refreshSidebar();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settings.views.showStatusBarCounts.name'))
+            .setDesc(t('settings.views.showStatusBarCounts.desc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showStatusBarCounts)
+                .onChange(async (value) => {
+                    this.plugin.settings.showStatusBarCounts = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.requestStatusBarUpdate();
                 }));
 
         // DISPLAY MODES SECTION

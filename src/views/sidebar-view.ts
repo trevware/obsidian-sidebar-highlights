@@ -20,6 +20,8 @@ import { headingForLine, headingGroupKey, compareDocumentOrder, DocumentPosition
 import { firstVisibleTab, tabIndex, visibleTabs } from '../utils/tab-order';
 import { HighlightTypeFilter, matchesTypeFilter, migrateLegacyTypeFilter } from '../utils/type-filter';
 import { colorLabel, resolveHighlightColor } from '../utils/color-labels';
+import { meetsMinimumCharacterCount } from '../utils/minimum-length';
+import { countHighlights, StatusBarCounts } from '../utils/status-bar-counts';
 import {
     CopyFormat,
     formatHighlightForCopy,
@@ -1481,6 +1483,8 @@ export class HighlightsSidebarView extends ItemView {
 
         // Restore scroll position after DOM rebuild
         this.restoreScrollPosition();
+
+        this.plugin.requestStatusBarUpdate();
     }
 
     private renderCollectionsView() {
@@ -1996,6 +2000,8 @@ export class HighlightsSidebarView extends ItemView {
         } finally {
             // Always reset the guard flag, even if an error occurs
             this.isRenderingTasks = false;
+            // Tasks load asynchronously, so the count is only known once this pass ends
+            this.plugin.requestStatusBarUpdate();
         }
     }
 
@@ -3681,9 +3687,11 @@ export class HighlightsSidebarView extends ItemView {
             }
         }
         this.showTagActive();
-        
+
         // Restore scroll position after DOM rebuild
         this.restoreScrollPosition();
+
+        this.plugin.requestStatusBarUpdate();
     }
 
     /**
@@ -7380,6 +7388,24 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     /**
+     * What this panel's tab is showing, after search and filters, for the
+     * status bar counter (issue #129).
+     */
+    public getStatusBarCounts(): StatusBarCounts {
+        if (this.viewMode === 'tasks') {
+            // With only the current note's tasks on screen, the main list isn't rendered
+            const settings = this.plugin.settings;
+            const onlyCurrentNote = settings.showOnlyCurrentNoteTasks && settings.showCurrentNoteTasksSection;
+            return { tasks: onlyCurrentNote ? this.getCurrentFileTasks().length : this.getCurrentlyVisibleTasks().length };
+        }
+        if (this.viewMode === 'collections' && !this.currentCollectionId) {
+            return { collections: this.plugin.collectionsManager.getAllCollections().length };
+        }
+        // Tabs that span several notes also count the notes, like their group headers
+        return countHighlights(this.getCurrentlyVisibleHighlights(), this.viewMode !== 'current');
+    }
+
+    /**
      * Add the "copy visible results" entry, with a format submenu.
      *
      * Obsidian supports submenus at runtime but `setSubmenu` is absent from the
@@ -7907,12 +7933,8 @@ export class HighlightsSidebarView extends ItemView {
             }
 
             // 5. Apply minimum character count filtering (for highlights and native comments only)
-            const minCharCount = this.plugin.settings.minimumCharacterCount;
-            if (minCharCount > 0 && (highlight.type === 'highlight' || highlight.type === 'html' || highlight.isNativeComment)) {
-                const textLength = highlight.text.length;
-                if (textLength < minCharCount) {
-                    return false;
-                }
+            if (!meetsMinimumCharacterCount(highlight, this.plugin.settings.minimumCharacterCount)) {
+                return false;
             }
 
             return true;

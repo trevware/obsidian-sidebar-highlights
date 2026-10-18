@@ -68,6 +68,10 @@
       "showCurrentFolderTab": {
         "name": "显示【当前文件夹】标签页",
         "desc": "列出当前笔记所在文件夹中所有笔记的高亮。"
+      },
+      "showStatusBarCounts": {
+        "name": "在状态栏显示计数",
+        "desc": "显示侧边栏当前标签页中的高亮和原生注释数量；侧边栏关闭时显示当前笔记的数量。点击可打开侧边栏。"
       }
     },
     "displayModes": {
@@ -492,5 +496,17 @@
     "highlightRemoved": "已移除高亮",
     "commentsRemoved": "已移除评论",
     "highlightAndCommentsRemoved": "已移除高亮和评论"
+  },
+  "statusBar": {
+    "highlight": "{{count}} 处高亮",
+    "highlights": "{{count}} 处高亮",
+    "nativeComment": "{{count}} 条原生注释",
+    "nativeComments": "{{count}} 条原生注释",
+    "file": "{{count}} 篇笔记",
+    "files": "{{count}} 篇笔记",
+    "collection": "{{count}} 个合集",
+    "collections": "{{count}} 个合集",
+    "task": "{{count}} 个任务",
+    "tasks": "{{count}} 个任务"
   }
 }

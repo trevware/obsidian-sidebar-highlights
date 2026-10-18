@@ -68,6 +68,10 @@
       "showCurrentFolderTab": {
         "name": "Show Current Folder tab",
         "desc": "Lists highlights from every note in the folder of the note you're viewing."
+      },
+      "showStatusBarCounts": {
+        "name": "Show counts in the status bar",
+        "desc": "Shows how many highlights and native comments the sidebar tab you're on is showing, or the note you're in when the sidebar is closed. Click it to open the sidebar."
       }
     },
     "displayModes": {
@@ -507,5 +511,17 @@
     "highlightRemoved": "Highlight removed",
     "commentsRemoved": "Comments removed",
     "highlightAndCommentsRemoved": "Highlight and comments removed"
+  },
+  "statusBar": {
+    "highlight": "{{count}} highlight",
+    "highlights": "{{count}} highlights",
+    "nativeComment": "{{count}} native comment",
+    "nativeComments": "{{count}} native comments",
+    "file": "{{count}} note",
+    "files": "{{count}} notes",
+    "collection": "{{count}} collection",
+    "collections": "{{count}} collections",
+    "task": "{{count}} task",
+    "tasks": "{{count}} tasks"
   }
 }
