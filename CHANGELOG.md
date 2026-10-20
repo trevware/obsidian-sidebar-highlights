@@ -5,6 +5,18 @@ All notable changes to the Sidebar Highlights plugin will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-10-19
+
+### Added
+- **Highlights you colour in Obsidian now show that colour in the sidebar.** Obsidian 1.14 lets you colour a highlight from the formatting menu, or by starting it with a coloured circle. Each card now picks up that colour and matches the note in whatever theme you use. Recolour it in the note and the card follows. (The colour picker on the card is turned off for these, since the note decides the colour.)
+- **The colour filter and Group by colour list Obsidian's colours with their circle.** That keeps Obsidian's blue apart from your own Blue in Settings → Sidebar Highlights, which is usually a different shade.
+- **Coloured highlights inside tasks show their colour on the Tasks tab too.**
+
+### Fixed
+- **The coloured circle no longer shows up in a highlight's text.** Cards, search, A → Z sorting and copied highlights show just your words, the same as the note. Copying with the highlight syntax keeps the circle, so a pasted highlight keeps its colour.
+- **Changing a highlight's colour in the note keeps it in its collections.** It holds on to its collections and its date, too.
+- **Removing a coloured highlight from the sidebar takes the circle with it**, so you're left with plain text and no stray circle in the note.
+
 ## [1.42.0] - 2026-10-18
 
 ### Added
