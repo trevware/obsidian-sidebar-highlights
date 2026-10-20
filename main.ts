@@ -14,6 +14,7 @@ import { matchesDiskText } from './src/utils/change-origin';
 import { SortMode } from './src/utils/sort-order';
 import { countHighlights, StatusBarCounts } from './src/utils/status-bar-counts';
 import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
+import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from './src/utils/note-colors';
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { i18n, t } from './src/i18n';
 
@@ -1995,11 +1996,12 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
 
         // Build the replacement for the [startOffset .. removalEnd] slice.
-        // - If stripping the wrapper: replace with just the inner text.
+        // - If stripping the wrapper: replace with just the inner text. A colour
+        //   emoji goes with the == marks, as in Obsidian's own unhighlight.
         // - If keeping the wrapper: keep the original highlight (chars
         //   [startOffset .. endOffset]) and discard whatever follows.
         const replacement = stripWrapper
-            ? highlight.text
+            ? highlightDisplayText(highlight)
             : content.substring(highlight.startOffset, highlight.endOffset);
 
         let newContent =
@@ -2427,9 +2429,13 @@ export default class HighlightCommentsPlugin extends Plugin {
             // Skip matches that were merged as adjacent comments
             if (skip) return;
             const [, highlightText] = match;
-            
-            // Skip empty or whitespace-only highlights
-            if (!highlightText || highlightText.trim() === '') {
+
+            // Obsidian's own colour emoji (==🔵text==, issue #130) only applies to == highlights
+            const isMarkdownHighlight = type === 'highlight' && !isCustomPattern;
+
+            // Skip empty or whitespace-only highlights, counting a lone colour emoji as empty
+            const visibleText = isMarkdownHighlight ? stripColorMarker(highlightText ?? '') : highlightText;
+            if (!visibleText || visibleText.trim() === '') {
                 return;
             }
             
@@ -2524,6 +2530,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             if (existingHighlight) {
                 newHighlights.push({
                     ...existingHighlight,
+                    // The match can differ by its colour emoji when recoloured in the note
+                    text: highlightText,
                     line: lineNumber,
                     startOffset: match.index,
                     endOffset: match.index + match[0].length,
@@ -2531,8 +2539,11 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteCount: footnoteCount,
                     footnoteContents: footnoteContents,
                     isNativeComment: type === 'comment',
-                    // Update color for HTML highlights, preserve existing for others
-                    color: type === 'html' ? color : existingHighlight.color,
+                    // HTML highlights and colour emoji take their colour from the note,
+                    // anything else keeps the colour picked in the sidebar
+                    color: type === 'html' ? color
+                        : isMarkdownHighlight ? detectedHighlightColor(highlightText, existingHighlight.color)
+                        : existingHighlight.color,
                     // Preserve existing createdAt timestamp if it exists
                     createdAt: existingHighlight.createdAt || Date.now(),
                     // Store the type for proper identification
@@ -2556,8 +2567,10 @@ export default class HighlightCommentsPlugin extends Plugin {
                     footnoteContents: footnoteContents,
                     createdAt: uniqueTimestamp,
                     isNativeComment: type === 'comment',
-                    // Set color for HTML highlights
-                    color: type === 'html' ? color : undefined,
+                    // Set color for HTML highlights and colour emoji
+                    color: type === 'html' ? color
+                        : isMarkdownHighlight ? detectedHighlightColor(highlightText, undefined)
+                        : undefined,
                     // Store the type for proper identification
                     type: isCustomPattern ? 'custom' : type,
                     // Store full match for custom patterns

@@ -160,6 +160,13 @@ describe('compareHighlights', () => {
             expect(sortHl([b, a], 'alphabetical-asc').map(h => h.text)).toEqual(['apple', 'banana']);
             expect(sortHl([a, b], 'alphabetical-desc').map(h => h.text)).toEqual(['banana', 'apple']);
         });
+
+        it('should sort coloured highlights by their words, not their emoji (issue #130)', () => {
+            const b = hl({ text: '🔴banana', type: 'highlight' });
+            const a = hl({ text: '🟣apple', type: 'highlight' });
+
+            expect(sortHl([b, a], 'alphabetical-asc').map(h => h.text)).toEqual(['🟣apple', '🔴banana']);
+        });
     });
 });
 

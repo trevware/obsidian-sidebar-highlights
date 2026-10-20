@@ -1,6 +1,7 @@
 import { setIcon, TFile, Menu, Notice, moment } from 'obsidian';
 import type { Highlight } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
+import { highlightDisplayText, noteColorName } from '../utils/note-colors';
 
 export interface HighlightRenderOptions {
     searchTerm?: string;
@@ -117,7 +118,7 @@ export class HighlightRenderer {
 
     private createQuoteSection(item: HTMLElement, highlight: Highlight, options: HighlightRenderOptions): void {
         const quoteEl = item.createDiv({ cls: 'highlight-quote' });
-        this.renderMarkdownToElement(quoteEl, highlight.text);
+        this.renderMarkdownToElement(quoteEl, highlightDisplayText(highlight));
 
         if (options.searchTerm && options.searchTerm.length > 0) {
             this.highlightSearchMatches(quoteEl, options.searchTerm);
@@ -739,8 +740,9 @@ export class HighlightRenderer {
 
     private isColorChangeable(highlight: Highlight): boolean {
         // Only allow color changes for regular markdown highlights (==text==) and native comments (%%text%%)
-        // Don't allow for HTML highlights (<font>, <span>, <mark>)
-        return !this.isHtmlHighlight(highlight);
+        // Don't allow for HTML highlights (<font>, <span>, <mark>), or for highlights coloured by
+        // Obsidian's colour emoji (==🔵text==): the note owns their colour, and Obsidian's swatch changes it
+        return !this.isHtmlHighlight(highlight) && !noteColorName(highlight.color);
     }
 
     private isHtmlHighlight(highlight: Highlight): boolean {

@@ -1,3 +1,5 @@
+import { highlightDisplayText } from './note-colors';
+
 /**
  * The "Minimum character count" setting, shared by the sidebar's filters and the
  * status bar counter so both agree on what counts as a highlight.
@@ -11,5 +13,6 @@ export function meetsMinimumCharacterCount(
 ): boolean {
     if (minimum <= 0) return true;
     const isHeldToMinimum = highlight.type === 'highlight' || highlight.type === 'html' || !!highlight.isNativeComment;
-    return !isHeldToMinimum || highlight.text.length >= minimum;
+    // A colour emoji is formatting, so only the words count
+    return !isHeldToMinimum || highlightDisplayText(highlight).length >= minimum;
 }

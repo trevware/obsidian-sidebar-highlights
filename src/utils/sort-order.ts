@@ -10,6 +10,8 @@
  * is injected as a lookup rather than imported.
  */
 
+import { highlightDisplayText } from './note-colors';
+
 export type SortMode =
     | 'none'
     | 'alphabetical-asc'
@@ -32,6 +34,8 @@ export type SortFallback = 'position' | 'path-then-position';
 
 export interface SortableHighlight {
     text: string;
+    type?: string;
+    isNativeComment?: boolean;
     filePath: string;
     startOffset: number;
     createdAt?: number;
@@ -87,7 +91,8 @@ export function compareHighlights(
     switch (mode) {
         case 'alphabetical-asc':
         case 'alphabetical-desc': {
-            primary = a.text.toLowerCase().localeCompare(b.text.toLowerCase());
+            // By the words shown, so a colour emoji doesn't sort ahead of them
+            primary = highlightDisplayText(a).toLowerCase().localeCompare(highlightDisplayText(b).toLowerCase());
             if (mode === 'alphabetical-desc') primary = -primary;
             break;
         }

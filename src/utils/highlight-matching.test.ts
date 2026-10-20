@@ -72,4 +72,28 @@ describe('findExistingHighlight', () => {
         const existing = [h('a', 'term', 100)];
         expect(findExistingHighlight(existing, new Set(), 'terms', 100, 109, false)).toBeUndefined();
     });
+
+    describe('Obsidian colour emoji (issue #130)', () => {
+        it('keeps the id when a highlight is recoloured in the note', () => {
+            const existing = [h('a', '🔵term', 100)];
+            expect(findExistingHighlight(existing, new Set(), '🔴term', 100, 110, false)?.id).toBe('a');
+        });
+
+        it('keeps the id when a colour is added or removed', () => {
+            expect(findExistingHighlight([h('a', 'term', 100)], new Set(), '🔵term', 100, 110, false)?.id).toBe('a');
+            expect(findExistingHighlight([h('a', '🔵term', 100)], new Set(), 'term', 100, 108, false)?.id).toBe('a');
+        });
+
+        it('still prefers the highlight with the exact same text', () => {
+            // A plain and a coloured copy of the same words, and the plain one moved
+            const existing = [h('a', '🔵term', 100), h('b', 'term', 120)];
+            expect(findExistingHighlight(existing, new Set(), 'term', 100, 108, false)?.id).toBe('b');
+        });
+
+        it('leaves native comments to exact text', () => {
+            // Obsidian only colours == highlights, so in a comment the emoji is just text
+            const existing = [h('a', '🔵term', 100, true)];
+            expect(findExistingHighlight(existing, new Set(), '🔴term', 100, 110, true)).toBeUndefined();
+        });
+    });
 });

@@ -1,15 +1,18 @@
 /**
  * Naming and normalising highlight colours for the colour filter.
  *
- * Colours reach a highlight from three directions: the five configurable palette
+ * Colours reach a highlight from four directions: the five configurable palette
  * slots, arbitrary values carried by HTML highlights (`<font color>`,
- * `<span style="background">`, Highlightr's `<mark>`), and the vault default for
- * highlights that never had one set. The filter has to treat `#FFD700`, `#ffd700`
+ * `<span style="background">`, Highlightr's `<mark>`), Obsidian's own colour
+ * emoji (`==🔵text==`, see note-colors.ts), and the vault default for highlights
+ * that never had one set. The filter has to treat `#FFD700`, `#ffd700`
  * and a highlight with no colour at all as the same bucket, or the menu sprouts
  * duplicate entries that each match half the highlights.
  *
  * Kept free of Obsidian imports so it can be unit tested directly.
  */
+
+import { noteColorLabel, noteColorName } from './note-colors';
 
 export interface ColorPalette {
     customColors: Record<string, string>;
@@ -43,6 +46,9 @@ export function normalizeColor(color: string): string {
  */
 export function colorLabel(color: string, palette: ColorPalette): string {
     const normalized = normalizeColor(color);
+
+    const noteColor = noteColorName(normalized);
+    if (noteColor) return noteColorLabel(noteColor);
 
     for (const [slot, slotColor] of Object.entries(palette.customColors)) {
         if (normalizeColor(slotColor) !== normalized) continue;

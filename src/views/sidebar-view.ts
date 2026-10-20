@@ -20,6 +20,7 @@ import { headingForLine, headingGroupKey, compareDocumentOrder, DocumentPosition
 import { firstVisibleTab, tabIndex, visibleTabs } from '../utils/tab-order';
 import { HighlightTypeFilter, matchesTypeFilter, migrateLegacyTypeFilter } from '../utils/type-filter';
 import { colorLabel, resolveHighlightColor } from '../utils/color-labels';
+import { highlightDisplayText, noteColorLabel, noteColorName } from '../utils/note-colors';
 import { meetsMinimumCharacterCount } from '../utils/minimum-length';
 import { countHighlights, StatusBarCounts } from '../utils/status-bar-counts';
 import {
@@ -5896,6 +5897,12 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private getColorName(hex: string): string {
+        // Obsidian's own colours (==🔵text==) are named with their emoji
+        const noteColor = noteColorName(hex);
+        if (noteColor) {
+            return noteColorLabel(noteColor);
+        }
+
         // Check if user has defined custom names
         const customNames = this.plugin.settings.customColorNames;
         const colors = this.plugin.settings.customColors;
@@ -7956,7 +7963,7 @@ export class HighlightsSidebarView extends ItemView {
             return filterNode.exclude ? !matches : matches;
         } else if (node.type === 'text') {
             const textNode = node as TextNode;
-            return highlight.text.toLowerCase().includes(textNode.value.toLowerCase()) ||
+            return highlightDisplayText(highlight).toLowerCase().includes(textNode.value.toLowerCase()) ||
                    highlight.filePath.toLowerCase().replace(/\.md$/, '').includes(textNode.value.toLowerCase());
         } else if (node.type === 'operator') {
             const opNode = node as OperatorNode;

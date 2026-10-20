@@ -12,11 +12,13 @@
 
 import type { TaskStatus } from '../../main';
 import { statusToCheckboxState } from './task-status';
+import { highlightDisplayText } from './note-colors';
 
 export type CopyFormat = 'with-syntax' | 'plain' | 'list';
 
 export interface CopyableHighlight {
     text: string;
+    type?: string;
     isNativeComment?: boolean;
     footnoteContents?: string[];
 }
@@ -30,8 +32,9 @@ export interface CopyableTask {
 /**
  * Format a single highlight.
  *
- * - `with-syntax` keeps `==text==` (the original behaviour)
- * - `plain` drops the highlight markers
+ * - `with-syntax` keeps `==text==` (the original behaviour), including an
+ *   Obsidian colour emoji, so a pasted highlight keeps its colour
+ * - `plain` drops the highlight markers and the colour emoji
  * - `list` drops them and prefixes a bullet
  */
 export function formatHighlightForCopy(highlight: CopyableHighlight, format: CopyFormat): string {
@@ -44,7 +47,7 @@ export function formatHighlightForCopy(highlight: CopyableHighlight, format: Cop
         // Both regular markdown and HTML highlights export as ==text==
         text = `==${highlight.text}==`;
     } else {
-        text = highlight.text;
+        text = highlightDisplayText(highlight);
     }
 
     // Append footnotes/comments (but not for native comments — the text is the comment)

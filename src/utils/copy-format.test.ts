@@ -26,6 +26,22 @@ describe('copy formatting', () => {
             expect(formatHighlightForCopy(highlight, 'list')).toBe('- remarkable bit');
         });
 
+        describe('with an Obsidian colour emoji (issue #130)', () => {
+            const coloured = { text: '🔵remarkable bit', type: 'highlight' };
+
+            it('should keep the emoji with the syntax, so a paste stays coloured', () => {
+                expect(formatHighlightForCopy(coloured, 'with-syntax')).toBe('==🔵remarkable bit==');
+            });
+
+            it('should drop the emoji along with the syntax in plain format', () => {
+                expect(formatHighlightForCopy(coloured, 'plain')).toBe('remarkable bit');
+            });
+
+            it('should drop the emoji in list format', () => {
+                expect(formatHighlightForCopy(coloured, 'list')).toBe('- remarkable bit');
+            });
+        });
+
         it.each<CopyFormat>(['with-syntax', 'plain', 'list'])(
             'should keep native comment markers in %s format',
             (format) => {

@@ -2,6 +2,7 @@ import { setIcon, moment } from 'obsidian';
 import type { Task, TaskStatus } from '../../main';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
 import { squircleifyIcon } from '../utils/squircle-icon';
+import { parseColorMarker } from '../utils/note-colors';
 import type HighlightCommentsPlugin from '../../main';
 
 export interface TaskRenderOptions {
@@ -307,7 +308,13 @@ export class TaskRenderer {
                 this.renderTextWithTags(delEl, segment.content || '', searchTerm);
             } else if (segment.type === 'highlight') {
                 const highlightEl = element.createSpan({ cls: 'cm-highlight' });
-                this.renderTextWithTags(highlightEl, segment.content || '', searchTerm);
+                // Obsidian's colour emoji (==🔵text==) tints the highlight and isn't shown
+                const content = segment.content || '';
+                const marker = parseColorMarker(content);
+                if (marker) {
+                    highlightEl.setAttribute('data-highlight', marker.color);
+                }
+                this.renderTextWithTags(highlightEl, marker ? content.slice(marker.length) : content, searchTerm);
             } else if (segment.type === 'link') {
                 const linkEl = element.createEl('a');
                 linkEl.textContent = segment.text || '';

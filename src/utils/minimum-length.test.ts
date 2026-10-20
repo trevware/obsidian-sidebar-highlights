@@ -18,6 +18,11 @@ describe('meetsMinimumCharacterCount', () => {
         expect(meetsMinimumCharacterCount({ type: 'comment', isNativeComment: true, text: 'abc' }, 4)).toBe(false);
     });
 
+    it('does not count an Obsidian colour emoji toward the minimum (issue #130)', () => {
+        expect(meetsMinimumCharacterCount({ type: 'highlight', text: '🔵abc' }, 4)).toBe(false);
+        expect(meetsMinimumCharacterCount({ type: 'highlight', text: '🔵abcd' }, 4)).toBe(true);
+    });
+
     it('never drops custom pattern matches', () => {
         expect(meetsMinimumCharacterCount({ type: 'custom', text: 'a' }, 4)).toBe(true);
     });

@@ -50,6 +50,11 @@ describe('colorLabel', () => {
         expect(colorLabel('#FFD700', PALETTE)).toBe('Yellow');
     });
 
+    it('names an Obsidian note colour with its emoji (issue #130)', () => {
+        // Kept apart from the palette's own Blue, which is a different colour
+        expect(colorLabel('var(--color-blue)', PALETTE)).toBe('🔵 Blue');
+    });
+
     it('shows the raw value for a colour outside the palette', () => {
         // HTML highlights carry arbitrary colours from <font>, <span> and Highlightr
         expect(colorLabel('#835cf5', PALETTE)).toBe('#835cf5');

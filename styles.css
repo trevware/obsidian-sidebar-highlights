@@ -29,6 +29,38 @@
     color: inherit;
 }
 
+/* Obsidian 1.14 colour emoji (==🔵text==), using the note's own highlight colours.
+   Older versions lack these variables and fall back to the plain highlight. */
+.task-text-content .cm-highlight[data-highlight="red"],
+.task-context .cm-highlight[data-highlight="red"] {
+    background-color: var(--highlight-background-red, var(--text-highlight-bg));
+}
+
+.task-text-content .cm-highlight[data-highlight="orange"],
+.task-context .cm-highlight[data-highlight="orange"] {
+    background-color: var(--highlight-background-orange, var(--text-highlight-bg));
+}
+
+.task-text-content .cm-highlight[data-highlight="yellow"],
+.task-context .cm-highlight[data-highlight="yellow"] {
+    background-color: var(--highlight-background-yellow, var(--text-highlight-bg));
+}
+
+.task-text-content .cm-highlight[data-highlight="green"],
+.task-context .cm-highlight[data-highlight="green"] {
+    background-color: var(--highlight-background-green, var(--text-highlight-bg));
+}
+
+.task-text-content .cm-highlight[data-highlight="blue"],
+.task-context .cm-highlight[data-highlight="blue"] {
+    background-color: var(--highlight-background-blue, var(--text-highlight-bg));
+}
+
+.task-text-content .cm-highlight[data-highlight="purple"],
+.task-context .cm-highlight[data-highlight="purple"] {
+    background-color: var(--highlight-background-purple, var(--text-highlight-bg));
+}
+
 /* Individual highlight color classes for sidebar items - use CSS custom properties */
 .highlight-item-card.highlight-color-yellow {
     border-left-color: var(--sh-highlight-yellow, #ffd700);
