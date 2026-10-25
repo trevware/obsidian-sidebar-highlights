@@ -3153,16 +3153,6 @@
     border-bottom-right-radius: 0;
 }
 
-/* The keyboard cursor inside a selection: its own rounded outline, inset a
-   little, so it stays a pill even where the block's corners are squared. */
-.sh-task-row.is-selected.is-highlighted::after {
-    content: "";
-    position: absolute;
-    inset: 2px;
-    border-radius: calc(var(--sh-item-radius) - 2px);
-    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sh-accent) 55%, transparent);
-    pointer-events: none;
-}
 
 /* The list behind an open card dims under one flat overlay, with the card
    lifted above it: a single solid layer, where dimming every row would
