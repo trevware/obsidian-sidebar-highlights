@@ -74,6 +74,7 @@ export interface Task {
     section?: string; // Markdown header above the task (if any)
     date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
     dateText?: string; // Original date text from task (to strip from display)
+    marker?: string; // The raw checkbox character, e.g. '>' for an alternate checkbox
 }
 
 export interface CustomPattern {

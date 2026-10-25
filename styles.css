@@ -3242,6 +3242,41 @@
     stroke: var(--sh-on-accent);
 }
 
+/* Alternate checkboxes: the marker's icon sits inside the squircle in the
+   marker's theme colour. */
+.sh-tasks-view .sh-task-glyph[data-tone="red"] { --sh-glyph: var(--color-red); }
+.sh-tasks-view .sh-task-glyph[data-tone="orange"] { --sh-glyph: var(--color-orange); }
+.sh-tasks-view .sh-task-glyph[data-tone="yellow"] { --sh-glyph: var(--color-yellow); }
+.sh-tasks-view .sh-task-glyph[data-tone="green"] { --sh-glyph: var(--color-green); }
+.sh-tasks-view .sh-task-glyph[data-tone="blue"] { --sh-glyph: var(--color-blue); }
+.sh-tasks-view .sh-task-glyph[data-tone="purple"] { --sh-glyph: var(--color-purple); }
+.sh-tasks-view .sh-task-glyph[data-tone="gray"] { --sh-glyph: var(--text-muted); }
+
+.sh-task-glyph[data-marker] .sh-glyph-fill {
+    fill-opacity: 0.14;
+}
+
+.sh-glyph-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--sh-glyph);
+    pointer-events: none;
+}
+
+.sh-glyph-icon .svg-icon {
+    width: 11px;
+    height: 11px;
+    stroke-width: 2.6px;
+}
+
+.sh-task-glyph.is-small .sh-glyph-icon .svg-icon {
+    width: 9px;
+    height: 9px;
+}
+
 /* Smaller glyphs: palette rows, and the rail's status lists. */
 .sh-tasks-view .sh-task-glyph.is-small,
 .sh-tasks-view .sh-task-glyph.is-icon {

@@ -703,6 +703,25 @@
       "toggleSidebar": "Show or hide the sidebar",
       "undo": "Undo",
       "escape": "Close the card, then clear the selection"
+    },
+    "markers": {
+      "forwarded": "Forwarded",
+      "scheduling": "Scheduling",
+      "important": "Important",
+      "star": "Star",
+      "quote": "Quote",
+      "location": "Location",
+      "bookmark": "Bookmark",
+      "information": "Information",
+      "savings": "Savings",
+      "idea": "Idea",
+      "pros": "Pro",
+      "cons": "Con",
+      "fire": "Fire",
+      "key": "Key",
+      "win": "Win",
+      "up": "Up",
+      "down": "Down"
     }
   }
 }

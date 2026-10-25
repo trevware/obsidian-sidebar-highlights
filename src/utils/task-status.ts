@@ -9,13 +9,22 @@
 import type { TaskStatus } from '../../main';
 
 /**
- * Matches checkbox syntax: - [ ] - [x] - [/] - [-] - [?] - [!] - [!1] - [!2] - [!3]
- * Supports tasks in callouts (lines starting with >).
- * Captures leading whitespace, checkbox state, and task text.
+ * The alternate checkboxes popularised by the Minimal theme and listed in the
+ * Tasks plugin's status reference: forwarded, scheduling, important, star,
+ * quote, location, bookmark, information, savings, idea, pros, cons, fire,
+ * key, win, up and down. The Tasks plugin counts every one of them as an open
+ * task, so they map to 'todo' here and keep their own mark for display.
+ */
+export const ALTERNATE_MARKERS = ['>', '<', '!', '*', '"', 'l', 'b', 'i', 'S', 'I', 'p', 'c', 'f', 'k', 'w', 'u', 'd'] as const;
+
+/**
+ * Matches checkbox syntax: - [ ] - [x] - [/] - [-] - [?] - [!1] - [!2] - [!3]
+ * and every alternate marker above. Supports tasks in callouts (lines
+ * starting with >). Captures leading whitespace, checkbox state, and task text.
  *
  * The hyphen sits last in the character class so it is read as a literal.
  */
-export const CHECKBOX_PATTERN = String.raw`(\s*)- \[([ xX!/?-]|!?[123])\] (.+)$`;
+export const CHECKBOX_PATTERN = String.raw`(\s*)- \[(!?[123]|[ xX/?><!*"lbiSIpcfkwud-])\] (.+)$`;
 
 /** Detection form — the callout prefix is matched but not captured. */
 export const CHECKBOX_REGEX = new RegExp(String.raw`^(?:>+ ?)?` + CHECKBOX_PATTERN);

@@ -309,7 +309,8 @@ export class TaskManager {
                     parentLine: nested.parentLine,
                     section: currentSection,
                     date: parsedDate?.date,
-                    dateText: parsedDate?.dateText
+                    dateText: parsedDate?.dateText,
+                    marker: checkboxState
                 };
 
                 tasks.push(task);

@@ -41,6 +41,17 @@ describe('task checkbox parsing', () => {
             expect(checkboxStateToStatus(match![2])).toBe(expected);
         });
 
+        it.each(['>', '<', '*', '"', 'l', 'b', 'i', 'S', 'I', 'p', 'c', 'f', 'k', 'w', 'u', 'd'])(
+            'should match the alternate marker [%s] as an open task',
+            (state) => {
+                const match = `- [${state}] A task`.match(CHECKBOX_REGEX);
+
+                expect(match).not.toBeNull();
+                expect(match![2]).toBe(state);
+                expect(checkboxStateToStatus(match![2])).toBe('todo');
+            }
+        );
+
         it.each(['!', '!1', '!2', '!3', '1', '2', '3'])(
             'should still match the existing priority state [%s]',
             (state) => {

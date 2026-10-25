@@ -43,6 +43,7 @@ import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
 import { GlassMenu } from './glass-menu';
+import { MARKER_DEFS, markerDef } from './markers';
 import type { GlassMenuItem } from './glass-menu';
 import type { Destination, QuickAddPrefill } from './quick-add';
 
@@ -810,7 +811,7 @@ export class TasksTabView extends ItemView {
         this.cardField(fields, 'calendar', date ? date.text : t('tasksTab.actions.addDate'), date?.tone, () => this.openPalette(this.dateStage([task])));
         this.cardField(fields, 'flag', task.priority ? `P${task.priority}` : t('tasksTab.quickAdd.priority'), undefined, () => this.openPalette(this.priorityStage([task])))
             .dataset.priority = task.priority ? String(task.priority) : '';
-        this.cardField(fields, 'circle-dot', t(`tasksTab.status.${statusOf(task)}`), undefined, () => this.openPalette(this.statusStage([task])));
+        this.cardField(fields, 'circle-dot', this.statusLabel(task), undefined, () => this.openPalette(this.statusStage([task])));
 
         const where = card.createDiv({ cls: 'sh-card-where' });
         setIcon(where.createSpan({ cls: 'sh-meta-icon' }), 'file-text');
@@ -1187,6 +1188,11 @@ export class TasksTabView extends ItemView {
         await this.write(tasks, this.countLabel(status === 'cancelled' ? 'cancelled' : 'statusSet', tasks), line => withState(line, state), resolves);
     }
 
+    /** Sets an alternate checkbox such as [>] or [*]. Like a status, it replaces any priority. */
+    private async setMarker(tasks: Task[], char: string): Promise<void> {
+        await this.write(tasks, this.countLabel('statusSet', tasks), line => withState(line, char));
+    }
+
     private async setPriority(tasks: Task[], level: 1 | 2 | 3 | null): Promise<void> {
         await this.write(tasks, this.countLabel('prioritySet', tasks), (line) => {
             const parsed = parseTaskLine(line);
@@ -1218,7 +1224,7 @@ export class TasksTabView extends ItemView {
 
     private async copyTasks(tasks: Task[]): Promise<void> {
         const lines = tasks.map(task => {
-            const state = task.priority ? `!${task.priority}` : statusToCheckboxState(statusOf(task));
+            const state = task.priority ? `!${task.priority}` : task.marker ?? statusToCheckboxState(statusOf(task));
             return `- [${state}] ${task.text}`;
         });
         await navigator.clipboard.writeText(lines.join('\n'));
@@ -1531,14 +1537,31 @@ export class TasksTabView extends ItemView {
         return {
             title: t('tasksTab.actions.setStatus'),
             placeholder: t('tasksTab.palette.statusPlaceholder'),
-            items: () => statuses.map(status => ({
-                id: `status:${status}`,
-                section: '',
-                label: t(`tasksTab.status.${status}`),
-                paintIcon: (el: HTMLElement) => paintGlyph(el.createDiv({ cls: 'sh-task-glyph is-small' }), { status, priority: undefined }),
-                run: () => void this.setStatus(tasks, status)
-            }))
+            items: () => [
+                ...statuses.map(status => ({
+                    id: `status:${status}`,
+                    section: '',
+                    label: t(`tasksTab.status.${status}`),
+                    paintIcon: (el: HTMLElement) => paintGlyph(el.createDiv({ cls: 'sh-task-glyph is-small' }), { status, priority: undefined }),
+                    run: () => void this.setStatus(tasks, status)
+                })),
+                ...MARKER_DEFS.map((def, index) => ({
+                    id: `marker:${def.id}`,
+                    section: '',
+                    label: t(`tasksTab.markers.${def.id}`),
+                    detail: `[${def.char}]`,
+                    divider: index === 0,
+                    paintIcon: (el: HTMLElement) => paintGlyph(el.createDiv({ cls: 'sh-task-glyph is-small' }), { status: 'todo', priority: undefined, marker: def.char }),
+                    run: () => void this.setMarker(tasks, def.char)
+                }))
+            ]
         };
+    }
+
+    /** What a task's status reads as, naming its alternate marker when it has one. */
+    private statusLabel(task: Task): string {
+        const marker = statusOf(task) === 'todo' && !task.priority ? markerDef(task.marker) : undefined;
+        return marker ? t(`tasksTab.markers.${marker.id}`) : t(`tasksTab.status.${statusOf(task)}`);
     }
 
     private shortcutsStage(): PaletteStage {
@@ -1793,10 +1816,18 @@ function svgPath(parent: Element, d: string, cls: string): SVGPathElement {
  * filled for in progress, a question mark, dashed for cancelled, a filled
  * check for done).
  */
-export function paintGlyph(el: HTMLElement, task: Pick<Task, 'status' | 'priority'> & Partial<Pick<Task, 'completed'>>): void {
+export function paintGlyph(el: HTMLElement, task: Pick<Task, 'status' | 'priority'> & Partial<Pick<Task, 'completed' | 'marker'>>): void {
     const status = task.status ?? (task.completed ? 'done' : 'todo');
     el.dataset.status = status;
     if (task.priority) el.dataset.priority = String(task.priority);
+
+    // An alternate checkbox ([>], [*], [i] …) is an open task that wears its
+    // own icon inside the squircle, in its own colour.
+    const marker = status === 'todo' && !task.priority ? markerDef(task.marker) : undefined;
+    if (marker) {
+        el.dataset.marker = marker.id;
+        el.dataset.tone = marker.tone;
+    }
 
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -1807,8 +1838,9 @@ export function paintGlyph(el: HTMLElement, task: Pick<Task, 'status' | 'priorit
         svgPath(svg, SQUIRCLE_RIGHT_HALF, 'sh-glyph-half').setAttribute('transform', 'translate(12 12) scale(0.6) translate(-12 -12)');
     }
     svgPath(svg, SQUIRCLE_PATH, 'sh-glyph-outline');
-    for (const d of GLYPH_MARKS[status] ?? []) svgPath(svg, d, 'sh-glyph-mark');
+    if (!marker) for (const d of GLYPH_MARKS[status] ?? []) svgPath(svg, d, 'sh-glyph-mark');
     el.appendChild(svg);
+    if (marker) setIcon(el.createSpan({ cls: 'sh-glyph-icon' }), marker.icon);
 }
 
 /** A dashed squircle, for the row that invites a new task. */
