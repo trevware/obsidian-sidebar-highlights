@@ -318,21 +318,28 @@ export class QuickAdd {
         // A menu or the note picker is up over the panel and owns the keys.
         if (this.menu.isOpen || this.panel?.hasClass('is-hidden')) return;
 
-        // Escape puts it away wherever the cursor went in the tab, even
-        // after a click took it out of the field.
+        // Escape and Enter work wherever the cursor went in the tab, even
+        // after something took it out of the field, and typing goes back
+        // into the field. Another field in the tab keeps its own keys.
         const active = document.activeElement;
-        if (event.key === 'Escape' && (!active || active === document.body || this.container.contains(active))) {
+        const inTab = !active || active === document.body || this.container.contains(active);
+        const otherField = active !== this.input && active instanceof HTMLElement
+            && active.closest('input, textarea, [contenteditable="true"]') !== null;
+        if (event.key === 'Escape' && inTab) {
             event.preventDefault();
             event.stopPropagation();
             this.close(true);
             return;
         }
-        if (active !== this.input) return;
-
-        if (event.key === 'Enter' && !event.isComposing) {
+        if (event.key === 'Enter' && !event.isComposing && inTab && !otherField) {
             event.preventDefault();
             event.stopPropagation();
             void this.submit(event.metaKey || event.ctrlKey);
+            return;
+        }
+        if (active !== this.input) {
+            const typing = event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
+            if (typing && inTab && !otherField) this.input.focus({ preventScroll: true });
             return;
         }
 
@@ -363,9 +370,17 @@ export class QuickAdd {
             return;
         }
 
+        // A save that fails leaves the draft in place to try again, and never
+        // leaves quick add stuck ignoring Enter.
         this.busy = true;
-        const ok = await this.host.submit([line], destination);
-        this.busy = false;
+        let ok = false;
+        try {
+            ok = await this.host.submit([line], destination);
+        } catch (error) {
+            console.error('Sidebar Highlights: adding the task failed', error);
+        } finally {
+            this.busy = false;
+        }
         if (!ok) return;
 
         if (keepOpen && this.input) {

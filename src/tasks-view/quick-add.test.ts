@@ -26,7 +26,7 @@ proto.hasClass = function (this: HTMLElement, cls: string) { return this.classLi
 proto.empty = function (this: HTMLElement) { this.replaceChildren(); };
 proto.setCssProps = function (this: HTMLElement, props: Record<string, string>) { for (const [key, value] of Object.entries(props)) this.style.setProperty(key, value); };
 
-function setup() {
+function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true)) {
     document.body.replaceChildren();
     const container = document.body.createDiv({ cls: 'sh-tasks-view' });
     const outside = container.createDiv({ cls: 'sh-tasks-scroll' });
@@ -39,7 +39,7 @@ function setup() {
         destinationLabel: (destination) => destination.path,
         defaultDestination: () => ({ path: 'Inbox.md' }),
         chooseDestination: () => undefined,
-        submit: () => Promise.resolve(true),
+        submit,
         onClose: () => { closed++; }
     };
     const quickAdd = new QuickAdd(container, host);
@@ -47,6 +47,13 @@ function setup() {
 }
 
 const escape = () => document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+const enter = () => document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+const type = (container: HTMLElement, text: string) => {
+    const input = container.querySelector('.sh-quickadd-input') as HTMLInputElement;
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+};
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const press = (el: Element) => el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
 
 describe('closing quick add', () => {
@@ -92,5 +99,40 @@ describe('closing quick add', () => {
         outside.focus();
         escape();
         expect(quickAdd.isOpen).toBe(true);
+    });
+});
+
+describe('saving from quick add', () => {
+    it('saves with Enter after focus has left the field', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container, outside } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        outside.focus();
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' });
+    });
+
+    it('puts typing back into the field after focus has left it', () => {
+        const { quickAdd, container, outside } = setup();
+        quickAdd.open();
+        outside.focus();
+        outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true }));
+        expect(document.activeElement).toBe(container.querySelector('.sh-quickadd-input'));
+    });
+
+    it('still saves after a save that failed', async () => {
+        const submit = jest.fn()
+            .mockImplementationOnce(() => Promise.reject(new Error('disk full')))
+            .mockImplementation(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        enter();
+        await settle();
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledTimes(2);
     });
 });
