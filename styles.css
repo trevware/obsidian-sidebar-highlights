@@ -3337,7 +3337,9 @@
     transition: opacity 120ms ease;
 }
 
-.sh-tasks-view button.sh-task-glyph:hover .sh-glyph-fill {
+/* Hover hints at the tick on an open checkbox. A checked one stays exactly as
+   it is: its fill is solid, and fading it on hover read as it unticking. */
+.sh-tasks-view button.sh-task-glyph:not([data-status="done"]):hover .sh-glyph-fill {
     fill-opacity: 0.14;
 }
 
