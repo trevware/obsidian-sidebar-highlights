@@ -532,11 +532,11 @@
     "lists": {
       "today": "Today",
       "upcoming": "Upcoming",
-      "anytime": "All open",
-      "in-progress": "In progress",
+      "anytime": "All Open",
+      "in-progress": "In Progress",
       "questions": "Questions",
       "logbook": "Done",
-      "thisNote": "This note"
+      "thisNote": "This Note"
     },
     "rail": {
       "vaultRoot": "Vault",

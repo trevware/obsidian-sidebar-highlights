@@ -2580,6 +2580,19 @@
     bottom: calc(76px + var(--safe-area-inset-bottom, 0px));
 }
 
+/* Catches a tap on the list while the rail is open over it, so the tap only
+   closes the rail. The controls stay above it and work as usual. */
+.sh-rail-scrim {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 29;
+}
+
+.sh-tasks-shell.is-narrow:not(.is-rail-hidden) .sh-rail-scrim {
+    display: block;
+}
+
 .sh-tasks-main {
     position: absolute;
     inset: 0;

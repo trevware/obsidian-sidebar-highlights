@@ -218,6 +218,13 @@ export class TasksTabView extends ItemView {
         this.shell = root.createDiv({ cls: 'sh-tasks-shell' });
         this.rail = this.shell.createDiv({ cls: 'sh-tasks-rail' });
         this.main = this.shell.createDiv({ cls: 'sh-tasks-main' });
+        // In a narrow pane the rail floats over the list like a drawer, and a
+        // tap anywhere off it puts it away.
+        const scrim = this.shell.createDiv({ cls: 'sh-rail-scrim' });
+        scrim.addEventListener('click', () => {
+            this.toggleRail();
+            this.focusList();
+        });
         this.scroller = this.main.createDiv({ cls: 'sh-tasks-scroll' });
         this.scroller.setAttr('tabindex', '-1');
         this.column = this.scroller.createDiv({ cls: 'sh-tasks-column' });
@@ -411,7 +418,7 @@ export class TasksTabView extends ItemView {
             this.scroller.scrollTop = 0;
             return;
         }
-        if (this.narrow) this.railHidden = true;
+        if (this.narrow && !this.railHidden) this.toggleRail();
         this.showList(ref, true);
         this.focusList();
     }
@@ -1577,7 +1584,10 @@ export class TasksTabView extends ItemView {
                 this.deleteTasks(this.targets());
                 return;
             case key === 'Escape':
-                if (this.expandedKey) {
+                if (this.narrow && !this.railHidden) {
+                    consume();
+                    this.toggleRail();
+                } else if (this.expandedKey) {
                     consume();
                     this.setExpanded(null);
                     this.paintSelection();
