@@ -567,6 +567,7 @@ export class TasksTabView extends ItemView {
             const collapsed = this.collapsed.has(collapseKey);
             if (group.title) this.renderGroupHeader(groupEl, group, collapseKey, collapsed);
             if (collapsed) continue;
+            if (group.count === 0 && group.add) this.renderAddRow(groupEl, group.add);
 
             for (const section of group.sections) {
                 if (section.title) {
@@ -651,35 +652,65 @@ export class TasksTabView extends ItemView {
         }
     }
 
+    /**
+     * A group's header: a compact glass pill that hugs its label and sticks as
+     * the list scrolls under it, with the group's actions as separate small
+     * glass buttons to its right.
+     */
     private renderGroupHeader(groupEl: HTMLElement, group: TaskGroup, collapseKey: string, collapsed: boolean): void {
         const header = groupEl.createDiv({ cls: 'sh-group-header' });
         header.toggleClass('is-collapsed', collapsed);
 
-        const toggle = header.createDiv({ cls: 'sh-group-chevron' });
-        setIcon(toggle, 'chevron-down');
+        const pill = header.createDiv({ cls: 'sh-glass sh-group-pill' });
+        const badge = pill.createDiv({ cls: 'sh-group-badge' });
 
-        // A day gets a small calendar tile, so a week of Upcoming reads at a glance.
-        const day = group.key === 'today' ? isoToday() : group.key.startsWith('day:') ? group.key.slice(4) : null;
+        const today = isoToday();
+        const day = group.key === 'today' ? today : group.key.startsWith('day:') ? group.key.slice(4) : null;
         if (day) {
-            const tile = header.createDiv({ cls: 'sh-day-tile' });
-            tile.toggleClass('is-today', group.key === 'today');
-            const date = moment(day, 'YYYY-MM-DD');
-            tile.createDiv({ cls: 'sh-day-month', text: date.format('MMM') });
-            tile.createDiv({ cls: 'sh-day-number', text: date.format('D') });
+            // The day of the month, round, filled on today, the way a calendar strip marks it.
+            badge.addClass('is-day');
+            badge.toggleClass('is-today', day === today);
+            badge.setText(moment(day, 'YYYY-MM-DD').format('D'));
+        } else if (group.kind === 'priority') {
+            const level = group.key.split(':')[1];
+            const flag = badge.createDiv({ cls: 'sh-flag' });
+            if (level !== 'none') flag.dataset.priority = level;
+            setIcon(flag, level === 'none' ? 'flag-off' : 'flag');
+        } else {
+            const icons: Record<string, string> = { overdue: 'alarm-clock', note: 'file-text', heading: 'hash', date: 'calendar' };
+            setIcon(badge, group.key === 'no-date' ? 'calendar-off' : icons[group.kind] ?? 'circle');
         }
 
-        const title = header.createDiv({ cls: 'sh-group-title', text: group.title });
-        if (group.kind === 'priority') {
-            const level = group.key.split(':')[1];
-            if (level !== 'none') header.dataset.priority = level;
+        pill.createDiv({ cls: 'sh-group-title', text: group.title });
+
+        // A day already shows its number, so it only names the month when that
+        // has turned over; other groups keep their subtitle (a folder, a date).
+        let subtitle = group.subtitle;
+        if (day) {
+            const date = moment(day, 'YYYY-MM-DD');
+            subtitle = group.title === t('tasksTab.dates.tomorrow') ? date.format('dddd')
+                : date.format('MM') !== moment(today, 'YYYY-MM-DD').format('MM') ? date.format('MMMM')
+                : undefined;
+            if (day === today) subtitle = undefined;
         }
-        // The tile already says the date, so a day's subtitle would repeat it.
-        if (group.subtitle && !day) header.createDiv({ cls: 'sh-group-subtitle', text: group.subtitle });
-        header.createDiv({ cls: 'sh-group-count', text: String(group.count) });
+        if (subtitle) pill.createDiv({ cls: 'sh-group-subtitle', text: subtitle });
+        if (group.count > 0) pill.createDiv({ cls: 'sh-group-count', text: String(group.count) });
+
+        const chevron = pill.createDiv({ cls: 'sh-group-chevron' });
+        setIcon(chevron, 'chevron-down');
+
+        pill.addEventListener('click', () => {
+            if (collapsed) this.collapsed.delete(collapseKey);
+            else this.collapsed.add(collapseKey);
+            this.writeJson(STORAGE.collapsed, [...this.collapsed]);
+            this.render();
+        });
 
         const actions = header.createDiv({ cls: 'sh-group-actions' });
         if (group.kind === 'overdue') {
-            const reschedule = actions.createEl('button', { cls: 'sh-link-button is-alert', text: t('tasksTab.actions.reschedule') });
+            const reschedule = actions.createEl('button', { cls: 'sh-glass sh-pill-button is-alert' });
+            setIcon(reschedule.createSpan({ cls: 'sh-pill-icon' }), 'calendar-clock');
+            reschedule.createSpan({ text: t('tasksTab.actions.reschedule') });
             reschedule.addEventListener('click', (event) => {
                 event.stopPropagation();
                 const tasks = group.sections.flatMap(section => section.tasks);
@@ -687,17 +718,16 @@ export class TasksTabView extends ItemView {
             });
         }
         if (group.kind === 'note') {
-            const open = actions.createEl('button', { cls: 'sh-group-action' });
+            const open = actions.createEl('button', { cls: 'sh-glass sh-round-button is-hover' });
             setIcon(open, 'arrow-right');
             setTooltip(open, t('tasksTab.actions.showNote'));
             open.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const path = group.key.slice('note:'.length);
-                this.setList({ kind: 'note', path });
+                this.setList({ kind: 'note', path: group.key.slice('note:'.length) });
             });
         }
         if (group.add) {
-            const add = actions.createEl('button', { cls: 'sh-group-action' });
+            const add = actions.createEl('button', { cls: 'sh-glass sh-round-button is-hover' });
             setIcon(add, 'plus');
             setTooltip(add, t('tasksTab.actions.addHere'));
             const target = group.add;
@@ -706,14 +736,14 @@ export class TasksTabView extends ItemView {
                 this.openQuickAdd(this.prefillFor(target));
             });
         }
+    }
 
-        title.addEventListener('dblclick', (event) => event.preventDefault());
-        header.addEventListener('click', () => {
-            if (collapsed) this.collapsed.delete(collapseKey);
-            else this.collapsed.add(collapseKey);
-            this.writeJson(STORAGE.collapsed, [...this.collapsed]);
-            this.render();
-        });
+    /** An empty group invites a task instead of showing a zero. */
+    private renderAddRow(groupEl: HTMLElement, target: AddTarget): void {
+        const row = groupEl.createDiv({ cls: 'sh-add-row' });
+        row.createDiv({ cls: 'sh-add-glyph' });
+        row.createDiv({ cls: 'sh-add-label', text: t('tasksTab.actions.addHere') });
+        row.addEventListener('click', () => this.openQuickAdd(this.prefillFor(target)));
     }
 
     private prefillFor(target: AddTarget): QuickAddPrefill {

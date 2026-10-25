@@ -2886,66 +2886,75 @@
     color: var(--sh-overdue);
 }
 
-/* ── Group bars ─────────────────────────────────────────────────────────── */
+/* ── Group headers ──────────────────────────────────────────────────────── */
 
 .sh-group {
-    margin-top: 22px;
+    margin-top: 26px;
 }
 
-/* Each group's header is a glass bar that sticks under the top bar, so the
-   list scrolls beneath it and you always know which group you're in. */
+/* The header row itself is transparent and sticks under the top bar; only
+   its pill and buttons are glass, so the list scrolls visibly around them. */
 .sh-group-header {
     position: sticky;
-    top: 56px;
+    top: 54px;
     z-index: 5;
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    margin: 0 0 6px;
-    padding: 6px 8px 6px 14px;
-    border-radius: var(--sh-surface-radius);
-    background-color: var(--sh-surface);
-    -webkit-backdrop-filter: var(--sh-surface-blur);
-    backdrop-filter: var(--sh-surface-blur);
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
-    color: var(--sh-surface-text);
+    gap: 6px;
+    margin: 0 0 8px;
+    pointer-events: none;
+}
+
+.sh-tasks-view .sh-group-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    height: 34px;
+    padding: 0 12px 0 5px;
+    border-radius: 999px;
     cursor: pointer;
+    pointer-events: auto;
     user-select: none;
+    transition: box-shadow 120ms ease;
 }
 
-.sh-group-chevron {
+.sh-tasks-view .sh-group-pill:hover {
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
+}
+
+.sh-group-badge {
     display: flex;
-    order: 9;
-    color: var(--sh-surface-faint);
-    transition: transform 120ms ease;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: var(--sh-inner-chip);
+    color: var(--sh-surface-mid);
+    font-size: 12px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
 }
 
-.sh-group-chevron .svg-icon {
-    width: 15px;
-    height: 15px;
+.sh-group-badge .svg-icon {
+    width: 13px;
+    height: 13px;
 }
 
-.sh-group-header.is-collapsed .sh-group-chevron {
-    transform: rotate(-90deg);
+.sh-group-badge.is-today {
+    background-color: var(--sh-accent);
+    color: var(--sh-on-accent);
 }
 
 .sh-group-title {
-    font-size: 14.5px;
+    overflow: hidden;
+    font-size: 13.5px;
     font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
-
-.sh-group.is-overdue .sh-group-header {
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 3px 0 0 var(--sh-overdue);
-}
-
-.sh-group.is-overdue .sh-group-title {
-    color: var(--sh-overdue);
-}
-
-.sh-group-header[data-priority="1"] .sh-group-title { color: var(--sh-p1); }
-.sh-group-header[data-priority="2"] .sh-group-title { color: var(--sh-p2); }
-.sh-group-header[data-priority="3"] .sh-group-title { color: var(--sh-p3); }
 
 .sh-group-subtitle {
     overflow: hidden;
@@ -2956,69 +2965,141 @@
 }
 
 .sh-group-count {
-    min-width: 22px;
-    padding: 0 7px;
-    border-radius: 999px;
-    background-color: var(--sh-inner-chip);
-    color: var(--sh-surface-mid);
-    font-size: 12px;
+    color: var(--sh-surface-faint);
+    font-size: 12.5px;
     font-variant-numeric: tabular-nums;
-    line-height: 19px;
-    text-align: center;
+}
+
+.sh-group-chevron {
+    display: none;
+    margin-right: -4px;
+    color: var(--sh-surface-faint);
+}
+
+.sh-group-chevron .svg-icon {
+    width: 13px;
+    height: 13px;
+}
+
+/* Only a folded group shows its chevron, turned, as the sign it can open. */
+.sh-group-header.is-collapsed .sh-group-chevron {
+    display: flex;
+    transform: rotate(-90deg);
+}
+
+/* Overdue: the glass itself takes a red tint, nothing bolted on. */
+.sh-tasks-view .sh-group.is-overdue .sh-group-pill {
+    background-color: color-mix(in srgb, var(--sh-overdue) 16%, var(--sh-surface));
+}
+
+.sh-group.is-overdue .sh-group-badge {
+    background-color: color-mix(in srgb, var(--sh-overdue) 24%, transparent);
+    color: var(--sh-overdue);
+}
+
+.sh-group.is-overdue .sh-group-title {
+    color: var(--sh-overdue);
 }
 
 .sh-group-actions {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: 6px;
     margin-left: auto;
 }
 
-/* A small calendar tile on each day of Upcoming. */
-.sh-day-tile {
-    display: flex;
-    flex-direction: column;
+.sh-tasks-view button.sh-round-button,
+.sh-tasks-view button.sh-pill-button {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    width: 34px;
+    gap: 6px;
     height: 34px;
-    margin-left: -6px;
-    overflow: hidden;
-    border-radius: 9px;
-    background-color: var(--sh-inner-well);
-    box-shadow: inset 0 0 0 1px var(--sh-rule);
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    color: var(--sh-surface-mid);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: box-shadow 120ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1), opacity 120ms ease;
 }
 
-.sh-day-month {
-    width: 100%;
-    color: var(--sh-surface-dim);
-    font-size: 8.5px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    line-height: 12px;
-    text-align: center;
-    text-transform: uppercase;
+.sh-tasks-view button.sh-round-button {
+    width: 34px;
 }
 
-.sh-day-number {
+.sh-tasks-view button.sh-pill-button {
+    padding: 0 14px 0 11px;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.sh-tasks-view button.sh-round-button:hover,
+.sh-tasks-view button.sh-pill-button:hover {
     color: var(--sh-surface-text);
-    font-size: 15px;
-    font-weight: 650;
-    line-height: 17px;
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
 }
 
-.sh-day-tile.is-today {
-    background-color: var(--sh-accent);
-    box-shadow: none;
+.sh-tasks-view button.sh-round-button:active,
+.sh-tasks-view button.sh-pill-button:active {
+    transform: scale(0.95);
 }
 
-.sh-day-tile.is-today .sh-day-month,
-.sh-day-tile.is-today .sh-day-number {
-    color: var(--sh-on-accent);
+.sh-tasks-view button.sh-pill-button.is-alert {
+    color: var(--sh-overdue);
 }
 
-.sh-tasks-view button.sh-group-action,
+.sh-round-button .svg-icon,
+.sh-pill-icon .svg-icon {
+    width: 15px;
+    height: 15px;
+}
+
+.sh-pill-icon {
+    display: inline-flex;
+}
+
+/* Hover-only buttons wait until the group is being looked at. */
+.sh-tasks-view button.sh-round-button.is-hover {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sh-group:hover button.sh-round-button.is-hover {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.is-mobile .sh-tasks-view button.sh-round-button.is-hover {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* An empty group's invitation: a dashed ring where a task would be. */
+.sh-add-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-radius: var(--sh-inner-radius);
+    color: var(--text-faint);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.sh-add-row:hover {
+    background-color: var(--sh-row-hover);
+    color: var(--text-muted);
+}
+
+.sh-add-glyph {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    border: 1.5px dashed var(--text-faint);
+    border-radius: 50%;
+}
+
 .sh-tasks-view button.sh-task-action {
     display: flex;
     align-items: center;
@@ -3030,26 +3111,8 @@
     border-radius: var(--sh-inner-radius);
     background: none;
     box-shadow: none;
-    color: var(--sh-surface-dim);
-    cursor: pointer;
-}
-
-.sh-tasks-view button.sh-group-action {
-    opacity: 0;
-    transition: opacity 100ms ease;
-}
-
-.sh-group-header:hover button.sh-group-action {
-    opacity: 1;
-}
-
-.sh-tasks-view button.sh-group-action:hover {
-    background-color: var(--sh-inner-active);
-    color: var(--sh-surface-text);
-}
-
-.sh-tasks-view button.sh-task-action {
     color: var(--text-faint);
+    cursor: pointer;
 }
 
 .sh-tasks-view button.sh-task-action:hover {
@@ -3057,7 +3120,6 @@
     color: var(--text-normal);
 }
 
-.sh-tasks-view button.sh-group-action .svg-icon,
 .sh-tasks-view button.sh-task-action .svg-icon {
     width: 16px;
     height: 16px;
