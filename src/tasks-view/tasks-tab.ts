@@ -152,7 +152,7 @@ export class TasksTabView extends ItemView {
     /** Rows are still being drawn in slices, so the list isn't complete yet. */
     private planPending = false;
     /** Tasks just added that are waiting for their rows to be drawn. */
-    private pendingReveal: string[] | null = null;
+    private pendingReveal: { keys: string[]; scroll: boolean } | null = null;
     /** Row ids that changed with a move, old to new, so rows slide to their new places. */
     private flipRemap: Map<string, string> | null = null;
     private paintedHighlight: string | null = null;
@@ -779,7 +779,7 @@ export class TasksTabView extends ItemView {
         const finish = () => {
             this.planPending = false;
             if (this.pendingReveal) window.requestAnimationFrame(() => {
-                if (this.pendingReveal) this.revealAdded(this.pendingReveal);
+                if (this.pendingReveal) this.revealAdded(this.pendingReveal.keys, this.pendingReveal.scroll);
             });
             if (hidden > 0) {
                 const more = column.createEl('button', { cls: 'sh-show-more', text: t('tasksTab.showMore', { count: hidden }) });
@@ -1711,15 +1711,17 @@ export class TasksTabView extends ItemView {
         this.toast(label, true);
     }
 
-    /** A completed row folds away, then the rows below glide up into its place. */
+    /**
+     * A completed row folds away, then the rows below glide up into its
+     * place. With Show completed on it stays in the list, and slides down to
+     * the bottom of its heading when completed tasks go last.
+     */
     private releaseLingering(keys: string[]): void {
         for (const key of keys) this.lingering.delete(key);
-        // Only rows the list no longer holds go. With Show completed on, a
-        // ticked task belongs where it is and simply stays.
         const staying = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
         const leavingKeys = keys.filter(key => !staying.has(key));
         if (leavingKeys.length === 0) {
-            this.update();
+            this.update(true);
             return;
         }
         const leaving = leavingKeys
@@ -1907,22 +1909,21 @@ export class TasksTabView extends ItemView {
         this.toast(label, true, shown ? undefined : {
             label: t('tasksTab.actions.show'),
             run: () => {
-                this.pendingReveal = keys;
+                this.pendingReveal = { keys, scroll: true };
                 this.setList({ kind: 'note', path: destination.path });
-                this.revealAdded(keys);
+                this.revealAdded(keys, true);
             }
         });
         return true;
     }
 
     /**
-     * Brings newly added tasks into view and makes them easy to spot: the
-     * list scrolls them to the middle, they arrive with a small drop and
-     * settle, and glow in the accent for a moment. The first one takes the
-     * highlight, so the keys carry
-     * on from there. Returns false when none of them is in this list.
+     * Makes newly added tasks easy to spot: they arrive with a small drop and
+     * settle. With `scroll`, the list also brings them to its middle, for
+     * when you asked to go and see them. Returns false when none of them is
+     * in this list.
      */
-    private revealAdded(keys: string[]): boolean {
+    private revealAdded(keys: string[], scroll = false): boolean {
         // Whether the tasks belong to this list is a question for the data;
         // their rows may simply not be drawn yet.
         const inList = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
@@ -1934,20 +1935,24 @@ export class TasksTabView extends ItemView {
         const rows = present.map(key => this.rowEls.get(key)).filter((row): row is HTMLElement => row !== undefined);
         if (rows.length === 0) {
             // Still being drawn in slices: finish() calls back once it's done.
-            this.pendingReveal = this.planPending ? present : null;
+            this.pendingReveal = this.planPending ? { keys: present, scroll } : null;
             return true;
         }
         this.pendingReveal = null;
 
+        // Lines below the new ones moved down, so a selection would now point
+        // at the wrong tasks.
         this.selected.clear();
-        this.highlightKey = rows[0].dataset.key ?? null;
+        this.highlightKey = null;
         this.paintSelection();
 
-        const first = rows[0];
-        const target = first.offsetTop - this.scroller.clientHeight / 2 + first.offsetHeight / 2;
-        const top = Math.max(0, Math.min(target, this.scroller.scrollHeight - this.scroller.clientHeight));
-        if (Math.abs(top - this.scroller.scrollTop) > 4) {
-            this.scroller.scrollTo({ top, behavior: motionAllowed() ? 'smooth' : 'auto' });
+        if (scroll) {
+            const first = rows[0];
+            const target = first.offsetTop - this.scroller.clientHeight / 2 + first.offsetHeight / 2;
+            const top = Math.max(0, Math.min(target, this.scroller.scrollHeight - this.scroller.clientHeight));
+            if (Math.abs(top - this.scroller.scrollTop) > 4) {
+                this.scroller.scrollTo({ top, behavior: motionAllowed() ? 'smooth' : 'auto' });
+            }
         }
 
         rows.forEach((row, i) => {
@@ -1960,7 +1965,7 @@ export class TasksTabView extends ItemView {
             row.setCssProps({ '--sh-new-delay': `${Math.min(i, 8) * 70}ms` });
             row.addClass('is-new');
             const done = (event: AnimationEvent) => {
-                if (event.target !== row || event.animationName !== 'sh-row-glow') return;
+                if (event.target !== row || event.animationName !== 'sh-row-arrive') return;
                 row.removeClass('is-new');
                 row.removeEventListener('animationend', done);
             };
@@ -2384,7 +2389,7 @@ export class TasksTabView extends ItemView {
         }
         this.flipRemap = remap;
         this.render(true);
-        if (reveal) this.revealAdded(result.landed.map(line => `${path}:${line}`));
+        if (reveal) this.revealAdded(result.landed.map(line => `${path}:${line}`), true);
 
         const label = heading === null
             ? this.countLabel('moved', tasks)

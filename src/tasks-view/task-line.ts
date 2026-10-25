@@ -111,35 +111,27 @@ export function buildTaskLine(task: NewTaskLine): string {
 }
 
 /**
- * Where a new line goes in a note: the end of the named heading's section
- * (before the next heading at the same or a higher level), or the end of the
- * note when there is no heading or it cannot be found. Trailing blank lines
- * of the section are skipped so the task joins the list above it.
+ * Where a new line goes in a note. Under a heading it goes at the top of the
+ * heading's own tasks, above the first one and above any subheading; a
+ * heading with no tasks yet takes it at the end of its notes, above blank
+ * lines, so it joins the list there. Without a heading, or when the heading
+ * cannot be found, it goes at the end of the note.
  */
 export function insertionLine(lines: string[], heading?: string): number {
     const headingRegex = /^(#{1,6})\s+(.+?)\s*$/;
 
     let start = -1;
-    let level = 0;
-    if (heading) {
-        for (let i = 0; i < lines.length; i++) {
-            const match = lines[i].match(headingRegex);
-            if (match && match[2].trim() === heading) {
-                start = i;
-                level = match[1].length;
-                break;
-            }
-        }
-    }
+    if (heading) start = lines.findIndex(line => line.match(headingRegex)?.[2].trim() === heading);
 
     let end = lines.length;
     if (start !== -1) {
         for (let i = start + 1; i < lines.length; i++) {
-            const match = lines[i].match(headingRegex);
-            if (match && match[1].length <= level) {
+            if (headingRegex.test(lines[i])) {
                 end = i;
                 break;
             }
+            const task = parseTaskLine(lines[i]);
+            if (task && !task.prefix && task.indent === '') return i;
         }
     }
 

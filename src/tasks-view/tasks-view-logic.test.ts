@@ -121,13 +121,28 @@ describe('task-line', () => {
         expect(notesLines(lines, 0, '   ')).toEqual([]);
     });
 
-    it('inserts at the end of a heading section, above blank lines', () => {
+    it('inserts at the top of a heading\'s tasks', () => {
+        const lines = ['## A', 'Intro', '- [x] done', '- [ ] open', '', '## B'];
+        expect(insertionLine(lines, 'A')).toBe(2);
+    });
+
+    it('stays above a heading\'s subheadings', () => {
         const lines = ['# A', '- [ ] one', '', '## B', '- [ ] two', '', '# C', 'text'];
-        expect(insertionLine(lines, 'A')).toBe(5);
-        expect(insertionLine(lines, 'B')).toBe(5);
-        expect(insertionLine(lines, 'C')).toBe(8);
-        expect(insertionLine(lines)).toBe(8);
+        expect(insertionLine(lines, 'A')).toBe(1);
+        expect(insertionLine(lines, 'B')).toBe(4);
+        expect(insertionLine(['## A', '', '### Sub', '- [ ] x'], 'A')).toBe(1);
+    });
+
+    it('joins the notes under a heading that has no tasks yet, above blank lines', () => {
+        expect(insertionLine(['## 2026-10-25', '- Talked it through', '', '## Older'], '2026-10-25')).toBe(2);
+        expect(insertionLine(['## A', '- Topic', '    - [ ] nested', '## B'], 'A')).toBe(3);
+        expect(insertionLine(['# A', '- [ ] one', '', '# C', 'text'], 'C')).toBe(5);
+    });
+
+    it('inserts at the end of the note without a heading', () => {
+        expect(insertionLine(['# A', '- [ ] one', '', '## B', 'text'])).toBe(5);
         expect(insertionLine(['- [ ] a', '', ''])).toBe(1);
+        expect(insertionLine(['## A', '- [ ] a'], 'Missing')).toBe(2);
     });
 });
 

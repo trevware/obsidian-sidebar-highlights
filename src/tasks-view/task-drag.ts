@@ -2,8 +2,9 @@
  * Dragging tasks to a new place in their note, with a mouse or trackpad.
  *
  * A row lifts once the pointer has moved a few pixels and follows it, and
- * the rows around it slide apart to show where it will land; the list
- * scrolls when the pointer nears its top or bottom edge. In a list sorted by
+ * the rows around it slide apart to show where it will land, with the
+ * heading it would land under lit up; the list scrolls when the pointer
+ * nears its top or bottom edge. In a list sorted by
  * anything other than the note's own order the rows stay put and the task
  * drops onto a heading instead. Escape puts everything back.
  *
@@ -244,6 +245,11 @@ export class TaskDrag {
             const gap = nearestGap(plan, items[lift.grabbed].top + offset);
             if (gap === lift.gap) return;
             lift.gap = gap;
+            // The heading the rows would land under lights up: the last one
+            // above the gap.
+            let under = -1;
+            if (gap) for (let i = gap.at - 1; i >= 0 && under === -1; i--) if (items[i].kind === 'heading') under = i;
+            this.paintTarget(lift, under === -1 ? null : elements[under]);
             elements.forEach((el, i) => {
                 if (i >= plan.blockStart && i < plan.blockEnd) return;
                 const shift = gap ? shiftFor(plan, i, gap) : 0;
@@ -258,7 +264,10 @@ export class TaskDrag {
         // Out of the note's order, the task drops onto a heading.
         const under = document.elementFromPoint(this.lastX, this.lastY)?.closest<HTMLElement>('.sh-section-title, .sh-group-header') ?? null;
         const index = under ? elements.indexOf(under) : -1;
-        const target = index !== -1 && items[index].kind === 'heading' ? under : null;
+        this.paintTarget(lift, index !== -1 && items[index].kind === 'heading' ? under : null);
+    }
+
+    private paintTarget(lift: Lift, target: HTMLElement | null): void {
         if (target === lift.target) return;
         lift.target?.removeClass('is-drop-target');
         target?.addClass('is-drop-target');

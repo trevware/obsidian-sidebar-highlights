@@ -3203,12 +3203,22 @@
     color: var(--sh-accent);
 }
 
-.sh-section-title.is-drop-target {
+.sh-section-title.is-drop-target,
+.sh-group-header.is-drop-target {
     border-bottom-color: var(--sh-accent);
 }
 
+.sh-tasks-column.has-drag .sh-section-title,
+.sh-tasks-column.has-drag .sh-group-header,
+.sh-tasks-column.has-drag .sh-group-title {
+    transition: transform 160ms cubic-bezier(0.22, 0.9, 0.28, 1), color 120ms ease, border-color 120ms ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .sh-tasks-column.has-drag .sh-group > * {
+    .sh-tasks-column.has-drag .sh-group > *,
+    .sh-tasks-column.has-drag .sh-section-title,
+    .sh-tasks-column.has-drag .sh-group-header,
+    .sh-tasks-column.has-drag .sh-group-title {
         transition: none;
     }
 }
@@ -4274,23 +4284,16 @@
     color: var(--sh-overdue);
 }
 
-/* A task just added: it drops in and settles, and glows in the accent for a
-   moment. Staggered when several arrive at once. */
+/* A task just added: it drops in and settles. Staggered when several arrive
+   at once. */
 @keyframes sh-row-arrive {
     0% { opacity: 0; transform: translateY(-10px) scale(0.97); }
     55% { opacity: 1; transform: translateY(1px) scale(1.012); }
     100% { opacity: 1; transform: none; }
 }
 
-@keyframes sh-row-glow {
-    0% { background-color: color-mix(in srgb, var(--sh-accent) 24%, transparent); }
-    100% { background-color: color-mix(in srgb, var(--sh-accent) 0%, transparent); }
-}
-
 .sh-tasks-view .sh-task-row.is-new {
-    animation:
-        sh-row-arrive 480ms cubic-bezier(0.22, 0.9, 0.28, 1) var(--sh-new-delay, 0ms) backwards,
-        sh-row-glow 1800ms ease-out calc(var(--sh-new-delay, 0ms) + 260ms) backwards;
+    animation: sh-row-arrive 480ms cubic-bezier(0.22, 0.9, 0.28, 1) var(--sh-new-delay, 0ms) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
