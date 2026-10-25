@@ -2451,6 +2451,10 @@
     --sh-surface-radius: 22px;
     --sh-surface-pad: 10px;
     --sh-inner-radius: calc(var(--sh-surface-radius) - var(--sh-surface-pad));
+    /* Rows (rail items, tasks, palette and menu items) round less than the
+       panels they sit in: at a row's height the panel's inner curve turned
+       every hover into a pill. */
+    --sh-item-radius: 8px;
     /* Quieter text is the theme's text colour faded, not its own muted and
        faint colours: some themes draw faint text barely off the background. */
     --sh-surface-text: var(--sh-ink);
@@ -2624,7 +2628,7 @@
     align-items: center;
     gap: 12px;
     padding: 8px 12px;
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
     color: var(--sh-surface-text);
     font-size: 14px;
     cursor: pointer;
@@ -2649,7 +2653,7 @@
     left: var(--sh-surface-pad);
     right: var(--sh-surface-pad);
     z-index: -1;
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
     background-color: var(--sh-inner-active);
     pointer-events: none;
 }
@@ -3058,7 +3062,7 @@
     align-items: center;
     gap: 12px;
     padding: 4px 14px;
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
     color: var(--text-faint);
     font-size: 14px;
     cursor: pointer;
@@ -3121,7 +3125,7 @@
 .sh-task-row {
     position: relative;
     padding: 4px 12px 4px calc(14px + var(--sh-indent, 0) * 26px);
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
 }
 
 .sh-task-row:hover {
@@ -3155,7 +3159,7 @@
     content: "";
     position: absolute;
     inset: 2px;
-    border-radius: calc(var(--sh-inner-radius) - 2px);
+    border-radius: calc(var(--sh-item-radius) - 2px);
     box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sh-accent) 55%, transparent);
     pointer-events: none;
 }
@@ -3761,7 +3765,7 @@
     align-items: center;
     gap: 14px;
     padding: 10px 13px;
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
     color: var(--sh-surface-text);
     cursor: pointer;
     user-select: none;
@@ -4054,7 +4058,7 @@
     align-items: center;
     gap: 14px;
     padding: 9px 13px;
-    border-radius: var(--sh-inner-radius);
+    border-radius: var(--sh-item-radius);
     color: var(--sh-surface-text);
     font-size: 14px;
     cursor: pointer;
