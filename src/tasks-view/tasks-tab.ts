@@ -42,6 +42,7 @@ import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
 import type { LineChange } from './task-writer';
 import { newHeadingLevel } from './task-move';
+import { TaskDrag } from './task-drag';
 import type { MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
@@ -140,6 +141,9 @@ export class TasksTabView extends ItemView {
     /** The row element and task for every drawn row, by task key. */
     private rowEls = new Map<string, HTMLElement>();
     private rowTasks = new Map<string, Task>();
+    /** The group each group element draws, so a drag knows the note and heading under it. */
+    private groupEls = new WeakMap<HTMLElement, TaskGroup>();
+    private drag!: TaskDrag;
     private rowGroups = new Map<string, TaskGroup>();
     private rowSigs = new Map<string, string>();
     private groupSignature = '';
@@ -232,6 +236,33 @@ export class TasksTabView extends ItemView {
             onClose: () => this.focusList()
         });
 
+        this.drag = new TaskDrag(this.column, this.scroller, {
+            taskOf: (row) => this.rowTasks.get(row.dataset.key ?? ''),
+            groupOf: (el) => {
+                const group = this.groupEls.get(el);
+                if (group?.kind === 'heading' && group.add?.path) return { path: group.add.path, heading: group.add.heading ?? '' };
+                if (group?.kind === 'note') return { path: group.key.slice('note:'.length) };
+                return null;
+            },
+            carried: (task) => {
+                if (this.selected.size > 1 && this.selected.has(taskKey(task))) {
+                    const tasks = this.targets();
+                    if (this.sharedNote(tasks)) return tasks;
+                }
+                return [task];
+            },
+            canDrag: () => this.expandedKey === null && !this.palette.isOpen,
+            inNoteOrder: () => this.display().sort === 'file',
+            completedLast: () => this.display().showCompleted && this.display().completedLast,
+            drop: (tasks, target, heading, from) => {
+                const label = heading === (from.section ?? '') ? null : heading || t('tasksTab.palette.noHeading');
+                return this.moveTasksTo(tasks, target, label, false);
+            }
+        });
+        this.registerDomEvent(this.column, 'pointerdown', (event) => this.drag.down(event));
+        // Capture, so a drag's release never reaches the list as a click.
+        this.registerDomEvent(this.scroller, 'click', (event) => this.drag.click(event), true);
+
         // Every click in the list goes through one handler, so rows carry no
         // listeners of their own.
         this.scroller.addEventListener('click', (event) => this.onListClick(event));
@@ -293,6 +324,7 @@ export class TasksTabView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        this.drag?.destroy();
         this.palette?.close();
         this.glassMenu?.close();
         this.quickAdd?.close(true);
@@ -729,11 +761,13 @@ export class TasksTabView extends ItemView {
         const step = (item: Step) => {
             if (item.kind === 'group') {
                 groupEl = column.createDiv({ cls: `sh-group is-${item.group.kind}` });
+                this.groupEls.set(groupEl, item.group);
                 if (item.group.title) this.renderGroupHeader(groupEl, item.group, item.collapseKey, item.collapsed);
                 if (!item.collapsed && item.group.count === 0 && item.group.add) this.renderAddRow(groupEl, item.group.add);
             } else if (item.kind === 'section') {
                 const heading = groupEl.createDiv({ cls: 'sh-section-title', text: item.title });
                 heading.setAttr('role', 'heading');
+                heading.dataset.heading = item.title;
             } else {
                 const key = taskKey(item.task);
                 this.renderRow(groupEl, item.task, item.group, progress, display);
@@ -2321,16 +2355,16 @@ export class TasksTabView extends ItemView {
      * the moved tasks into view with a glow, for a move made from the palette
      * that may send them far down the list.
      */
-    private async moveTasksTo(tasks: Task[], target: MoveTarget, heading: string | null, reveal = true): Promise<void> {
+    private async moveTasksTo(tasks: Task[], target: MoveTarget, heading: string | null, reveal = true): Promise<boolean> {
         const path = this.sharedNote(tasks);
         if (!path) {
             this.toast(t('tasksTab.notices.moveOneNote'), false);
-            return;
+            return false;
         }
         const result = await this.writer.moveTasks(path, tasks, target);
         if (!result) {
             this.toast(t('tasksTab.notices.notMoved'), false);
-            return;
+            return false;
         }
         await this.refreshFile(path);
 
@@ -2368,6 +2402,7 @@ export class TasksTabView extends ItemView {
         });
         if (this.undoStack.length > 50) this.undoStack.shift();
         this.toast(label, true);
+        return true;
     }
 
     /** What a task's status reads as, naming its alternate marker when it has one. */
