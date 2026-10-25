@@ -604,8 +604,6 @@ export class TasksTabView extends ItemView {
 
         const rail = this.rail;
         const scrollTop = rail.scrollTop;
-        const oldIndicator = rail.querySelector<HTMLElement>('.sh-rail-indicator');
-        const from = oldIndicator ? { top: oldIndicator.offsetTop, height: oldIndicator.offsetHeight } : null;
         rail.empty();
         const indicator = rail.createDiv({ cls: 'sh-rail-indicator' });
         const counts = listCounts(this.allTasks, today);
@@ -662,24 +660,17 @@ export class TasksTabView extends ItemView {
         }
 
         rail.scrollTop = scrollTop;
-        this.placeIndicator(indicator, from);
+        this.placeIndicator(indicator);
     }
 
-    /** Slides the rail's highlight from the old list to the new one. */
-    private placeIndicator(indicator: HTMLElement, from: { top: number; height: number } | null): void {
+    /** Puts the rail's highlight behind the open list. */
+    private placeIndicator(indicator: HTMLElement): void {
         const active = this.rail.querySelector<HTMLElement>('.sh-rail-item.is-active');
         if (!active) {
             indicator.addClass('is-hidden');
             return;
         }
-        const to = { top: active.offsetTop, height: active.offsetHeight };
-        indicator.setCssProps({ top: `${to.top}px`, height: `${to.height}px` });
-        if (from && motionAllowed() && (from.top !== to.top || from.height !== to.height)) {
-            indicator.animate(
-                [{ top: `${from.top}px`, height: `${from.height}px` }, { top: `${to.top}px`, height: `${to.height}px` }],
-                { duration: 260, easing: EASE }
-            );
-        }
+        indicator.setCssProps({ top: `${active.offsetTop}px`, height: `${active.offsetHeight}px` });
     }
 
     private progress(): Map<string, { done: number; total: number }> {
