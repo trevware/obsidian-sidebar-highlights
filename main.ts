@@ -16,6 +16,7 @@ import { countHighlights, StatusBarCounts } from './src/utils/status-bar-counts'
 import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
 import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from './src/utils/note-colors';
 import { StatusBarCounter } from './src/views/status-bar-counter';
+import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
 import { i18n, t } from './src/i18n';
 
 export interface Highlight {
@@ -345,6 +346,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             void this.activateView();
         });
 
+        this.registerView(VIEW_TYPE_TASKS, (leaf) => new TasksTabView(leaf, this));
+        this.addRibbonIcon('list-checks', t('commands.openTasksTab'), () => {
+            void this.activateTasksTab();
+        });
+        this.registerTasksTabCommands();
+
         this.statusBarCounter = new StatusBarCounter(
             this.addStatusBarItem(),
             () => this.getStatusBarCounts(),
@@ -613,6 +620,52 @@ export default class HighlightCommentsPlugin extends Plugin {
             await workspace.revealLeaf(leaf);
         }
         return leaf;
+    }
+
+    /** Opens the Tasks tab in the main area, or switches to it if it's already open. */
+    async activateTasksTab(): Promise<TasksTabView | null> {
+        const { workspace } = this.app;
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_TASKS)[0];
+        if (!leaf) {
+            leaf = workspace.getLeaf('tab');
+            await leaf.setViewState({ type: VIEW_TYPE_TASKS, active: true });
+        }
+        await workspace.revealLeaf(leaf);
+        workspace.setActiveLeaf(leaf, { focus: true });
+        return leaf.view instanceof TasksTabView ? leaf.view : null;
+    }
+
+    private registerTasksTabCommands() {
+        const activeTasksTab = () => this.app.workspace.getActiveViewOfType(TasksTabView);
+
+        this.addCommand({
+            id: 'open-tasks-tab',
+            name: t('commands.openTasksTab'),
+            callback: () => void this.activateTasksTab()
+        });
+
+        // From anywhere: opens the Tasks tab if it isn't up, then quick add.
+        this.addCommand({
+            id: 'tasks-quick-add',
+            name: t('commands.tasksQuickAdd'),
+            callback: () => {
+                void this.activateTasksTab().then(view => view?.openQuickAdd());
+            }
+        });
+
+        // Bound through the command system because Obsidian claims ⌘K for its
+        // own Insert link command before a listener in the view ever sees it.
+        // Assign it in Settings → Hotkeys.
+        this.addCommand({
+            id: 'tasks-search',
+            name: t('commands.tasksSearch'),
+            checkCallback: (checking: boolean) => {
+                const view = activeTasksTab();
+                if (!view) return false;
+                if (!checking) view.togglePalette();
+                return true;
+            }
+        });
     }
 
     async toggleView() {

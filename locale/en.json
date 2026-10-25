@@ -3,7 +3,10 @@
     "createHighlight": "Create highlight from selection",
     "toggle": "Toggle",
     "goToCollection": "Go to {{name}}",
-    "applyDisplayMode": "Apply display mode: {{name}}"
+    "applyDisplayMode": "Apply display mode: {{name}}",
+    "openTasksTab": "Open tasks",
+    "tasksQuickAdd": "Add a task",
+    "tasksSearch": "Search tasks"
   },
   "tabs": {
     "currentNote": "Current note",
@@ -523,5 +526,183 @@
     "collections": "{{count}} collections",
     "task": "{{count}} task",
     "tasks": "{{count}} tasks"
+  },
+  "tasksTab": {
+    "title": "Tasks",
+    "lists": {
+      "today": "Today",
+      "upcoming": "Upcoming",
+      "anytime": "All open",
+      "in-progress": "In progress",
+      "questions": "Questions",
+      "logbook": "Done"
+    },
+    "rail": {
+      "vaultRoot": "Vault",
+      "overdue": "{{count}} overdue"
+    },
+    "header": {
+      "open": "{{count}} open",
+      "openOne": "1 open",
+      "overdue": "{{count}} overdue",
+      "resolved": "{{count}} done or cancelled",
+      "doneToday": "{{count}} done today",
+      "progress": "{{done}} of {{total}} done"
+    },
+    "groups": {
+      "overdue": "Overdue",
+      "weekOf": "Week of {{date}}"
+    },
+    "dates": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "yesterday": "Yesterday",
+      "weekend": "This weekend",
+      "nextWeek": "Next week",
+      "twoWeeks": "In two weeks",
+      "noDate": "No date"
+    },
+    "priority": {
+      "p1": "Priority 1",
+      "p2": "Priority 2",
+      "p3": "Priority 3",
+      "none": "No priority"
+    },
+    "status": {
+      "todo": "To do",
+      "in-progress": "In progress",
+      "question": "Question",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "empty": {
+      "loading": "Reading your tasks…",
+      "today": "Nothing due today.",
+      "upcoming": "Nothing scheduled ahead.",
+      "anytime": "No open tasks anywhere. Nice.",
+      "in-progress": "Nothing in progress.",
+      "questions": "No open questions.",
+      "logbook": "Nothing finished yet.",
+      "note": "No open tasks in this note."
+    },
+    "showMore": "Show {{count}} more",
+    "card": {
+      "noContext": "No notes under this task."
+    },
+    "actions": {
+      "search": "Search",
+      "addTask": "Add task",
+      "addHere": "Add a task here",
+      "display": "Display",
+      "toggleSidebar": "Show or hide the sidebar",
+      "complete": "Complete",
+      "reopen": "Mark as not done",
+      "completeHint": "Click to complete, ⌥-click to cancel",
+      "cancel": "Cancel task",
+      "setDate": "Set date",
+      "addDate": "Add date",
+      "removeDate": "Remove date",
+      "setPriority": "Set priority",
+      "setStatus": "Set status",
+      "copy": "Copy as Markdown",
+      "openInNote": "Open in note",
+      "openToSide": "Open to the side",
+      "openNote": "Open note",
+      "showNote": "Show this note",
+      "more": "More",
+      "reschedule": "Reschedule",
+      "shortcuts": "Keyboard shortcuts",
+      "undo": "Undo"
+    },
+    "bulk": {
+      "selected": "{{count}} selected",
+      "clear": "Clear selection"
+    },
+    "palette": {
+      "placeholder": "Search tasks, notes and commands…",
+      "selection": "Selection",
+      "lists": "Lists",
+      "actions": "Actions",
+      "notes": "Notes",
+      "tasks": "Tasks",
+      "datePlaceholder": "Type a date: fri, in 3 days, nov 3…",
+      "priorityPlaceholder": "Pick a priority",
+      "statusPlaceholder": "Pick a status",
+      "shortcutsPlaceholder": "Filter shortcuts"
+    },
+    "display": {
+      "groupBy": "Group by",
+      "groupAuto": "Default for this list",
+      "groupNote": "Note",
+      "groupDate": "Date",
+      "groupPriority": "Priority",
+      "groupNone": "None",
+      "sortBy": "Sort by",
+      "sortFile": "Order in the note",
+      "sortDate": "Date",
+      "sortPriority": "Priority",
+      "sortAlpha": "Name",
+      "showCompleted": "Show completed",
+      "showContext": "Show notes under tasks",
+      "reset": "Reset to default"
+    },
+    "quickAdd": {
+      "placeholder": "Task name, e.g. Call the dentist fri p1",
+      "date": "Date",
+      "priority": "Priority",
+      "chooseNote": "Choose a note",
+      "previewEmpty": "Your task",
+      "add": "add",
+      "addAnother": "add and keep going",
+      "close": "close",
+      "destinationPlaceholder": "Find a note or heading…",
+      "addTo": "Add to"
+    },
+    "notices": {
+      "completedOne": "Completed “{{task}}”",
+      "completedMany": "Completed {{count}} tasks",
+      "reopenedOne": "Reopened “{{task}}”",
+      "reopenedMany": "Reopened {{count}} tasks",
+      "cancelledOne": "Cancelled “{{task}}”",
+      "cancelledMany": "Cancelled {{count}} tasks",
+      "statusSetOne": "Updated “{{task}}”",
+      "statusSetMany": "Updated {{count}} tasks",
+      "prioritySetOne": "Set priority on “{{task}}”",
+      "prioritySetMany": "Set priority on {{count}} tasks",
+      "dateSetOne": "Rescheduled “{{task}}”",
+      "dateSetMany": "Rescheduled {{count}} tasks",
+      "dateRemovedOne": "Removed the date from “{{task}}”",
+      "dateRemovedMany": "Removed the date from {{count}} tasks",
+      "copiedOne": "Copied “{{task}}”",
+      "copiedMany": "Copied {{count}} tasks",
+      "addedOne": "Added to {{note}}",
+      "addedMany": "Added {{count}} tasks to {{note}}",
+      "missed": "{{count}} task(s) moved in the note before the change could land. Try again.",
+      "noteMissing": "That note no longer exists.",
+      "nothingToUndo": "Nothing to undo",
+      "undone": "Undid: {{label}}"
+    },
+    "shortcuts": {
+      "moveHighlight": "Move up and down",
+      "select": "Select the highlighted task",
+      "extendSelection": "Extend the selection",
+      "expand": "Open or close the task card",
+      "openInNote": "Open in note",
+      "openToSide": "Open to the side",
+      "complete": "Complete",
+      "cancel": "Cancel task",
+      "setDate": "Set date",
+      "removeDate": "Remove date",
+      "nudgeDate": "Move the date a day (⇧ for a week)",
+      "setPriority": "Set or clear priority",
+      "setStatus": "Set status",
+      "addTask": "Add task",
+      "search": "Search and commands",
+      "goTo": "Go to a list",
+      "display": "Display options",
+      "toggleSidebar": "Show or hide the sidebar",
+      "undo": "Undo",
+      "escape": "Close the card, then clear the selection"
+    }
   }
 }

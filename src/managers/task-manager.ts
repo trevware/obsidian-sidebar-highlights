@@ -35,7 +35,7 @@ export class TaskManager {
     /**
      * Check if a file should be processed based on exclusion settings
      */
-    private shouldProcessFile(file: TFile): boolean {
+    shouldProcessFile(file: TFile): boolean {
         if (file.extension !== 'md') {
             return false;
         }

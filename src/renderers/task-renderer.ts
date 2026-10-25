@@ -278,6 +278,15 @@ export class TaskRenderer {
     }
 
     /**
+     * Render a task's display text (date and Tasks-plugin metadata removed) with
+     * the same markdown, tag and highlight styling the sidebar uses. Shared with
+     * the Tasks tab so a task reads the same in both places.
+     */
+    renderTaskText(element: HTMLElement, task: Task, searchTerm?: string): void {
+        this.renderTaskTextWithTags(element, this.getDisplayText(task), searchTerm);
+    }
+
+    /**
      * Render task text with markdown formatting and tags
      */
     private renderTaskTextWithTags(element: HTMLElement, text: string, searchTerm?: string): void {

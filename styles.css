@@ -2421,3 +2421,1573 @@
     width: var(--icon-xs, 14px);
     height: var(--icon-xs, 14px);
 }
+
+/* ==========================================================================
+   Tasks tab (full-tab task view)
+
+   Built from Oriko's material. The list sits on the plain pane background,
+   and everything around it (the rail, the top bar, the group bars the list
+   scrolls under, the open task card, the palette, quick add, menus, the
+   selection bar and toasts) is the same floating glass surface, defined once
+   below. Rows stay flat: blur on every row would cost a GPU layer each.
+   ========================================================================== */
+
+.view-content.sh-tasks-view {
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--background-primary);
+
+    /* Oriko's surface, restated for this view. */
+    --sh-surface: rgba(32, 32, 35, 0.88);
+    --sh-surface-blur: blur(24px) saturate(130%);
+    --sh-surface-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --sh-surface-lift: 0 1px 6px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.16);
+    --sh-surface-radius: 22px;
+    --sh-surface-pad: 10px;
+    --sh-inner-radius: calc(var(--sh-surface-radius) - var(--sh-surface-pad));
+    --sh-surface-text: rgba(255, 255, 255, 0.88);
+    --sh-surface-mid: rgba(255, 255, 255, 0.72);
+    --sh-surface-dim: rgba(255, 255, 255, 0.45);
+    --sh-surface-faint: rgba(255, 255, 255, 0.35);
+    --sh-inner-hover: rgba(255, 255, 255, 0.09);
+    --sh-inner-active: rgba(255, 255, 255, 0.14);
+    --sh-inner-press: rgba(255, 255, 255, 0.22);
+    --sh-inner-well: rgba(255, 255, 255, 0.07);
+    --sh-inner-chip: rgba(255, 255, 255, 0.1);
+    --sh-rule: rgba(255, 255, 255, 0.12);
+    --sh-scrim: rgba(0, 0, 0, 0.42);
+    --sh-mark: #fff;
+    --sh-accent: #6ea8fe;
+    --sh-on-accent: #0b0d12;
+    --sh-card-lift: 0 24px 70px rgba(0, 0, 0, 0.45);
+
+    /* Row washes on the plain pane, the same roles as the surface's own. */
+    --sh-row-hover: rgba(255, 255, 255, 0.05);
+    --sh-row-active: rgba(255, 255, 255, 0.08);
+
+    --sh-p1: #ff6b6b;
+    --sh-p2: #ffb84d;
+    --sh-p3: #6ea8fe;
+    --sh-progress: #6ea8fe;
+    --sh-question: #c084fc;
+    --sh-today: #4ade80;
+    --sh-overdue: #ff6b6b;
+
+    --sh-rail-width: 248px;
+    --sh-gap: 10px;
+}
+
+.theme-light .view-content.sh-tasks-view {
+    --sh-surface: rgba(252, 252, 253, 0.9);
+    --sh-surface-ring: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    --sh-surface-lift: 0 1px 6px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.09);
+    --sh-surface-text: rgba(22, 22, 26, 0.92);
+    --sh-surface-mid: rgba(22, 22, 26, 0.72);
+    --sh-surface-dim: rgba(22, 22, 26, 0.5);
+    --sh-surface-faint: rgba(22, 22, 26, 0.38);
+    --sh-inner-hover: rgba(0, 0, 0, 0.06);
+    --sh-inner-active: rgba(0, 0, 0, 0.09);
+    --sh-inner-press: rgba(0, 0, 0, 0.14);
+    --sh-inner-well: rgba(0, 0, 0, 0.05);
+    --sh-inner-chip: rgba(0, 0, 0, 0.07);
+    --sh-rule: rgba(0, 0, 0, 0.1);
+    --sh-scrim: rgba(0, 0, 0, 0.25);
+    --sh-mark: rgba(10, 10, 12, 1);
+    --sh-accent: #2563c9;
+    --sh-on-accent: #ffffff;
+    --sh-card-lift: 0 20px 56px rgba(0, 0, 0, 0.18);
+    --sh-row-hover: rgba(0, 0, 0, 0.035);
+    --sh-row-active: rgba(0, 0, 0, 0.06);
+    --sh-p1: #dc2626;
+    --sh-p2: #d97706;
+    --sh-p3: #2563c9;
+    --sh-progress: #2563c9;
+    --sh-question: #9333ea;
+    --sh-today: #15803d;
+    --sh-overdue: #dc2626;
+}
+
+/* The one glass recipe: flat fill, one hairline, one soft shadow. */
+.sh-tasks-view .sh-glass {
+    background-color: var(--sh-surface);
+    background-image: none;
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    border-radius: var(--sh-surface-radius);
+    color: var(--sh-surface-text);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .view-content.sh-tasks-view { --sh-surface: rgba(32, 32, 35, 0.97); }
+    .theme-light .view-content.sh-tasks-view { --sh-surface: rgba(252, 252, 253, 0.98); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    .view-content.sh-tasks-view { --sh-surface: rgb(32, 32, 35); --sh-surface-blur: none; }
+    .theme-light .view-content.sh-tasks-view { --sh-surface: rgb(252, 252, 253); }
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+
+.sh-tasks-shell {
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* The rail floats beside the list as one glass panel, inset from the pane. */
+.sh-tasks-rail {
+    position: absolute;
+    top: var(--sh-gap);
+    bottom: var(--sh-gap);
+    left: var(--sh-gap);
+    z-index: 35;
+    width: var(--sh-rail-width);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sh-surface-pad);
+    border-radius: var(--sh-surface-radius);
+    background-color: var(--sh-surface);
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    color: var(--sh-surface-text);
+    scrollbar-width: none;
+}
+
+.sh-tasks-shell.is-rail-hidden .sh-tasks-rail {
+    display: none;
+}
+
+.sh-tasks-main {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sh-tasks-shell:not(.is-rail-hidden):not(.is-narrow) .sh-tasks-main {
+    left: calc(var(--sh-rail-width) + var(--sh-gap));
+}
+
+.sh-tasks-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: none;
+    /* The list fades out under the top bar instead of running into it. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 52px);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 52px);
+}
+
+.sh-tasks-column {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 72px 28px 160px;
+}
+
+/* ── Rail ───────────────────────────────────────────────────────────────── */
+
+.sh-rail-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: var(--sh-inner-radius);
+    color: var(--sh-surface-text);
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sh-rail-item:hover {
+    background-color: var(--sh-inner-hover);
+}
+
+.sh-rail-item.is-active {
+    background-color: var(--sh-inner-active);
+}
+
+.sh-rail-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 18px;
+    color: var(--sh-surface-mid);
+}
+
+.sh-rail-icon .svg-icon {
+    width: 17px;
+    height: 17px;
+}
+
+.sh-rail-item.is-active .sh-rail-icon {
+    color: var(--sh-accent);
+}
+
+.sh-rail-icon.is-note {
+    color: var(--sh-surface-dim);
+}
+
+.sh-rail-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sh-rail-count {
+    flex: 0 0 auto;
+    min-width: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background-color: var(--sh-inner-chip);
+    color: var(--sh-surface-mid);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 19px;
+    text-align: center;
+}
+
+.sh-rail-count.is-alert {
+    background-color: color-mix(in oklch, var(--sh-overdue) 26%, transparent);
+    color: var(--sh-surface-text);
+}
+
+.sh-rail-count.is-quiet {
+    background-color: transparent;
+    color: var(--sh-surface-faint);
+}
+
+.sh-rail-gap {
+    height: 1px;
+    margin: 6px 12px;
+    background-color: var(--sh-rule);
+}
+
+.sh-rail-divider {
+    height: 1px;
+    margin: 10px 12px;
+    background-color: var(--sh-rule);
+}
+
+.sh-rail-area {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px 4px;
+    color: var(--sh-surface-faint);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sh-rail-area:hover {
+    color: var(--sh-surface-dim);
+}
+
+.sh-rail-chevron {
+    display: flex;
+    order: 2;
+    margin-left: auto;
+    opacity: 0;
+    transition: transform 120ms ease, opacity 100ms ease;
+}
+
+.sh-rail-area:hover .sh-rail-chevron,
+.sh-rail-area.is-collapsed .sh-rail-chevron {
+    opacity: 1;
+}
+
+.sh-rail-chevron .svg-icon {
+    width: 12px;
+    height: 12px;
+}
+
+.sh-rail-area.is-collapsed .sh-rail-chevron {
+    transform: rotate(-90deg);
+}
+
+.sh-rail-area-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ── Top bar ────────────────────────────────────────────────────────────── */
+
+.sh-tasks-topbar {
+    position: absolute;
+    top: var(--sh-gap);
+    right: var(--sh-gap);
+    left: var(--sh-gap);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.sh-topbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    pointer-events: auto;
+}
+
+.sh-tasks-view button.sh-bar-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--sh-surface-radius) - 4px);
+    background-color: transparent;
+    background-image: none;
+    box-shadow: none;
+    color: var(--sh-surface-text);
+    cursor: pointer;
+    transition: background-color 120ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-tasks-view button.sh-bar-button:hover {
+    background-color: var(--sh-inner-active);
+}
+
+.sh-tasks-view button.sh-bar-button:active {
+    background-color: var(--sh-inner-press);
+    transform: scale(0.93);
+}
+
+.sh-tasks-view button.sh-bar-button .svg-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.sh-tasks-view button.sh-display-button.has-changes::after {
+    content: "";
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--sh-accent);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.sh-tasks-header {
+    margin: 0 4px 22px;
+}
+
+.sh-tasks-eyebrow {
+    margin-bottom: 4px;
+    color: var(--text-faint);
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.sh-tasks-view h1.sh-tasks-title {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 650;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+}
+
+.sh-tasks-stats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.sh-tasks-view .sh-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: 999px;
+    background-color: var(--sh-row-active);
+    box-shadow: none;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.sh-tasks-view .sh-stat.is-overdue {
+    background-color: color-mix(in oklch, var(--sh-overdue) 16%, transparent);
+    color: var(--sh-overdue);
+}
+
+.sh-tasks-view .sh-stat.is-done {
+    background-color: color-mix(in oklch, var(--sh-today) 14%, transparent);
+    color: var(--sh-today);
+}
+
+.sh-tasks-view button.sh-stat.is-button {
+    cursor: pointer;
+}
+
+.sh-tasks-view button.sh-stat.is-button:hover {
+    color: var(--text-normal);
+    background-color: var(--sh-row-hover);
+    box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+}
+
+.sh-stat-icon {
+    display: inline-flex;
+}
+
+.sh-stat-icon .svg-icon {
+    width: 13px;
+    height: 13px;
+}
+
+.sh-meter {
+    width: 56px;
+    height: 5px;
+    border-radius: 999px;
+    background: linear-gradient(to right, var(--sh-accent) var(--sh-done, 0%), var(--sh-row-active) var(--sh-done, 0%));
+}
+
+.sh-tasks-view button.sh-link-button {
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--sh-accent);
+    font-size: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.sh-tasks-view button.sh-link-button:hover {
+    text-decoration: underline;
+}
+
+.sh-tasks-view button.sh-link-button.is-alert {
+    color: var(--sh-overdue);
+}
+
+/* ── Group bars ─────────────────────────────────────────────────────────── */
+
+.sh-group {
+    margin-top: 22px;
+}
+
+/* Each group's header is a glass bar that sticks under the top bar, so the
+   list scrolls beneath it and you always know which group you're in. */
+.sh-group-header {
+    position: sticky;
+    top: 56px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    margin: 0 0 6px;
+    padding: 6px 8px 6px 14px;
+    border-radius: var(--sh-surface-radius);
+    background-color: var(--sh-surface);
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    color: var(--sh-surface-text);
+    cursor: pointer;
+    user-select: none;
+}
+
+.sh-group-chevron {
+    display: flex;
+    order: 9;
+    color: var(--sh-surface-faint);
+    transition: transform 120ms ease;
+}
+
+.sh-group-chevron .svg-icon {
+    width: 15px;
+    height: 15px;
+}
+
+.sh-group-header.is-collapsed .sh-group-chevron {
+    transform: rotate(-90deg);
+}
+
+.sh-group-title {
+    font-size: 14.5px;
+    font-weight: 600;
+}
+
+.sh-group.is-overdue .sh-group-header {
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 3px 0 0 var(--sh-overdue);
+}
+
+.sh-group.is-overdue .sh-group-title {
+    color: var(--sh-overdue);
+}
+
+.sh-group-header[data-priority="1"] .sh-group-title { color: var(--sh-p1); }
+.sh-group-header[data-priority="2"] .sh-group-title { color: var(--sh-p2); }
+.sh-group-header[data-priority="3"] .sh-group-title { color: var(--sh-p3); }
+
+.sh-group-subtitle {
+    overflow: hidden;
+    color: var(--sh-surface-dim);
+    font-size: 12.5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sh-group-count {
+    min-width: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background-color: var(--sh-inner-chip);
+    color: var(--sh-surface-mid);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    line-height: 19px;
+    text-align: center;
+}
+
+.sh-group-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+/* A small calendar tile on each day of Upcoming. */
+.sh-day-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    margin-left: -6px;
+    overflow: hidden;
+    border-radius: 9px;
+    background-color: var(--sh-inner-well);
+    box-shadow: inset 0 0 0 1px var(--sh-rule);
+}
+
+.sh-day-month {
+    width: 100%;
+    color: var(--sh-surface-dim);
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 12px;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.sh-day-number {
+    color: var(--sh-surface-text);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 17px;
+}
+
+.sh-day-tile.is-today {
+    background-color: var(--sh-accent);
+    box-shadow: none;
+}
+
+.sh-day-tile.is-today .sh-day-month,
+.sh-day-tile.is-today .sh-day-number {
+    color: var(--sh-on-accent);
+}
+
+.sh-tasks-view button.sh-group-action,
+.sh-tasks-view button.sh-task-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sh-inner-radius);
+    background: none;
+    box-shadow: none;
+    color: var(--sh-surface-dim);
+    cursor: pointer;
+}
+
+.sh-tasks-view button.sh-group-action {
+    opacity: 0;
+    transition: opacity 100ms ease;
+}
+
+.sh-group-header:hover button.sh-group-action {
+    opacity: 1;
+}
+
+.sh-tasks-view button.sh-group-action:hover {
+    background-color: var(--sh-inner-active);
+    color: var(--sh-surface-text);
+}
+
+.sh-tasks-view button.sh-task-action {
+    color: var(--text-faint);
+}
+
+.sh-tasks-view button.sh-task-action:hover {
+    background-color: var(--sh-row-active);
+    color: var(--text-normal);
+}
+
+.sh-tasks-view button.sh-group-action .svg-icon,
+.sh-tasks-view button.sh-task-action .svg-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* A heading inside a note: a quiet label, the way Oriko labels a section. */
+.sh-section-title {
+    margin: 16px 0 4px;
+    padding: 0 14px;
+    color: var(--text-faint);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* ── Rows ───────────────────────────────────────────────────────────────── */
+
+.sh-task-row {
+    position: relative;
+    padding: 8px 12px 8px calc(14px + var(--sh-indent, 0) * 26px);
+    border-radius: var(--sh-inner-radius);
+    transition: background-color 80ms ease, opacity 140ms ease;
+}
+
+.sh-task-row:hover {
+    background-color: var(--sh-row-hover);
+}
+
+.sh-task-row.is-highlighted {
+    background-color: var(--sh-row-active);
+}
+
+.sh-task-row.is-selected {
+    background-color: color-mix(in oklch, var(--sh-accent) 16%, transparent);
+}
+
+.sh-task-row.is-selected.is-highlighted {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sh-accent) 55%, transparent);
+}
+
+.sh-tasks-column.has-expanded .sh-task-row:not(.is-expanded) {
+    opacity: 0.45;
+}
+
+/* The open task lifts off the list as a glass card. */
+.sh-task-row.is-expanded {
+    margin: 12px -8px;
+    padding: 16px 18px 14px calc(20px + var(--sh-indent, 0) * 26px);
+    border-radius: var(--sh-surface-radius);
+    background-color: var(--sh-surface);
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-card-lift);
+    color: var(--sh-surface-text);
+}
+
+.sh-task-row.is-expanded .sh-task-title {
+    color: var(--sh-surface-text);
+    font-size: 16px;
+    font-weight: 550;
+}
+
+.sh-task-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.sh-task-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sh-task-title {
+    font-size: 14.5px;
+    line-height: 1.45;
+    color: var(--text-normal);
+}
+
+.sh-task-row.is-resolved .sh-task-title {
+    color: var(--text-muted);
+}
+
+.sh-task-row.is-resolved:has(.sh-task-glyph[data-status="done"]) .sh-task-title,
+.sh-task-row.is-resolved:has(.sh-task-glyph[data-status="cancelled"]) .sh-task-title {
+    text-decoration: line-through;
+    text-decoration-color: var(--text-faint);
+}
+
+.sh-task-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.sh-meta-date,
+.sh-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Dates read as a small pill when they mean something today. */
+.sh-meta-date.is-overdue,
+.sh-meta-date.is-today {
+    padding: 0 7px;
+    border-radius: 999px;
+    line-height: 18px;
+}
+
+.sh-meta-date.is-overdue {
+    background-color: color-mix(in oklch, var(--sh-overdue) 15%, transparent);
+    color: var(--sh-overdue);
+}
+
+.sh-meta-date.is-today {
+    background-color: color-mix(in oklch, var(--sh-today) 14%, transparent);
+    color: var(--sh-today);
+}
+
+.sh-meta-icon {
+    display: inline-flex;
+}
+
+.sh-meta-icon .svg-icon {
+    width: 12px;
+    height: 12px;
+}
+
+.sh-meta-crumb {
+    color: var(--text-faint);
+    cursor: pointer;
+}
+
+.sh-meta-crumb:hover {
+    color: var(--text-muted);
+    text-decoration: underline;
+}
+
+.sh-task-actions {
+    display: flex;
+    gap: 2px;
+    margin: -4px -6px 0 0;
+    opacity: 0;
+    transition: opacity 100ms ease;
+}
+
+.sh-task-row:hover .sh-task-actions,
+.sh-task-row.is-highlighted .sh-task-actions {
+    opacity: 1;
+}
+
+.sh-task-row.is-expanded .sh-task-actions {
+    display: none;
+}
+
+.sh-task-context {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    margin: 3px 0 0 30px;
+    color: var(--text-faint);
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+/* ── The glyph: status or priority in one mark ──────────────────────────── */
+
+.sh-tasks-view button.sh-task-glyph,
+.sh-tasks-view .sh-task-glyph {
+    --sh-glyph: var(--text-faint);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    padding: 0;
+    border: 1.5px solid var(--sh-glyph);
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    color: var(--sh-glyph);
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-tasks-view button.sh-task-glyph:hover {
+    box-shadow: 0 0 0 4px color-mix(in oklch, var(--sh-glyph) 18%, transparent);
+}
+
+.sh-tasks-view button.sh-task-glyph:active {
+    transform: scale(0.86);
+}
+
+.sh-tasks-view .sh-task-glyph[data-priority="1"] { --sh-glyph: var(--sh-p1); border-width: 2px; }
+.sh-tasks-view .sh-task-glyph[data-priority="2"] { --sh-glyph: var(--sh-p2); border-width: 2px; }
+.sh-tasks-view .sh-task-glyph[data-priority="3"] { --sh-glyph: var(--sh-p3); border-width: 2px; }
+
+.sh-tasks-view .sh-task-glyph[data-status="in-progress"] {
+    --sh-glyph: var(--sh-progress);
+    background: conic-gradient(var(--sh-progress) 0 50%, transparent 50% 100%);
+    background-clip: content-box;
+    padding: 2px;
+}
+
+.sh-tasks-view .sh-task-glyph[data-status="question"] {
+    --sh-glyph: var(--sh-question);
+    border-style: dotted;
+    border-width: 2px;
+}
+
+.sh-tasks-view .sh-task-glyph[data-status="done"] {
+    --sh-glyph: var(--sh-accent);
+    background-color: var(--sh-accent);
+    color: var(--sh-on-accent);
+}
+
+.sh-tasks-view .sh-task-glyph[data-status="cancelled"] {
+    --sh-glyph: var(--text-faint);
+    border-style: dashed;
+}
+
+.sh-glyph-mark {
+    display: flex;
+}
+
+.sh-glyph-mark .svg-icon {
+    width: 11px;
+    height: 11px;
+    stroke-width: 3.2px;
+}
+
+.sh-task-glyph[data-status="question"] .sh-glyph-mark {
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.sh-task-glyph[data-status="question"] .sh-glyph-mark .svg-icon {
+    display: none;
+}
+
+.sh-task-glyph[data-status="question"] .sh-glyph-mark::after {
+    content: "?";
+}
+
+/* Smaller glyphs: palette rows, and the rail's status lists. */
+.sh-tasks-view .sh-task-glyph.is-small,
+.sh-tasks-view .sh-task-glyph.is-icon {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    cursor: inherit;
+}
+
+.sh-task-glyph.is-small .sh-glyph-mark .svg-icon,
+.sh-task-glyph.is-icon .sh-glyph-mark .svg-icon {
+    width: 9px;
+    height: 9px;
+}
+
+.sh-task-glyph.is-small .sh-glyph-mark,
+.sh-task-glyph.is-icon .sh-glyph-mark {
+    font-size: 9px;
+}
+
+.sh-flag { display: flex; color: var(--sh-surface-dim); }
+.sh-flag[data-priority="1"] { color: var(--sh-p1); }
+.sh-flag[data-priority="2"] { color: var(--sh-p2); }
+.sh-flag[data-priority="3"] { color: var(--sh-p3); }
+
+/* ── The card ───────────────────────────────────────────────────────────── */
+
+.sh-task-card {
+    margin: 12px 0 0 30px;
+}
+
+.sh-card-context {
+    color: var(--sh-surface-mid);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+
+.sh-card-context > :first-child { margin-top: 0; }
+.sh-card-context > :last-child { margin-bottom: 0; }
+
+.sh-card-empty {
+    color: var(--sh-surface-faint);
+    font-size: 13px;
+}
+
+.sh-card-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 16px;
+}
+
+.sh-card-where {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--sh-rule);
+    color: var(--sh-surface-dim);
+    font-size: 12px;
+}
+
+.sh-card-link {
+    color: var(--sh-surface-mid);
+    cursor: pointer;
+}
+
+.sh-key-hint,
+.sh-key {
+    padding: 0 6px;
+    border-radius: 5px;
+    background-color: var(--sh-inner-chip);
+    color: var(--sh-surface-mid);
+    font-size: 11px;
+    line-height: 18px;
+}
+
+/* ── Chips ──────────────────────────────────────────────────────────────── */
+
+.sh-tasks-view button.sh-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background-color: var(--sh-inner-chip);
+    box-shadow: none;
+    color: var(--sh-surface-mid);
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.sh-tasks-view button.sh-chip:hover {
+    background-color: var(--sh-inner-active);
+    color: var(--sh-surface-text);
+}
+
+.sh-tasks-view button.sh-chip.is-set {
+    color: var(--sh-surface-text);
+}
+
+.sh-tasks-view button.sh-chip.is-overdue { color: var(--sh-overdue); }
+.sh-tasks-view button.sh-chip.is-today { color: var(--sh-today); }
+.sh-tasks-view button.sh-chip[data-priority="1"] .sh-chip-icon { color: var(--sh-p1); }
+.sh-tasks-view button.sh-chip[data-priority="2"] .sh-chip-icon { color: var(--sh-p2); }
+.sh-tasks-view button.sh-chip[data-priority="3"] .sh-chip-icon { color: var(--sh-p3); }
+
+.sh-chip-icon,
+.sh-chip-clear {
+    display: inline-flex;
+}
+
+.sh-chip-icon .svg-icon,
+.sh-chip-clear .svg-icon {
+    width: 13px;
+    height: 13px;
+}
+
+.sh-chip-clear {
+    margin-right: -4px;
+    opacity: 0.55;
+}
+
+.sh-chip-clear:hover {
+    opacity: 1;
+}
+
+/* ── Empty state and paging ─────────────────────────────────────────────── */
+
+.sh-tasks-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 96px 0;
+    color: var(--text-faint);
+    font-size: 14px;
+}
+
+.sh-tasks-empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--sh-surface-radius);
+    background-color: var(--sh-surface);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    color: var(--sh-surface-mid);
+}
+
+.sh-tasks-empty-icon .svg-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.sh-tasks-empty-icon .sh-task-glyph.is-icon {
+    width: 26px;
+    height: 26px;
+}
+
+.sh-tasks-view button.sh-show-more {
+    display: block;
+    margin: 24px auto 0;
+}
+
+/* ── Palette ────────────────────────────────────────────────────────────── */
+
+.sh-palette-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 44;
+    background-color: var(--sh-scrim);
+}
+
+.sh-tasks-view .sh-palette {
+    position: absolute;
+    z-index: 45;
+    top: 14vh;
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    width: min(620px, calc(100% - 32px));
+    max-height: 62vh;
+    padding: var(--sh-surface-pad);
+    transform: translateX(-50%);
+}
+
+.sh-palette-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 13px 12px;
+    border-bottom: 1px solid var(--sh-rule);
+}
+
+.sh-palette-search {
+    display: flex;
+    color: var(--sh-surface-text);
+    opacity: 0.45;
+}
+
+.sh-palette-search .svg-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.sh-palette-chip {
+    display: none;
+    flex: 0 0 auto;
+    padding: 3px 9px;
+    border-radius: 8px;
+    background-color: var(--sh-inner-chip);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.sh-palette-chip.is-visible {
+    display: block;
+}
+
+.sh-tasks-view .sh-palette input.sh-palette-input,
+.sh-tasks-view .sh-palette input.sh-palette-input:hover,
+.sh-tasks-view .sh-palette input.sh-palette-input:active,
+.sh-tasks-view .sh-palette input.sh-palette-input:focus,
+.sh-tasks-view .sh-palette input.sh-palette-input:focus-visible,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input:hover,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input:active,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input:focus,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input:focus-visible {
+    border: none;
+    background-color: transparent;
+    background-image: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.sh-tasks-view .sh-palette input.sh-palette-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    color: var(--sh-surface-text);
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.sh-tasks-view .sh-palette input.sh-palette-input::placeholder,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input::placeholder {
+    color: var(--sh-surface-faint);
+}
+
+.sh-palette-list {
+    position: relative;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: 8px;
+    scroll-padding: 8px 0;
+}
+
+.sh-palette-section {
+    padding: 8px 13px 4px;
+    color: var(--sh-surface-faint);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.sh-palette-divider {
+    height: 1px;
+    margin: 5px 10px;
+    background-color: var(--sh-rule);
+}
+
+.sh-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 13px;
+    border-radius: var(--sh-inner-radius);
+    color: var(--sh-surface-text);
+    cursor: pointer;
+    user-select: none;
+}
+
+.sh-palette-item.is-active {
+    background-color: var(--sh-inner-hover);
+}
+
+.sh-palette-item.is-destructive.is-active {
+    background-color: rgba(255, 82, 82, 0.18);
+}
+
+.sh-palette-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    opacity: 0.9;
+}
+
+.sh-palette-icon .svg-icon {
+    width: 17px;
+    height: 17px;
+}
+
+.sh-palette-text {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sh-palette-label {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 14px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sh-palette-sublabel {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--sh-surface-dim);
+    font-size: 12.5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.sh-palette-mark {
+    color: var(--sh-mark);
+    font-weight: 600;
+}
+
+.sh-palette-detail {
+    flex: 0 0 auto;
+    color: var(--sh-surface-dim);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.sh-palette-arrow {
+    display: flex;
+    color: var(--sh-surface-dim);
+}
+
+.sh-palette-arrow .svg-icon {
+    width: 15px;
+    height: 15px;
+}
+
+.sh-palette-empty {
+    padding: 22px 12px;
+    color: var(--sh-surface-dim);
+    text-align: center;
+}
+
+.sh-palette-foot {
+    display: flex;
+    gap: 16px;
+    padding: 10px 13px 4px;
+    border-top: 1px solid var(--sh-rule);
+    color: var(--sh-surface-dim);
+    font-size: 11.5px;
+}
+
+.sh-palette-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ── Quick add ──────────────────────────────────────────────────────────── */
+
+.sh-tasks-view .sh-quickadd {
+    position: absolute;
+    z-index: 45;
+    top: 14vh;
+    left: 50%;
+    width: min(620px, calc(100% - 32px));
+    padding: 16px 14px var(--sh-surface-pad);
+    transform: translateX(-50%);
+}
+
+.sh-tasks-view .sh-quickadd.is-hidden {
+    display: none;
+}
+
+.sh-quickadd-field {
+    position: relative;
+}
+
+.sh-quickadd-mirror,
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input {
+    width: 100%;
+    height: auto;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 17px;
+    line-height: 1.5;
+    letter-spacing: normal;
+    white-space: pre;
+}
+
+.sh-quickadd-mirror {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: var(--sh-surface-text);
+    pointer-events: none;
+}
+
+.sh-tasks-view .sh-quickadd input.sh-quickadd-input {
+    position: relative;
+    color: transparent;
+    caret-color: var(--sh-surface-text);
+}
+
+.sh-quickadd-token {
+    border-radius: 5px;
+    box-shadow: 0 0 0 2px var(--sh-token-bg);
+    background-color: var(--sh-token-bg);
+}
+
+.sh-quickadd-token.is-date {
+    --sh-token-bg: color-mix(in oklch, var(--sh-accent) 26%, transparent);
+}
+
+.sh-quickadd-token.is-priority {
+    --sh-token-bg: color-mix(in oklch, var(--sh-p1) 28%, transparent);
+}
+
+.sh-quickadd-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.sh-quickadd-preview {
+    margin: 12px 0 10px;
+    padding: 9px 12px;
+    border-radius: var(--sh-inner-radius);
+    background-color: var(--sh-inner-well);
+    overflow-x: auto;
+}
+
+.sh-quickadd-preview code {
+    padding: 0;
+    background: none;
+    color: var(--sh-surface-mid);
+    font-size: 12.5px;
+    white-space: pre;
+}
+
+.sh-quickadd-preview.is-empty code {
+    color: var(--sh-surface-faint);
+}
+
+/* ── Selection bar ──────────────────────────────────────────────────────── */
+
+.sh-tasks-view .sh-bulkbar {
+    position: absolute;
+    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    left: 50%;
+    z-index: 32;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 12px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, calc(100% + 30px));
+    transition: transform 260ms cubic-bezier(0.22, 0.9, 0.28, 1), opacity 180ms ease;
+}
+
+.sh-tasks-view .sh-bulkbar.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+}
+
+.sh-bulk-count {
+    padding: 0 6px 0 2px;
+    color: var(--sh-surface-mid);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.sh-bar-divider {
+    align-self: stretch;
+    width: 1px;
+    margin: 3px 2px;
+    background-color: var(--sh-rule);
+}
+
+.sh-tasks-view button.sh-bar-button.is-primary {
+    color: var(--sh-accent);
+}
+
+.sh-tasks-view button.sh-bar-button.is-primary:hover {
+    background-color: color-mix(in oklch, var(--sh-accent) 18%, transparent);
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+
+.sh-tasks-view .sh-toast {
+    position: absolute;
+    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    left: 50%;
+    z-index: 33;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: calc(100% - 32px);
+    padding: 11px 18px;
+    font-size: 13px;
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity 160ms ease, transform 200ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-tasks-main.has-bulkbar .sh-toast {
+    bottom: calc(86px + var(--safe-area-inset-bottom, 0px));
+}
+
+.sh-tasks-view .sh-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.sh-toast-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ── Menus ──────────────────────────────────────────────────────────────── */
+
+.sh-tasks-view .sh-menu {
+    position: absolute;
+    z-index: 46;
+    min-width: 240px;
+    padding: var(--sh-surface-pad);
+}
+
+.sh-menu-section {
+    padding: 8px 13px 4px;
+    color: var(--sh-surface-faint);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.sh-menu-divider {
+    height: 1px;
+    margin: 5px 10px;
+    background-color: var(--sh-rule);
+}
+
+.sh-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 13px;
+    border-radius: var(--sh-inner-radius);
+    color: var(--sh-surface-text);
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sh-menu-item:hover,
+.sh-menu-item.is-active {
+    background-color: var(--sh-inner-hover);
+}
+
+.sh-menu-item.is-destructive:hover,
+.sh-menu-item.is-destructive.is-active {
+    background-color: rgba(255, 82, 82, 0.18);
+}
+
+.sh-menu-item.is-quiet {
+    color: var(--sh-surface-mid);
+}
+
+.sh-menu-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    color: var(--sh-surface-text);
+    opacity: 0.9;
+}
+
+.sh-menu-item.is-checked .sh-menu-check {
+    color: var(--sh-accent);
+}
+
+.sh-menu.is-iconless .sh-menu-check {
+    display: none;
+}
+
+.sh-menu-check .svg-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.sh-menu-label {
+    flex: 1 1 auto;
+    white-space: nowrap;
+}
+
+.sh-menu-detail {
+    flex: 0 0 auto;
+    color: var(--sh-surface-dim);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.sh-menu-toggle {
+    position: relative;
+    width: 30px;
+    height: 18px;
+    border-radius: 999px;
+    background-color: var(--sh-inner-active);
+    transition: background-color 120ms ease;
+}
+
+.sh-menu-toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 140ms ease;
+}
+
+.sh-menu-toggle.is-on {
+    background-color: var(--sh-accent);
+}
+
+.sh-menu-toggle.is-on::after {
+    transform: translateX(12px);
+}
+
+/* ── Phones ─────────────────────────────────────────────────────────────── */
+
+.is-phone .sh-tasks-column {
+    padding: 64px 12px 140px;
+}
+
+.is-phone .sh-task-actions {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sh-tasks-view *,
+    .sh-tasks-view *::after {
+        transition: none !important;
+    }
+}
