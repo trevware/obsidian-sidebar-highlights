@@ -3527,22 +3527,19 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 64px;
-    height: 64px;
-    border-radius: var(--sh-surface-radius);
-    background-color: var(--sh-surface);
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
-    color: var(--sh-surface-mid);
+    color: var(--text-faint);
 }
 
 .sh-tasks-empty-icon .svg-icon {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
+    stroke-width: 1.5px;
 }
 
 .sh-tasks-view .sh-tasks-empty-icon .sh-task-glyph.is-icon {
-    width: 28px;
-    height: 28px;
+    --sh-glyph: var(--text-faint);
+    width: 32px;
+    height: 32px;
 }
 
 .sh-tasks-view button.sh-show-more {
