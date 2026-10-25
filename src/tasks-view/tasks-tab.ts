@@ -143,6 +143,8 @@ export class TasksTabView extends ItemView {
     private renderGeneration = 0;
     /** Rows are still being drawn in slices, so the list isn't complete yet. */
     private planPending = false;
+    /** Tasks just added that are waiting for their rows to be drawn. */
+    private pendingReveal: string[] | null = null;
     private paintedHighlight: string | null = null;
     private paintedSelection = new Set<string>();
     /** A change arrived while the tab was in the background. */
@@ -733,6 +735,9 @@ export class TasksTabView extends ItemView {
         };
         const finish = () => {
             this.planPending = false;
+            if (this.pendingReveal) window.requestAnimationFrame(() => {
+                if (this.pendingReveal) this.revealAdded(this.pendingReveal);
+            });
             if (hidden > 0) {
                 const more = column.createEl('button', { cls: 'sh-show-more', text: t('tasksTab.showMore', { count: hidden }) });
                 more.addEventListener('click', () => {
@@ -1835,9 +1840,9 @@ export class TasksTabView extends ItemView {
         }
         this.writeJson(STORAGE.destination, destination);
         await this.refreshFile(destination.path);
-        this.highlightKey = `${destination.path}:${at}`;
+        const keys = lines.map((_line, i) => `${destination.path}:${at + i}`);
         this.render(true);
-        this.scrollToRow(this.highlightKey);
+        const shown = this.revealAdded(keys);
 
         const label = lines.length === 1
             ? t('tasksTab.notices.addedOne', { note: this.destinationLabel(destination) })
@@ -1850,7 +1855,69 @@ export class TasksTabView extends ItemView {
                 this.render(true);
             }
         });
-        this.toast(label, true);
+        // A task that lands outside this list gets a way to go and see it.
+        this.toast(label, true, shown ? undefined : {
+            label: t('tasksTab.actions.show'),
+            run: () => {
+                this.pendingReveal = keys;
+                this.setList({ kind: 'note', path: destination.path });
+                this.revealAdded(keys);
+            }
+        });
+        return true;
+    }
+
+    /**
+     * Brings newly added tasks into view and makes them easy to spot: the
+     * list scrolls them to the middle, they arrive with a small drop and
+     * settle, glow in the accent for a moment, and a ring ripples out from
+     * their checkbox. The first one takes the highlight, so the keys carry
+     * on from there. Returns false when none of them is in this list.
+     */
+    private revealAdded(keys: string[]): boolean {
+        // Whether the tasks belong to this list is a question for the data;
+        // their rows may simply not be drawn yet.
+        const inList = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
+        const present = keys.filter(key => inList.has(key));
+        if (present.length === 0) {
+            this.pendingReveal = null;
+            return false;
+        }
+        const rows = present.map(key => this.rowEls.get(key)).filter((row): row is HTMLElement => row !== undefined);
+        if (rows.length === 0) {
+            // Still being drawn in slices: finish() calls back once it's done.
+            this.pendingReveal = this.planPending ? present : null;
+            return true;
+        }
+        this.pendingReveal = null;
+
+        this.selected.clear();
+        this.highlightKey = rows[0].dataset.key ?? null;
+        this.paintSelection();
+
+        const first = rows[0];
+        const target = first.offsetTop - this.scroller.clientHeight / 2 + first.offsetHeight / 2;
+        const top = Math.max(0, Math.min(target, this.scroller.scrollHeight - this.scroller.clientHeight));
+        if (Math.abs(top - this.scroller.scrollTop) > 4) {
+            this.scroller.scrollTo({ top, behavior: motionAllowed() ? 'smooth' : 'auto' });
+        }
+
+        rows.forEach((row, i) => {
+            // The list's own fade-in for new rows would fight this one.
+            for (const animation of row.getAnimations()) {
+                if (!('animationName' in animation)) animation.cancel();
+            }
+            row.removeClass('is-new');
+            void row.offsetWidth;
+            row.setCssProps({ '--sh-new-delay': `${Math.min(i, 8) * 70}ms` });
+            row.addClass('is-new');
+            const done = (event: AnimationEvent) => {
+                if (event.target !== row || event.animationName !== 'sh-row-glow') return;
+                row.removeClass('is-new');
+                row.removeEventListener('animationend', done);
+            };
+            row.addEventListener('animationend', done);
+        });
         return true;
     }
 
@@ -2374,12 +2441,19 @@ export class TasksTabView extends ItemView {
         return button;
     }
 
-    private toast(message: string, undoable: boolean): void {
+    private toast(message: string, undoable: boolean, action?: { label: string; run: () => void }): void {
         if (this.toastTimer) window.clearTimeout(this.toastTimer);
         this.toastEl?.remove();
         const toast = this.main.createDiv({ cls: 'sh-glass sh-toast' });
         this.toastEl = toast;
         toast.createSpan({ cls: 'sh-toast-text', text: message });
+        if (action) {
+            const button = toast.createEl('button', { cls: 'sh-link-button', text: action.label });
+            button.addEventListener('click', () => {
+                toast.remove();
+                action.run();
+            });
+        }
         if (undoable) {
             const undo = toast.createEl('button', { cls: 'sh-link-button', text: t('tasksTab.actions.undo') });
             undo.addEventListener('click', () => {

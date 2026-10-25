@@ -615,7 +615,8 @@
       "reschedule": "Reschedule",
       "shortcuts": "Keyboard shortcuts",
       "undo": "Undo",
-      "delete": "Delete"
+      "delete": "Delete",
+      "show": "Show"
     },
     "bulk": {
       "selected": "{{count}} selected",
