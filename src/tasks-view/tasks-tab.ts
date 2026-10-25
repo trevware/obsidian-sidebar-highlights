@@ -147,6 +147,7 @@ export class TasksTabView extends ItemView {
     private titleCache = new Map<string, DocumentFragment>();
     private actionsEl!: HTMLElement;
     private actionsKey: string | null = null;
+    private hoveredRow: HTMLElement | null = null;
     private undoStack: UndoEntry[] = [];
     private railHidden = false;
     private narrow = false;
@@ -227,7 +228,13 @@ export class TasksTabView extends ItemView {
         this.column.addEventListener('contextmenu', (event) => this.onListContextMenu(event));
         this.column.addEventListener('mouseover', (event) => {
             const row = (event.target as HTMLElement).closest<HTMLElement>('.sh-task-row');
-            if (row && !row.hasClass('is-expanded')) this.moveActions(row);
+            if (row) this.moveActions(row);
+        });
+        // Off the list, the buttons go back to the highlighted row, or away.
+        this.column.addEventListener('mouseleave', () => {
+            const highlighted = this.highlightKey ? this.rowEls.get(this.highlightKey) : undefined;
+            if (highlighted) this.moveActions(highlighted);
+            else this.hideActions();
         });
 
         // Clicking anywhere outside an open card closes it. Surfaces the card
@@ -657,6 +664,9 @@ export class TasksTabView extends ItemView {
         this.orderIndex = new Map();
         this.rowEls = new Map();
         this.rowTasks = new Map();
+        this.hoveredRow = null;
+        this.actionsKey = null;
+        this.actionsEl.removeClass('is-visible');
 
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
@@ -888,11 +898,34 @@ export class TasksTabView extends ItemView {
     }
 
     /** The one set of hover buttons, moved onto whichever row wants them. */
+    /**
+     * Puts the shared hover buttons over a row. They live in the list itself,
+     * above the rows, because a row clips whatever overflows it (that clipping
+     * is what lets rows off screen skip drawing), and the pill is taller than
+     * a one-line row.
+     */
     private moveActions(row: HTMLElement): void {
-        const line = row.querySelector('.sh-task-line');
-        if (!line || this.actionsEl.parentElement === line) return;
-        line.appendChild(this.actionsEl);
-        this.actionsKey = row.dataset.key ?? null;
+        const key = row.dataset.key ?? null;
+        if (row.hasClass('is-expanded')) {
+            this.hideActions();
+            return;
+        }
+        if (this.actionsEl.parentElement !== this.column) this.column.appendChild(this.actionsEl);
+        if (this.actionsKey !== key) {
+            this.hoveredRow?.removeClass('is-hovered');
+            this.hoveredRow = row;
+            row.addClass('is-hovered');
+            this.actionsKey = key;
+        }
+        this.actionsEl.setCssProps({ top: `${row.offsetTop}px` });
+        this.actionsEl.addClass('is-visible');
+    }
+
+    private hideActions(): void {
+        this.actionsEl.removeClass('is-visible');
+        this.hoveredRow?.removeClass('is-hovered');
+        this.hoveredRow = null;
+        this.actionsKey = null;
     }
 
     private buildActions(): HTMLElement {
@@ -1244,6 +1277,7 @@ export class TasksTabView extends ItemView {
     }
 
     private expandRow(row: HTMLElement, task: Task, animate: boolean): void {
+        if (this.actionsKey === row.dataset.key) this.hideActions();
         row.addClass('is-expanded');
         row.querySelector('.sh-task-context')?.remove();
         const card = this.renderCard(row, task);

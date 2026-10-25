@@ -2594,9 +2594,11 @@
 }
 
 .sh-tasks-column {
+    --sh-column-pad: 28px;
+    position: relative;
     max-width: 760px;
     margin: 0 auto;
-    padding: 72px 28px 160px;
+    padding: 72px var(--sh-column-pad) 160px;
 }
 
 /* ── Rail ───────────────────────────────────────────────────────────────── */
@@ -3183,14 +3185,14 @@
     text-decoration: underline;
 }
 
-/* The row's buttons float over its right end as a small glass pill. Out of
-   the row's layout on purpose: the one shared set moves from row to row
-   under the pointer, and taking up space would re-wrap each row it visits. */
+/* The row's buttons float over its right end as a small glass pill. They sit
+   in the list, above the rows, positioned over whichever row is hovered: a
+   row clips anything that overflows it, and the pill takes no room in any
+   row, so nothing re-wraps as the pointer moves. */
 .sh-tasks-view .sh-task-actions {
     position: absolute;
-    top: 2px;
-    right: 8px;
-    z-index: 1;
+    right: calc(var(--sh-column-pad) + 8px);
+    z-index: 3;
     display: flex;
     gap: 1px;
     padding: 2px;
@@ -3204,15 +3206,23 @@
     transition: opacity 100ms ease;
 }
 
-.sh-task-row:hover .sh-task-actions,
-.sh-task-row.is-highlighted .sh-task-actions {
+.sh-tasks-view .sh-task-actions.is-visible {
     opacity: 1;
     pointer-events: auto;
 }
 
+/* The row keeps its hover wash while the pointer is on its buttons. */
+.sh-task-row.is-hovered {
+    background-color: var(--sh-row-hover);
+}
+
+.sh-task-row.is-highlighted.is-hovered {
+    background-color: var(--sh-row-active);
+}
+
 .sh-tasks-view .sh-task-actions button.sh-task-action {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
     border-radius: 999px;
     color: var(--sh-surface-mid);
 }
@@ -4065,7 +4075,8 @@
 /* ── Phones ─────────────────────────────────────────────────────────────── */
 
 .is-phone .sh-tasks-column {
-    padding: 64px 12px 140px;
+    --sh-column-pad: 12px;
+    padding: 64px var(--sh-column-pad) 140px;
 }
 
 .is-phone .sh-task-actions {
