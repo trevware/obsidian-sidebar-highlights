@@ -2561,6 +2561,12 @@
     display: none;
 }
 
+/* In a narrow pane the rail floats over the list, and stops above the
+   controls so the toggle that closes it stays in reach. */
+.sh-tasks-shell.is-narrow .sh-tasks-rail {
+    bottom: calc(76px + var(--safe-area-inset-bottom, 0px));
+}
+
 .sh-tasks-main {
     position: absolute;
     inset: 0;
@@ -2579,17 +2585,18 @@
     outline: none;
 }
 
-/* The list fades out under the top bar. A painted overlay, not a mask: a
-   mask on the scroller would repaint the whole list on every scroll frame. */
+/* The list fades out under the controls along the bottom. A painted overlay,
+   not a mask: a mask on the scroller would repaint the whole list on every
+   scroll frame. */
 .sh-tasks-main::before {
     content: "";
     position: absolute;
-    top: 0;
     right: 0;
+    bottom: 0;
     left: 0;
     z-index: 2;
-    height: 52px;
-    background: linear-gradient(to bottom, var(--background-primary) 20%, transparent);
+    height: 84px;
+    background: linear-gradient(to top, var(--background-primary) 35%, transparent);
     pointer-events: none;
 }
 
@@ -2598,7 +2605,7 @@
     position: relative;
     max-width: 760px;
     margin: 0 auto;
-    padding: 72px var(--sh-column-pad) 160px;
+    padding: 44px var(--sh-column-pad) 160px;
 }
 
 /* ── Rail ───────────────────────────────────────────────────────────────── */
@@ -2758,28 +2765,86 @@
     text-overflow: ellipsis;
 }
 
-/* ── Top bar ────────────────────────────────────────────────────────────── */
+/* ── Controls ───────────────────────────────────────────────────────────── */
 
-.sh-tasks-topbar {
+/* Along the bottom, as Oriko's are: two groups at either end, each control
+   its own glass pill, with the selection bar coming up between them. */
+.sh-tasks-controls {
     position: absolute;
-    top: var(--sh-gap);
-    right: var(--sh-gap);
-    left: var(--sh-gap);
+    right: 22px;
+    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    left: 22px;
     z-index: 30;
     display: flex;
     align-items: center;
     justify-content: space-between;
     pointer-events: none;
+    transition: transform 260ms cubic-bezier(0.22, 0.9, 0.28, 1), opacity 180ms ease;
 }
 
-.sh-topbar-group {
+.sh-controls-group {
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 4px;
-    pointer-events: auto;
+    gap: 10px;
 }
 
+.sh-tasks-view button.sh-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 38px;
+    padding: 0;
+    border: 0;
+    border-radius: 19px;
+    background-color: var(--sh-surface);
+    background-image: none;
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    color: var(--sh-surface-text);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1), box-shadow 180ms ease;
+}
+
+.sh-tasks-view button.sh-control:hover {
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
+}
+
+.sh-tasks-view button.sh-control:active {
+    transform: scale(0.96);
+}
+
+.sh-tasks-view button.sh-control .svg-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.sh-tasks-view button.sh-display-button.has-changes::after {
+    content: "";
+    position: absolute;
+    top: 7px;
+    right: 10px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--sh-accent);
+}
+
+/* In a narrow pane the selection bar would land on the controls, so they
+   step down out of its way while a selection is up, as Oriko's do. */
+.sh-tasks-shell.is-narrow .sh-tasks-main.has-bulkbar .sh-tasks-controls {
+    opacity: 0;
+    transform: translateY(calc(100% + 30px));
+}
+
+.sh-tasks-shell.is-narrow .sh-tasks-main.has-bulkbar .sh-tasks-controls button {
+    pointer-events: none;
+}
+
+/* The bar's own buttons (the selection bar shares them). */
 .sh-tasks-view button.sh-bar-button {
     position: relative;
     display: flex;
@@ -2812,17 +2877,6 @@
     height: 18px;
 }
 
-.sh-tasks-view button.sh-display-button.has-changes::after {
-    content: "";
-    position: absolute;
-    top: 7px;
-    right: 7px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: var(--sh-accent);
-}
-
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .sh-tasks-header {
@@ -2848,6 +2902,31 @@
     font-weight: 650;
     line-height: 1.15;
     letter-spacing: -0.02em;
+}
+
+.sh-tasks-view h1.sh-tasks-title.is-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.sh-title-arrow {
+    display: flex;
+    color: var(--text-faint);
+    opacity: 0;
+    transform: translate(-4px, 2px);
+    transition: opacity 140ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-title-arrow .svg-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.sh-tasks-title.is-link:hover .sh-title-arrow {
+    opacity: 1;
+    transform: translate(0, 2px);
 }
 
 .sh-tasks-view button.sh-link-button {
@@ -3933,7 +4012,7 @@
 
 .sh-tasks-view .sh-toast {
     position: absolute;
-    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(76px + var(--safe-area-inset-bottom, 0px));
     left: 50%;
     z-index: 33;
     display: flex;
@@ -3948,7 +4027,7 @@
 }
 
 .sh-tasks-main.has-bulkbar .sh-toast {
-    bottom: calc(86px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(80px + var(--safe-area-inset-bottom, 0px));
 }
 
 .sh-tasks-view .sh-toast.is-visible {
@@ -4078,7 +4157,7 @@
 
 .is-phone .sh-tasks-column {
     --sh-column-pad: 12px;
-    padding: 64px var(--sh-column-pad) 140px;
+    padding: 24px var(--sh-column-pad) 140px;
 }
 
 .is-phone .sh-task-actions {
@@ -4122,6 +4201,10 @@
 
 .sh-tasks-view .sh-menu {
     transform-origin: top left;
+}
+
+.sh-tasks-view .sh-menu.is-up {
+    transform-origin: bottom right;
     animation: sh-menu-in 160ms cubic-bezier(0.22, 0.9, 0.28, 1);
 }
 

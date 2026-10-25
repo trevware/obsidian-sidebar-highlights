@@ -26,6 +26,8 @@ export interface DisplayOptions {
     group: GroupMode;
     sort: SortMode;
     showCompleted: boolean;
+    /** With completed tasks shown, list them after the open ones. The note is never reordered. */
+    completedLast: boolean;
     showContext: boolean;
 }
 
@@ -33,6 +35,7 @@ export const DEFAULT_DISPLAY: DisplayOptions = {
     group: 'auto',
     sort: 'file',
     showCompleted: false,
+    completedLast: true,
     showContext: true
 };
 
@@ -181,22 +184,44 @@ function sortTasks(tasks: Task[], sort: SortMode): Task[] {
     }
 }
 
+/** Says whether a task has finished, for moving it after the open ones. */
+type Settle = (task: Task) => boolean;
+
+/**
+ * Moves finished tasks after the open ones, keeping each group's own order.
+ * A family moves as one: a task goes with the top-level task it sits under,
+ * so a done subtask stays with an open parent, and a done parent takes its
+ * subtasks along.
+ */
+export function completedLast(tasks: readonly Task[], isFinished: Settle): Task[] {
+    const open: Task[] = [];
+    const done: Task[] = [];
+    let bucket = open;
+    for (const task of tasks) {
+        if (task.indentLevel === 0) bucket = isFinished(task) ? done : open;
+        bucket.push(task);
+    }
+    return [...open, ...done];
+}
+
 /**
  * Sorted and nested for display. Sub-tasks stay under their parent only in
  * file order: any other sort scatters a family, so it lays them out flat.
  */
-function arrange(tasks: Task[], sort: SortMode): Task[] {
+function arrange(tasks: Task[], sort: SortMode, settle?: Settle): Task[] {
     const sorted = sortTasks(tasks, sort);
-    if (sort === 'file') return normalizeVisibleNesting(sorted);
-    return sorted.map(task => (task.indentLevel === 0 ? task : { ...task, indentLevel: 0 }));
+    const laidOut = sort === 'file'
+        ? normalizeVisibleNesting(sorted)
+        : sorted.map(task => (task.indentLevel === 0 ? task : { ...task, indentLevel: 0 }));
+    return settle ? completedLast(laidOut, settle) : laidOut;
 }
 
-function single(key: string, tasks: Task[], sort: SortMode): TaskSection[] {
-    return [{ key, title: '', tasks: arrange(tasks, sort) }];
+function single(key: string, tasks: Task[], sort: SortMode, settle?: Settle): TaskSection[] {
+    return [{ key, title: '', tasks: arrange(tasks, sort, settle) }];
 }
 
 /** Splits a note's tasks by heading, in the order the headings appear. */
-function byHeading(path: string, tasks: Task[], sort: SortMode): TaskSection[] {
+function byHeading(path: string, tasks: Task[], sort: SortMode, settle?: Settle): TaskSection[] {
     const sections = new Map<string, Task[]>();
     for (const task of [...tasks].sort(compareFileOrder)) {
         const title = task.section ?? '';
@@ -207,7 +232,7 @@ function byHeading(path: string, tasks: Task[], sort: SortMode): TaskSection[] {
     return [...sections.entries()].map(([title, list]) => ({
         key: `${path}#${title}`,
         title,
-        tasks: arrange(list, sort)
+        tasks: arrange(list, sort, settle)
     }));
 }
 
@@ -271,13 +296,18 @@ export function buildGroups(
     display: DisplayOptions,
     labels: GroupLabels,
     notes: NoteInfo,
-    locale?: string
+    locale?: string,
+    lingering: ReadonlySet<string> = new Set()
 ): TaskGroup[] {
     const mode = resolveGroupMode(ref, display.group);
     const notePath = ref.kind === 'note' ? ref.path : undefined;
+    // A task ticked a moment ago holds its place until it's done lingering.
+    const settle: Settle | undefined = display.showCompleted && display.completedLast
+        ? (task) => !isOpenTask(task) && !lingering.has(taskKey(task))
+        : undefined;
 
     if (mode === 'heading' && notePath) {
-        return byHeading(notePath, [...tasks], display.sort).map(section => ({
+        return byHeading(notePath, [...tasks], display.sort, settle).map(section => ({
             key: section.key,
             kind: 'heading',
             title: section.title,
@@ -297,7 +327,7 @@ export function buildGroups(
         return [...byNote.entries()]
             .sort(([a], [b]) => notes.mtime(b) - notes.mtime(a) || a.localeCompare(b))
             .map(([path, list]) => {
-                const sections = byHeading(path, list, display.sort);
+                const sections = byHeading(path, list, display.sort, settle);
                 return {
                     key: `note:${path}`,
                     kind: 'note' as const,
@@ -320,7 +350,7 @@ export function buildGroups(
                     key,
                     kind: 'priority' as const,
                     title: level ? labels.priority(level) : labels.noPriority,
-                    sections: single(key, list, display.sort),
+                    sections: single(key, list, display.sort, settle),
                     count: list.length,
                     add: { path: notePath, priority: level }
                 };
@@ -345,7 +375,7 @@ export function buildGroups(
         if (dueToday.length > 0 || (ref.kind === 'smart' && ref.id === 'today')) {
             groups.push({
                 key: 'today', kind: 'date', title: labels.today, subtitle: shortDate(today, today, locale),
-                sections: single('today', dueToday, display.sort), count: dueToday.length,
+                sections: single('today', dueToday, display.sort, settle), count: dueToday.length,
                 add: { path: notePath, date: today }
             });
         }
@@ -362,7 +392,7 @@ export function buildGroups(
             const sort = display.sort === 'file' && !bucket.key.startsWith('day:') ? 'date' : display.sort;
             groups.push({
                 key: bucket.key, kind: 'date', title: bucket.title, subtitle: bucket.subtitle,
-                sections: single(bucket.key, list, sort), count: list.length,
+                sections: single(bucket.key, list, sort, settle), count: list.length,
                 add: { path: notePath, date: bucket.start }
             });
         }
@@ -370,14 +400,14 @@ export function buildGroups(
         if (undated.length > 0) {
             groups.push({
                 key: 'no-date', kind: 'date', title: labels.noDate,
-                sections: single('no-date', undated, display.sort), count: undated.length,
+                sections: single('no-date', undated, display.sort, settle), count: undated.length,
                 add: { path: notePath }
             });
         }
         return groups;
     }
 
-    return [{ key: 'all', kind: 'flat', title: '', sections: single('all', [...tasks], display.sort), count: tasks.length, add: { path: notePath } }];
+    return [{ key: 'all', kind: 'flat', title: '', sections: single('all', [...tasks], display.sort, settle), count: tasks.length, add: { path: notePath } }];
 }
 
 export interface RailNote {

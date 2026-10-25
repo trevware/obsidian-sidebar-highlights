@@ -647,7 +647,8 @@
       "sortAlpha": "Name",
       "showCompleted": "Show completed",
       "showContext": "Show notes under tasks",
-      "reset": "Reset to default"
+      "reset": "Reset to default",
+      "completedLast": "Completed at the bottom"
     },
     "quickAdd": {
       "placeholder": "Task name, e.g. Call the dentist fri p1",

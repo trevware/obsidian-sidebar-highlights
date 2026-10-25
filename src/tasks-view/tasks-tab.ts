@@ -213,7 +213,7 @@ export class TasksTabView extends ItemView {
         this.scroller = this.main.createDiv({ cls: 'sh-tasks-scroll' });
         this.scroller.setAttr('tabindex', '-1');
         this.column = this.scroller.createDiv({ cls: 'sh-tasks-column' });
-        this.topbar = this.main.createDiv({ cls: 'sh-tasks-topbar' });
+        this.topbar = this.main.createDiv({ cls: 'sh-tasks-controls' });
         this.bulkbar = this.main.createDiv({ cls: 'sh-glass sh-bulkbar' });
 
         this.palette = new GlassPalette(this.main);
@@ -514,13 +514,18 @@ export class TasksTabView extends ItemView {
         this.scroller?.focus({ preventScroll: true });
     }
 
+    /**
+     * The controls, along the bottom the way Oriko's are: the sidebar toggle
+     * on the left, search, add and Display on the right, each its own glass
+     * pill. The selection bar comes up between the two groups.
+     */
     private renderTopbar(): void {
         const bar = this.topbar;
         bar.empty();
-        const left = bar.createDiv({ cls: 'sh-glass sh-topbar-group sh-topbar-left' });
+        const left = bar.createDiv({ cls: 'sh-controls-group' });
         this.barButton(left, 'panel-left', t('tasksTab.actions.toggleSidebar'), () => this.toggleRail());
 
-        const right = bar.createDiv({ cls: 'sh-glass sh-topbar-group' });
+        const right = bar.createDiv({ cls: 'sh-controls-group' });
         this.barButton(right, 'search', `${t('tasksTab.actions.search')} (⌘K)`, () => this.openPalette());
         this.barButton(right, 'plus', `${t('tasksTab.actions.addTask')} (Q)`, () => this.openQuickAdd());
         const display = this.barButton(right, 'sliders-horizontal', `${t('tasksTab.actions.display')} (⇧V)`, (event) => this.openDisplayMenu(event.currentTarget as HTMLElement));
@@ -528,9 +533,9 @@ export class TasksTabView extends ItemView {
     }
 
     private barButton(parent: HTMLElement, icon: string, tooltip: string, onClick: (event: MouseEvent) => void): HTMLElement {
-        const button = parent.createEl('button', { cls: 'sh-bar-button' });
+        const button = parent.createEl('button', { cls: 'sh-control' });
         setIcon(button, icon);
-        setTooltip(button, tooltip, { placement: 'bottom' });
+        setTooltip(button, tooltip, { placement: 'top' });
         button.setAttr('aria-label', tooltip);
         button.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -686,7 +691,7 @@ export class TasksTabView extends ItemView {
 
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
         this.groupSignature = this.groupSignatureOf(groups);
 
         this.renderHeader(column, today);
@@ -803,16 +808,20 @@ export class TasksTabView extends ItemView {
         // Today, the folder (and a way into the note) on a note.
         const eyebrow = header.createDiv({ cls: 'sh-tasks-eyebrow' });
         if (this.list.kind === 'note') {
-            const path = this.list.path;
-            eyebrow.createSpan({ text: this.noteInfo.folder(path) || t('tasksTab.rail.vaultRoot') });
-            const open = eyebrow.createEl('button', { cls: 'sh-link-button', text: t('tasksTab.actions.openNote') });
-            open.addEventListener('click', () => void this.openPath(path));
+            eyebrow.setText(this.noteInfo.folder(this.list.path) || t('tasksTab.rail.vaultRoot'));
         } else if (this.list.id === 'today') {
             eyebrow.setText(moment(today, 'YYYY-MM-DD').format('dddd, D MMMM'));
         }
-        if (eyebrow.childElementCount === 0 && eyebrow.textContent === '') eyebrow.remove();
+        if (eyebrow.textContent === '') eyebrow.remove();
 
-        header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
+        const title = header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
+        // A note's title opens the note; an arrow shows on hover to say so.
+        if (this.list.kind === 'note') {
+            const path = this.list.path;
+            title.addClass('is-link');
+            setIcon(title.createSpan({ cls: 'sh-title-arrow' }), 'arrow-up-right');
+            title.addEventListener('click', () => void this.openPath(path));
+        }
     }
 
     /**
@@ -987,7 +996,7 @@ export class TasksTabView extends ItemView {
         const today = isoToday();
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
         if (this.groupSignatureOf(groups) !== this.groupSignature) return false;
 
         const next: Array<{ task: Task; group: TaskGroup }> = [];
@@ -1409,8 +1418,8 @@ export class TasksTabView extends ItemView {
         const row = this.rowEls.get(key);
         if (!row) return;
         const scroller = this.scroller;
-        const top = row.offsetTop - 72;
-        const bottom = row.offsetTop + row.offsetHeight + 96;
+        const top = row.offsetTop - 24;
+        const bottom = row.offsetTop + row.offsetHeight + 110;
         if (top < scroller.scrollTop) scroller.scrollTop = top;
         else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight;
     }
@@ -1760,7 +1769,7 @@ export class TasksTabView extends ItemView {
         const today = isoToday();
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
         const shape = (signature: string) => signature.split('|').map(part => part.replace(/:\d+:/, ':')).join('|');
         const nextSignature = this.groupSignatureOf(groups);
         if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;
@@ -2309,11 +2318,13 @@ export class TasksTabView extends ItemView {
 
         const menu = this.main.createDiv({ cls: 'sh-glass sh-menu' });
         this.menuEl = menu;
+        // The button sits at the bottom, so the menu opens upward from it.
+        menu.addClass('is-up');
         const place = () => {
             const host = this.main.getBoundingClientRect();
             const rect = anchor.getBoundingClientRect();
             menu.setCssProps({
-                top: `${rect.bottom - host.top + 8}px`,
+                bottom: `${host.bottom - rect.top + 10}px`,
                 right: `${Math.max(12, host.right - rect.right)}px`
             });
         };
@@ -2341,8 +2352,13 @@ export class TasksTabView extends ItemView {
             menu.createDiv({ cls: 'sh-menu-section', text: t('tasksTab.display.sortBy') });
             for (const [mode, label] of sorts) this.menuRow(menu, label, display.sort === mode, () => this.setDisplay({ sort: mode }), paint);
             menu.createDiv({ cls: 'sh-menu-divider' });
-            if (!(this.list.kind === 'smart' && this.list.id === 'logbook')) {
+            // Completed tasks belong to a note's own list; the smart lists are
+            // open work (and Done is all completed), so the toggles live here.
+            if (this.list.kind === 'note') {
                 this.menuToggle(menu, t('tasksTab.display.showCompleted'), display.showCompleted, () => this.setDisplay({ showCompleted: !display.showCompleted }), paint);
+                if (display.showCompleted) {
+                    this.menuToggle(menu, t('tasksTab.display.completedLast'), display.completedLast, () => this.setDisplay({ completedLast: !display.completedLast }), paint);
+                }
             }
             this.menuToggle(menu, t('tasksTab.display.showContext'), display.showContext, () => this.setDisplay({ showContext: !display.showContext }), paint);
             if (this.isDisplayChanged()) {

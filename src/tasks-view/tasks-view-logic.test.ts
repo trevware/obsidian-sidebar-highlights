@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, DEFAULT_DISPLAY, listCounts, railAreas, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, listCounts, railAreas, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -233,6 +233,33 @@ describe('task-views', () => {
         const groups = buildGroups(list, ref, TODAY, DEFAULT_DISPLAY, labels, notes);
         expect(groups.map(g => [g.kind, g.title])).toEqual([['heading', ''], ['heading', 'Plans']]);
         expect(groups[1].add).toEqual({ path: 'Work/Note.md', heading: 'Plans' });
+    });
+
+    it('lists finished tasks after open ones, moving whole families', () => {
+        const family = [
+            task({ text: 'A done', status: 'done', lineNumber: 1 }),
+            task({ text: 'A child', lineNumber: 2, indentLevel: 1 }),
+            task({ text: 'B open', lineNumber: 3 }),
+            task({ text: 'B done child', status: 'done', lineNumber: 4, indentLevel: 1 }),
+            task({ text: 'C open', lineNumber: 5 })
+        ];
+        expect(completedLast(family, t => t.status === 'done' && t.indentLevel >= 0).map(t => t.text))
+            .toEqual(['B open', 'B done child', 'C open', 'A done', 'A child']);
+    });
+
+    it('sorts completed last in a note by default, but holds a lingering task in place', () => {
+        const ref = { kind: 'note' as const, path: 'Work/Note.md' };
+        const display = { ...DEFAULT_DISPLAY, showCompleted: true };
+        const list = [
+            task({ text: 'First', lineNumber: 1 }),
+            task({ text: 'Ticked', lineNumber: 2, status: 'done', completed: true }),
+            task({ text: 'Third', lineNumber: 3 })
+        ];
+        const order = (opts: typeof display, lingering: Set<string>) =>
+            buildGroups(list, ref, TODAY, opts, labels, notes, undefined, lingering).flatMap(g => g.sections.flatMap(s => s.tasks.map(t => t.text)));
+        expect(order(display, new Set())).toEqual(['First', 'Third', 'Ticked']);
+        expect(order(display, new Set(['Work/Note.md:2']))).toEqual(['First', 'Ticked', 'Third']);
+        expect(order({ ...display, completedLast: false }, new Set())).toEqual(['First', 'Ticked', 'Third']);
     });
 
     it('collects notes with open tasks under their folders', () => {
