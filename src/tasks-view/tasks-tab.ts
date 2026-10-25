@@ -913,16 +913,12 @@ export class TasksTabView extends ItemView {
         const key = taskKey(task);
         const kids = progress.get(key);
         return [task.text, task.status, task.marker, task.priority, task.date, task.indentLevel, task.section,
-            task.context.join('\u0001'), kids ? `${kids.done}/${kids.total}` : '', group.key, this.lingering.has(key)].join('\u0002');
+            task.context.join('\u0001'), kids ? `${kids.done}/${kids.total}` : '', group.key].join('\u0002');
     }
 
     /** Draws a row's contents into its element, the first time or again in place. */
     private fillRow(row: HTMLElement, task: Task, group: TaskGroup, progress: Map<string, { done: number; total: number }>, display: DisplayOptions): void {
         const key = taskKey(task);
-        // A checkbox already showing the new state keeps its element, so a
-        // pop that started on the click plays out instead of restarting.
-        const oldGlyph = row.querySelector<HTMLElement>('.sh-task-glyph');
-        row.empty();
         row.setCssProps({ '--sh-indent': String(task.indentLevel) });
         row.toggleClass('is-resolved', !isOpenTask(task));
         row.toggleClass('is-lingering', this.lingering.has(key));
@@ -930,13 +926,27 @@ export class TasksTabView extends ItemView {
         this.rowGroups.set(key, group);
         this.rowSigs.set(key, this.rowSignature(task, group, progress));
 
-        const line = row.createDiv({ cls: 'sh-task-line' });
-        const glyph = line.createEl('button', { cls: 'sh-task-glyph' });
+        // A checkbox already showing the new state stays attached while the
+        // rest of the row is redrawn around it. Taking it out of the page and
+        // putting it back would restart its pop, which read as a second tick.
+        const glyph = createEl('button', { cls: 'sh-task-glyph' });
         paintGlyph(glyph, task);
-        if (oldGlyph && ['status', 'priority', 'marker'].every(field => oldGlyph.dataset[field] === glyph.dataset[field])) {
-            glyph.replaceWith(oldGlyph);
-        } else if (this.justChanged.has(key)) {
-            glyph.addClass('is-just-changed');
+        const oldLine = row.querySelector<HTMLElement>(':scope > .sh-task-line');
+        const oldGlyph = oldLine?.querySelector<HTMLElement>(':scope > .sh-task-glyph');
+        let line: HTMLElement;
+        if (oldLine && oldGlyph && ['status', 'priority', 'marker'].every(field => oldGlyph.dataset[field] === glyph.dataset[field])) {
+            for (const child of Array.from(row.children)) {
+                if (child !== oldLine) child.remove();
+            }
+            for (const child of Array.from(oldLine.children)) {
+                if (child !== oldGlyph) child.remove();
+            }
+            line = oldLine;
+        } else {
+            row.empty();
+            line = row.createDiv({ cls: 'sh-task-line' });
+            line.appendChild(glyph);
+            if (this.justChanged.has(key)) glyph.addClass('is-just-changed');
         }
 
         const body = line.createDiv({ cls: 'sh-task-body' });
@@ -1001,6 +1011,7 @@ export class TasksTabView extends ItemView {
             this.order[i] = task;
             const row = this.rowEls.get(key);
             if (!row) return;
+            row.toggleClass('is-lingering', this.lingering.has(key));
             const signature = this.rowSignature(task, group, progress);
             if (signature === this.rowSigs.get(key) && !this.justChanged.has(key)) {
                 this.rowTasks.set(key, task);
