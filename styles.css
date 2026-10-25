@@ -2438,24 +2438,31 @@
     position: relative;
     background-color: var(--background-primary);
 
-    /* Oriko's surface, restated for this view. */
-    --sh-surface: rgba(32, 32, 35, 0.88);
+    /* Oriko's surface, restated for this view, tinted by the theme: the
+       pane's own background lifted a touch toward its text colour, so a
+       blue or warm theme gets blue or warm glass. Text and washes come from
+       the theme's text colour for the same reason. */
+    --sh-ink: var(--text-normal);
+    --sh-glass-base: color-mix(in oklab, var(--background-primary) 93%, var(--sh-ink));
+    --sh-surface: color-mix(in oklab, var(--sh-glass-base) 84%, transparent);
     --sh-surface-blur: blur(24px) saturate(130%);
-    --sh-surface-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --sh-surface-ring: inset 0 0 0 1px color-mix(in srgb, var(--sh-ink) 7%, transparent);
     --sh-surface-lift: 0 1px 6px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.16);
     --sh-surface-radius: 22px;
     --sh-surface-pad: 10px;
     --sh-inner-radius: calc(var(--sh-surface-radius) - var(--sh-surface-pad));
-    --sh-surface-text: rgba(255, 255, 255, 0.88);
-    --sh-surface-mid: rgba(255, 255, 255, 0.72);
-    --sh-surface-dim: rgba(255, 255, 255, 0.45);
-    --sh-surface-faint: rgba(255, 255, 255, 0.35);
-    --sh-inner-hover: rgba(255, 255, 255, 0.09);
-    --sh-inner-active: rgba(255, 255, 255, 0.14);
-    --sh-inner-press: rgba(255, 255, 255, 0.22);
-    --sh-inner-well: rgba(255, 255, 255, 0.07);
-    --sh-inner-chip: rgba(255, 255, 255, 0.1);
-    --sh-rule: rgba(255, 255, 255, 0.12);
+    /* Quieter text is the theme's text colour faded, not its own muted and
+       faint colours: some themes draw faint text barely off the background. */
+    --sh-surface-text: var(--sh-ink);
+    --sh-surface-mid: color-mix(in srgb, var(--sh-ink) 76%, transparent);
+    --sh-surface-dim: color-mix(in srgb, var(--sh-ink) 52%, transparent);
+    --sh-surface-faint: color-mix(in srgb, var(--sh-ink) 42%, transparent);
+    --sh-inner-hover: color-mix(in srgb, var(--sh-ink) 10%, transparent);
+    --sh-inner-active: color-mix(in srgb, var(--sh-ink) 15%, transparent);
+    --sh-inner-press: color-mix(in srgb, var(--sh-ink) 24%, transparent);
+    --sh-inner-well: color-mix(in srgb, var(--sh-ink) 8%, transparent);
+    --sh-inner-chip: color-mix(in srgb, var(--sh-ink) 11%, transparent);
+    --sh-rule: color-mix(in srgb, var(--sh-ink) 13%, transparent);
     --sh-scrim: rgba(0, 0, 0, 0.42);
     --sh-mark: #fff;
     --sh-accent: #6ea8fe;
@@ -2463,8 +2470,8 @@
     --sh-card-lift: 0 24px 70px rgba(0, 0, 0, 0.45);
 
     /* Row washes on the plain pane, the same roles as the surface's own. */
-    --sh-row-hover: rgba(255, 255, 255, 0.05);
-    --sh-row-active: rgba(255, 255, 255, 0.08);
+    --sh-row-hover: color-mix(in srgb, var(--sh-ink) 5%, transparent);
+    --sh-row-active: color-mix(in srgb, var(--sh-ink) 9%, transparent);
 
     --sh-p1: #ff6b6b;
     --sh-p2: #ffb84d;
@@ -2479,26 +2486,28 @@
 }
 
 .theme-light .view-content.sh-tasks-view {
-    --sh-surface: rgba(252, 252, 253, 0.9);
-    --sh-surface-ring: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    /* Light glass lifts toward white, the way paper catches light, still
+       carrying the theme's own tint. */
+    --sh-glass-base: color-mix(in oklab, var(--background-primary) 70%, #fff);
+    --sh-surface: color-mix(in oklab, var(--sh-glass-base) 86%, transparent);
+    --sh-surface-ring: inset 0 0 0 1px color-mix(in srgb, var(--sh-ink) 9%, transparent);
     --sh-surface-lift: 0 1px 6px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.09);
-    --sh-surface-text: rgba(22, 22, 26, 0.92);
-    --sh-surface-mid: rgba(22, 22, 26, 0.72);
-    --sh-surface-dim: rgba(22, 22, 26, 0.5);
-    --sh-surface-faint: rgba(22, 22, 26, 0.38);
-    --sh-inner-hover: rgba(0, 0, 0, 0.06);
-    --sh-inner-active: rgba(0, 0, 0, 0.09);
-    --sh-inner-press: rgba(0, 0, 0, 0.14);
-    --sh-inner-well: rgba(0, 0, 0, 0.05);
-    --sh-inner-chip: rgba(0, 0, 0, 0.07);
-    --sh-rule: rgba(0, 0, 0, 0.1);
+    --sh-surface-mid: color-mix(in srgb, var(--sh-ink) 74%, transparent);
+    --sh-surface-dim: color-mix(in srgb, var(--sh-ink) 52%, transparent);
+    --sh-surface-faint: color-mix(in srgb, var(--sh-ink) 40%, transparent);
+    --sh-inner-hover: color-mix(in srgb, var(--sh-ink) 6%, transparent);
+    --sh-inner-active: color-mix(in srgb, var(--sh-ink) 9%, transparent);
+    --sh-inner-press: color-mix(in srgb, var(--sh-ink) 14%, transparent);
+    --sh-inner-well: color-mix(in srgb, var(--sh-ink) 5%, transparent);
+    --sh-inner-chip: color-mix(in srgb, var(--sh-ink) 7%, transparent);
+    --sh-rule: color-mix(in srgb, var(--sh-ink) 10%, transparent);
     --sh-scrim: rgba(0, 0, 0, 0.25);
     --sh-mark: rgba(10, 10, 12, 1);
     --sh-accent: #2563c9;
     --sh-on-accent: #ffffff;
     --sh-card-lift: 0 20px 56px rgba(0, 0, 0, 0.18);
-    --sh-row-hover: rgba(0, 0, 0, 0.035);
-    --sh-row-active: rgba(0, 0, 0, 0.06);
+    --sh-row-hover: color-mix(in srgb, var(--sh-ink) 3.5%, transparent);
+    --sh-row-active: color-mix(in srgb, var(--sh-ink) 6%, transparent);
     --sh-p1: #dc2626;
     --sh-p2: #d97706;
     --sh-p3: #2563c9;
@@ -2520,13 +2529,13 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .view-content.sh-tasks-view { --sh-surface: rgba(32, 32, 35, 0.97); }
-    .theme-light .view-content.sh-tasks-view { --sh-surface: rgba(252, 252, 253, 0.98); }
+    .view-content.sh-tasks-view,
+    .theme-light .view-content.sh-tasks-view { --sh-surface: color-mix(in oklab, var(--sh-glass-base) 97%, transparent); }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-    .view-content.sh-tasks-view { --sh-surface: rgb(32, 32, 35); --sh-surface-blur: none; }
-    .theme-light .view-content.sh-tasks-view { --sh-surface: rgb(252, 252, 253); }
+    .view-content.sh-tasks-view,
+    .theme-light .view-content.sh-tasks-view { --sh-surface: var(--sh-glass-base); --sh-surface-blur: none; }
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
