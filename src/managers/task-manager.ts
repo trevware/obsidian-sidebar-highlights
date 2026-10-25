@@ -204,6 +204,7 @@ export class TaskManager {
 
         // Track the current section header
         let currentSection: string | undefined = undefined;
+        let currentSectionLine: number | undefined = undefined;
 
         // Structural parent tracking for nesting. Deliberately not a Task object:
         // hidden tasks must advance it too, and they never build one.
@@ -216,6 +217,7 @@ export class TaskManager {
             const headerMatch = line.match(headerRegex);
             if (headerMatch) {
                 currentSection = headerMatch[2].trim();
+                currentSectionLine = i;
                 resetTaskNesting(nesting); // Reset parent when entering new section
                 continue;
             }
@@ -304,6 +306,7 @@ export class TaskManager {
                     indentLevel: indentLevel,
                     parentLine: nested.parentLine,
                     section: currentSection,
+                    sectionLine: currentSectionLine,
                     date: parsedDate?.date,
                     dateText: parsedDate?.dateText,
                     marker: checkboxState

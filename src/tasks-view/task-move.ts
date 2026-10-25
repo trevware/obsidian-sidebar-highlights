@@ -24,7 +24,8 @@ export interface MoveSource {
 export type MoveTarget =
     | { kind: 'before'; line: number; text: string }
     | { kind: 'after'; line: number; text: string }
-    | { kind: 'heading'; heading: string }
+    /** `line` picks between two headings with the same name: the one nearest it. */
+    | { kind: 'heading'; heading: string; line?: number }
     | { kind: 'new-heading'; heading: string; level: number; where: 'top' | 'bottom' };
 
 export interface MovePlan {
@@ -103,10 +104,14 @@ function trimBack(lines: string[], end: number, floor: number): number {
  * The line where a task goes at the bottom of a heading: before the next
  * heading of any level, since a task belongs to the nearest heading above it.
  */
-function headingEnd(lines: string[], heading: string): number | null {
+function headingEnd(lines: string[], heading: string, near?: number): number | null {
     const headings = noteHeadings(lines);
     if (heading === '') return trimBack(lines, headings[0]?.line ?? lines.length, bodyStart(lines));
-    const index = headings.findIndex(candidate => candidate.title === heading);
+    let index = -1;
+    headings.forEach((candidate, i) => {
+        if (candidate.title !== heading) return;
+        if (index === -1 || (near !== undefined && Math.abs(candidate.line - near) < Math.abs(headings[index].line - near))) index = i;
+    });
     if (index === -1) return null;
     return trimBack(lines, headings[index + 1]?.line ?? lines.length, headings[index].line + 1);
 }
@@ -169,7 +174,9 @@ export function moveTasks(lines: string[], sources: readonly MoveSource[], targe
         if (blocks.some(([start, end]) => original > start && original < end)) return null;
         at = original - blocks.filter(([, end]) => end <= original).reduce((sum, [start, end]) => sum + end - start, 0);
     } else if (target.kind === 'heading') {
-        const end = headingEnd(kept, target.heading);
+        // The line was counted before the moved tasks came out.
+        const near = target.line === undefined ? undefined : keptOrigin.filter(index => index < (target.line as number)).length;
+        const end = headingEnd(kept, target.heading, near);
         if (end === null) return null;
         at = end;
     } else {

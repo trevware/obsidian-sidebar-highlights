@@ -11,6 +11,8 @@ import { t } from '../i18n';
 export interface Destination {
     path: string;
     heading?: string;
+    /** Which of two headings with the same name. */
+    headingLine?: number;
 }
 
 export interface QuickAddPrefill {

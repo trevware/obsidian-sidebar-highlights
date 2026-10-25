@@ -78,6 +78,22 @@ describe('planDrag', () => {
     });
 });
 
+describe('headings that share a name', () => {
+    it('aim the end of a heading at that heading, by its line', () => {
+        const items: DragItem[] = [
+            { kind: 'heading', heading: 'Action items', headingLine: 0, top: 0, height: 40 },
+            { kind: 'row', heading: 'Action items', headingLine: 0, text: 'one', line: 1, indent: 0, top: 40, height: 30 },
+            { kind: 'heading', heading: 'Action items', headingLine: 3, top: 70, height: 40 },
+            { kind: 'row', heading: 'Action items', headingLine: 3, text: 'two', line: 4, indent: 0, top: 110, height: 30 }
+        ];
+        const plan = planDrag(items, 1, { skipDone: false });
+        expect(plan.gaps.filter(gap => gap.target.kind === 'heading').map(gap => gap.target)).toEqual([
+            { kind: 'heading', heading: 'Action items', line: 0 },
+            { kind: 'heading', heading: 'Action items', line: 3 }
+        ]);
+    });
+});
+
 describe('nearestGap', () => {
     it('picks the gap closest to where the dragged task is', () => {
         const plan = planDrag(list, 1, { skipDone: false });

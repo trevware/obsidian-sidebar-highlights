@@ -308,3 +308,40 @@ describe('This note', () => {
         expect(sameList(following, { ...following, path: 'Inbox.md' })).toBe(true);
     });
 });
+
+describe('headings that share a name', () => {
+    const ref = { kind: 'note' as const, path: 'Work/Note.md' };
+    const list = [
+        task({ text: 'One', lineNumber: 2, section: 'Action items', sectionLine: 1 }),
+        task({ text: 'Two', lineNumber: 5, section: 'Notes', sectionLine: 4 }),
+        task({ text: 'Three', lineNumber: 8, section: 'Action items', sectionLine: 7 })
+    ];
+    const shape = (groups: ReturnType<typeof buildGroups>) => groups.map(g => [g.title, g.sections.flatMap(s => s.tasks.map(t => t.text))]);
+
+    it('stay apart in a note, in the note\'s order', () => {
+        const groups = buildGroups(list, ref, TODAY, DEFAULT_DISPLAY, labels, notes);
+        expect(shape(groups)).toEqual([['Action items', ['One']], ['Notes', ['Two']], ['Action items', ['Three']]]);
+        expect(new Set(groups.map(g => g.key)).size).toBe(3);
+    });
+
+    it('keep the first one\'s key, so folds saved before still apply', () => {
+        const groups = buildGroups(list, ref, TODAY, DEFAULT_DISPLAY, labels, notes);
+        expect(groups[0].key).toBe('Work/Note.md#Action items');
+    });
+
+    it('add to the heading the group shows', () => {
+        const groups = buildGroups(list, ref, TODAY, DEFAULT_DISPLAY, labels, notes);
+        expect(groups[2].add).toEqual({ path: 'Work/Note.md', heading: 'Action items', headingLine: 7 });
+    });
+
+    it('stay apart inside a note\'s group in other lists too', () => {
+        const groups = buildGroups(list, { kind: 'smart', id: 'anytime' }, TODAY, { ...DEFAULT_DISPLAY, group: 'note' }, labels, notes);
+        expect(groups[0].sections.map(s => [s.title, s.tasks.map(t => t.text)])).toEqual([['Action items', ['One']], ['Notes', ['Two']], ['Action items', ['Three']]]);
+    });
+
+    it('take a new task under the one asked for', () => {
+        const lines = ['## Action items', '- [ ] one', '## Notes', '## Action items', '- [ ] two'];
+        expect(insertionLine(lines, 'Action items', 3)).toBe(4);
+        expect(insertionLine(lines, 'Action items')).toBe(1);
+    });
+});

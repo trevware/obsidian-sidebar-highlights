@@ -139,6 +139,8 @@ export interface TaskSection {
     key: string;
     /** A heading in the note, or '' for tasks above the first heading. */
     title: string;
+    /** The heading's line, which tells apart two headings with the same name. */
+    line?: number;
     tasks: Task[];
 }
 
@@ -148,6 +150,8 @@ export type GroupKind = 'overdue' | 'date' | 'note' | 'heading' | 'priority' | '
 export interface AddTarget {
     path?: string;
     heading?: string;
+    /** Which of two headings with the same name. */
+    headingLine?: number;
     date?: string;
     priority?: 1 | 2 | 3;
 }
@@ -234,19 +238,32 @@ function single(key: string, tasks: Task[], sort: SortMode, settle?: Settle): Ta
 }
 
 /** Splits a note's tasks by heading, in the order the headings appear. */
+/**
+ * A note's tasks under their headings, each heading once and in the note's
+ * order. Two headings with the same name stay apart: the first keeps the
+ * plain key (so folds saved before still apply), and later ones number on.
+ */
 function byHeading(path: string, tasks: Task[], sort: SortMode, settle?: Settle): TaskSection[] {
-    const sections = new Map<string, Task[]>();
+    const sections = new Map<string, { title: string; line?: number; tasks: Task[] }>();
     for (const task of [...tasks].sort(compareFileOrder)) {
         const title = task.section ?? '';
-        const list = sections.get(title);
-        if (list) list.push(task);
-        else sections.set(title, [task]);
+        const line = task.section === undefined ? undefined : task.sectionLine;
+        const id = line === undefined ? `title:${title}` : `line:${line}`;
+        const section = sections.get(id);
+        if (section) section.tasks.push(task);
+        else sections.set(id, { title, line, tasks: [task] });
     }
-    return [...sections.entries()].map(([title, list]) => ({
-        key: `${path}#${title}`,
-        title,
-        tasks: arrange(list, sort, settle)
-    }));
+    const seen = new Map<string, number>();
+    return [...sections.values()].map(section => {
+        const count = (seen.get(section.title) ?? 0) + 1;
+        seen.set(section.title, count);
+        return {
+            key: count === 1 ? `${path}#${section.title}` : `${path}#${section.title}#${count}`,
+            title: section.title,
+            line: section.line,
+            tasks: arrange(section.tasks, sort, settle)
+        };
+    });
 }
 
 function countOf(sections: TaskSection[]): number {
@@ -326,7 +343,7 @@ export function buildGroups(
             title: section.title,
             sections: [{ ...section, title: '' }],
             count: section.tasks.length,
-            add: { path: notePath, heading: section.title || undefined }
+            add: { path: notePath, heading: section.title || undefined, headingLine: section.line }
         }));
     }
 

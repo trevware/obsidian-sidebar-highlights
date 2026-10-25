@@ -100,6 +100,12 @@ describe('moveTasks', () => {
         expect(plan?.lines).toEqual(['- [ ] Loose task', '- [ ] Filed task', '', '## A']);
     });
 
+    it('goes under the heading it was aimed at when two share a name', () => {
+        const lines = note(['## Action items', '- [ ] One', '## Notes', '- [ ] Move me', '## Action items', '- [ ] Two'].join('\n'));
+        const plan = moveTasks(lines, [at(lines, 'Move me')], { kind: 'heading', heading: 'Action items', line: 4 });
+        expect(plan?.lines).toEqual(['## Action items', '- [ ] One', '## Notes', '## Action items', '- [ ] Two', '- [ ] Move me']);
+    });
+
     it('leaves the note alone when the task would not move', () => {
         expect(moveTasks(base, [at(base, 'Index by chapter')], { kind: 'before', ...at(base, 'Faster search') })).toBeNull();
         expect(moveTasks(base, [at(base, 'Faster search')], { kind: 'after', ...at(base, 'Index by chapter') })).toBeNull();

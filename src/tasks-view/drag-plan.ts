@@ -21,6 +21,8 @@ export interface DragItem {
     done?: boolean;
     /** Rows: the heading they sit under. Headings: their own text. */
     heading?: string;
+    /** That heading's line, which tells apart two headings with the same name. */
+    headingLine?: number;
     line?: number;
     text?: string;
 }
@@ -73,10 +75,10 @@ export function planDrag(items: readonly DragItem[], grabbed: number, options: {
             // Completed tasks are drawn last, so the end of the open ones is
             // the end of the heading.
             heading = next.heading ?? '';
-            if (!shownLast(before)) target = { kind: 'heading', heading };
+            if (!shownLast(before)) target = { kind: 'heading', heading, line: next.headingLine };
         } else if (!next || next.kind !== 'row') {
             heading = before?.heading ?? '';
-            if ((before?.kind === 'row' && !shownLast(before)) || before?.kind === 'heading') target = { kind: 'heading', heading };
+            if ((before?.kind === 'row' && !shownLast(before)) || before?.kind === 'heading') target = { kind: 'heading', heading, line: before.headingLine };
         }
         if (!target) continue;
 

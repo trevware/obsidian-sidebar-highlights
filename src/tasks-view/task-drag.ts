@@ -20,8 +20,8 @@ import type { DragGap, DragItem, DragPlan } from './drag-plan';
 
 export interface DragHost {
     taskOf(row: HTMLElement): Task | undefined;
-    /** The note a list group shows, and its heading when the group is one heading. */
-    groupOf(group: HTMLElement): { path: string; heading?: string } | null;
+    /** The note a list group shows, and its heading (with that heading's line) when the group is one heading. */
+    groupOf(group: HTMLElement): { path: string; heading?: string; headingLine?: number } | null;
     /** The tasks a drag of this one carries: the whole selection when it's part of one. */
     carried(task: Task): Task[];
     canDrag(): boolean;
@@ -181,11 +181,13 @@ export class TaskDrag {
                     const task = this.host.taskOf(el);
                     if (!task) continue;
                     const indent = Number(el.style.getPropertyValue('--sh-indent')) || 0;
-                    items.push({ kind: 'row', ...at, indent, done: !isOpenTask(task), heading: task.section ?? '', line: task.lineNumber, text: task.text });
+                    const headingLine = task.section === undefined ? undefined : task.sectionLine;
+                    items.push({ kind: 'row', ...at, indent, done: !isOpenTask(task), heading: task.section ?? '', headingLine, line: task.lineNumber, text: task.text });
                 } else if (el.hasClass('sh-section-title')) {
-                    items.push({ kind: 'heading', ...at, heading: el.dataset.heading ?? '' });
+                    const line = el.dataset.line === undefined ? undefined : Number(el.dataset.line);
+                    items.push({ kind: 'heading', ...at, heading: el.dataset.heading ?? '', headingLine: line });
                 } else if (el.hasClass('sh-group-header') && info.heading !== undefined) {
-                    items.push({ kind: 'heading', ...at, heading: info.heading });
+                    items.push({ kind: 'heading', ...at, heading: info.heading, headingLine: info.headingLine });
                 } else {
                     items.push({ kind: 'static', ...at });
                 }
@@ -284,8 +286,9 @@ export class TaskDrag {
                 heading = lift.gap.heading;
             }
         } else if (lift.target) {
-            heading = lift.items[lift.elements.indexOf(lift.target)].heading ?? '';
-            target = { kind: 'heading', heading };
+            const item = lift.items[lift.elements.indexOf(lift.target)];
+            heading = item.heading ?? '';
+            target = { kind: 'heading', heading, line: item.headingLine };
         }
         if (!target) {
             this.settle(lift, true);

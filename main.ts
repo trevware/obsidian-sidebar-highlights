@@ -72,6 +72,7 @@ export interface Task {
     indentLevel: number; // Indentation level for nested tasks
     parentLine?: number; // Line number of the structural parent, for re-resolving nesting after filtering
     section?: string; // Markdown header above the task (if any)
+    sectionLine?: number; // The line that header is on, which tells apart two headers with the same name
     date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
     dateText?: string; // Original date text from task (to strip from display)
     marker?: string; // The raw checkbox character, e.g. '>' for an alternate checkbox

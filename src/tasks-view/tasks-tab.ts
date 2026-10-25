@@ -248,7 +248,7 @@ export class TasksTabView extends ItemView {
             taskOf: (row) => this.rowTasks.get(row.dataset.key ?? ''),
             groupOf: (el) => {
                 const group = this.groupEls.get(el);
-                if (group?.kind === 'heading' && group.add?.path) return { path: group.add.path, heading: group.add.heading ?? '' };
+                if (group?.kind === 'heading' && group.add?.path) return { path: group.add.path, heading: group.add.heading ?? '', headingLine: group.add.headingLine };
                 if (group?.kind === 'note') return { path: group.key.slice('note:'.length) };
                 return null;
             },
@@ -764,7 +764,7 @@ export class TasksTabView extends ItemView {
         // shows at once instead of blocking for every row it holds.
         type Step =
             | { kind: 'group'; group: TaskGroup; collapseKey: string; collapsed: boolean }
-            | { kind: 'section'; title: string }
+            | { kind: 'section'; title: string; line?: number }
             | { kind: 'task'; task: Task; group: TaskGroup };
         const steps: Step[] = [];
         let drawn = 0;
@@ -775,7 +775,7 @@ export class TasksTabView extends ItemView {
             steps.push({ kind: 'group', group, collapseKey, collapsed });
             if (collapsed) continue;
             for (const section of group.sections) {
-                if (section.title) steps.push({ kind: 'section', title: section.title });
+                if (section.title) steps.push({ kind: 'section', title: section.title, line: section.line });
                 for (const task of section.tasks) {
                     if (drawn >= this.rowCap) {
                         hidden++;
@@ -800,6 +800,7 @@ export class TasksTabView extends ItemView {
                 const heading = groupEl.createDiv({ cls: 'sh-section-title', text: item.title });
                 heading.setAttr('role', 'heading');
                 heading.dataset.heading = item.title;
+                if (item.line !== undefined) heading.dataset.line = String(item.line);
             } else {
                 const key = taskKey(item.task);
                 this.renderRow(groupEl, item.task, item.group, progress, display);
@@ -945,7 +946,7 @@ export class TasksTabView extends ItemView {
 
     private prefillFor(target: AddTarget): QuickAddPrefill {
         const destination = target.path
-            ? { path: target.path, heading: target.heading }
+            ? { path: target.path, heading: target.heading, headingLine: target.headingLine }
             : this.defaultDestination() ?? undefined;
         return { destination, date: target.date, priority: target.priority };
     }
@@ -1922,7 +1923,7 @@ export class TasksTabView extends ItemView {
     }
 
     private async addLines(lines: string[], destination: Destination): Promise<boolean> {
-        const at = await this.writer.insert(destination.path, destination.heading, lines);
+        const at = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine);
         if (at === -1) {
             new Notice(t('tasksTab.notices.noteMissing'));
             return false;
@@ -2070,7 +2071,7 @@ export class TasksTabView extends ItemView {
             choices.push({ path });
             const file = this.app.vault.getAbstractFileByPath(path);
             const headings = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.headings ?? [] : [];
-            for (const heading of headings) choices.push({ path, heading: heading.heading });
+            for (const heading of headings) choices.push({ path, heading: heading.heading, headingLine: heading.position.start.line });
         }
         const seen = new Set(withTasks);
         for (const file of this.app.vault.getMarkdownFiles()) {
@@ -2094,7 +2095,7 @@ export class TasksTabView extends ItemView {
             items: () => choices.map(choice => {
                 const name = this.noteInfo.basename(choice.path);
                 return {
-                    id: `dest:${choice.path}#${choice.heading ?? ''}`,
+                    id: `dest:${choice.path}#${choice.heading ?? ''}#${choice.headingLine ?? ''}`,
                     section: '',
                     icon: choice.heading ? 'heading' : 'file-text',
                     label: choice.heading ?? name,
@@ -2356,8 +2357,17 @@ export class TasksTabView extends ItemView {
         const path = this.sharedNote(tasks);
         if (!path) return null;
         const headings = this.headingsOf(path);
-        const sections = new Set(tasks.map(task => task.section ?? ''));
-        const here = sections.size === 1 ? [...sections][0] : null;
+        // The heading the tasks all sit under, by its line so a heading of
+        // the same name elsewhere is still offered; '' is above the first.
+        const places = new Set(tasks.map(task => (task.section === undefined ? '' : `${task.sectionLine ?? task.section}`)));
+        const here = places.size === 1 ? [...places][0] : null;
+        // Headings that share a name say which is which by the heading above them.
+        const counts = new Map<string, number>();
+        for (const heading of headings) counts.set(heading.title, (counts.get(heading.title) ?? 0) + 1);
+        const parentOf = (index: number) => {
+            for (let i = index - 1; i >= 0; i--) if (headings[i].level < headings[index].level) return headings[i].title;
+            return undefined;
+        };
         const level = newHeadingLevel(headings, tasks[0].section);
         const loose = this.allTasks.some(task => task.filePath === path && !task.section);
         const scope = tasks.length > 1 ? ` · ${tasks.length}` : '';
@@ -2366,9 +2376,9 @@ export class TasksTabView extends ItemView {
             placeholder: t('tasksTab.palette.headingPlaceholder'),
             readsQuery: true,
             items: (query) => {
-                const choices = headings
-                    .filter(heading => heading.title !== here)
-                    .map(heading => ({ heading: heading.title, line: heading.line, level: heading.level }));
+                const choices: Array<{ heading: string; line: number; level: number; parent?: string }> = headings
+                    .map((heading, index) => ({ heading: heading.title, line: heading.line, level: heading.level, parent: (counts.get(heading.title) ?? 0) > 1 ? parentOf(index) : undefined }))
+                    .filter(choice => `${choice.line}` !== here);
                 if (loose && here !== '') choices.unshift({ heading: '', line: -1, level: 0 });
                 const name = query.trim();
                 const shown = name
@@ -2379,8 +2389,9 @@ export class TasksTabView extends ItemView {
                     section: '',
                     icon: choice.heading ? 'heading' : 'list',
                     label: choice.heading || t('tasksTab.palette.noHeading'),
+                    sublabel: choice.parent,
                     detail: choice.level ? '#'.repeat(choice.level) : undefined,
-                    run: () => void this.moveTasksTo(tasks, { kind: 'heading', heading: choice.heading }, choice.heading || t('tasksTab.palette.noHeading'))
+                    run: () => void this.moveTasksTo(tasks, { kind: 'heading', heading: choice.heading, line: choice.line === -1 ? undefined : choice.line }, choice.heading || t('tasksTab.palette.noHeading'))
                 }));
                 if (name && !headings.some(heading => heading.title.toLowerCase() === name.toLowerCase())) {
                     const last = this.readJson<'top' | 'bottom'>(STORAGE.newHeading, 'bottom');

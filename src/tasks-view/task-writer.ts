@@ -138,14 +138,14 @@ export class TaskWriter {
      * the note. Returns the line number of the first one, or -1 when the note
      * is missing.
      */
-    async insert(path: string, heading: string | undefined, newLines: readonly string[]): Promise<number> {
+    async insert(path: string, heading: string | undefined, newLines: readonly string[], headingLine?: number): Promise<number> {
         const file = this.file(path);
         if (!file || newLines.length === 0) return -1;
 
         let at = -1;
         await this.app.vault.process(file, (data) => {
             const lines = data.length === 0 ? [] : data.split('\n');
-            at = insertionLine(lines, heading);
+            at = insertionLine(lines, heading, headingLine);
             lines.splice(at, 0, ...newLines);
             return lines.join('\n');
         });

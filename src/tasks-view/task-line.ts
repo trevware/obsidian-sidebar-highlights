@@ -115,13 +115,19 @@ export function buildTaskLine(task: NewTaskLine): string {
  * heading's own tasks, above the first one and above any subheading; a
  * heading with no tasks yet takes it at the end of its notes, above blank
  * lines, so it joins the list there. Without a heading, or when the heading
- * cannot be found, it goes at the end of the note.
+ * cannot be found, it goes at the end of the note. Of two headings with the
+ * same name, `near` picks the one closest to that line.
  */
-export function insertionLine(lines: string[], heading?: string): number {
+export function insertionLine(lines: string[], heading?: string, near?: number): number {
     const headingRegex = /^(#{1,6})\s+(.+?)\s*$/;
 
     let start = -1;
-    if (heading) start = lines.findIndex(line => line.match(headingRegex)?.[2].trim() === heading);
+    if (heading) {
+        lines.forEach((line, index) => {
+            if (line.match(headingRegex)?.[2].trim() !== heading) return;
+            if (start === -1 || (near !== undefined && Math.abs(index - near) < Math.abs(start - near))) start = index;
+        });
+    }
 
     let end = lines.length;
     if (start !== -1) {
