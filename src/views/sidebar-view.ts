@@ -1,19 +1,14 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, Modal, App, moment } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import type { Highlight, Collection, Task, TaskStatus } from '../../main';
+import type { Highlight, Collection } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
-import { TaskRenderer } from '../renderers/task-renderer';
-import { TaskManager } from '../managers/task-manager';
 import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
 import { SearchParser, SearchToken, ParsedSearch, ASTNode, OperatorNode, FilterNode, TextNode } from '../utils/search-parser';
 import { SimpleSearchManager } from '../managers/simple-search-manager';
 import { STANDARD_FOOTNOTE_REGEX, FOOTNOTE_VALIDATION_REGEX } from '../utils/regex-patterns';
-import { normalizeVisibleNesting, CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
-import { stripTasksPluginMetadata } from '../utils/task-metadata';
-import { compareHighlights, compareTasks, SortFallback, SortMode } from '../utils/sort-order';
-import { squircleifyIcon } from '../utils/squircle-icon';
+import { compareHighlights, SortFallback, SortMode } from '../utils/sort-order';
 import { isCommentsToggleOn, nextCommentsToggleState } from '../utils/comments-toggle';
 import { isInFolder, parentFolderPath } from '../utils/folder-scope';
 import { headingForLine, headingGroupKey, compareDocumentOrder, DocumentPosition } from '../utils/heading-group';
@@ -26,12 +21,9 @@ import { countHighlights, StatusBarCounts } from '../utils/status-bar-counts';
 import {
     CopyFormat,
     formatHighlightForCopy,
-    formatTaskForCopy,
-    joinHighlightEntries,
-    joinTaskEntries
+    joinHighlightEntries
 } from '../utils/copy-format';
 import { HtmlHighlightParser } from '../utils/html-highlight-parser';
-import { DateSuggest } from '../utils/date-suggest';
 import { t } from '../i18n';
 
 // Private Obsidian APIs used by the sidebar (not part of the public typings).
@@ -52,7 +44,6 @@ const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
  * Group key for the current-note tasks section. A constant rather than the file
  * name, so its collapsed state is a preference about the section itself.
  */
-const CURRENT_NOTE_GROUP_KEY = '__current_note__';
 
 export class HighlightsSidebarView extends ItemView {
     plugin: HighlightCommentsPlugin;
@@ -61,7 +52,6 @@ export class HighlightsSidebarView extends ItemView {
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
     private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
-    private taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged' = 'none';
     private sortMode: SortMode = 'none';
     /** Per-render cache of note creation times; null means the file was not resolvable. */
     private noteCreatedCache: Map<string, number | null> = new Map();
@@ -69,18 +59,11 @@ export class HighlightsSidebarView extends ItemView {
     private commentsToggleButton!: HTMLElement;
     private selectedTags: Set<string> = new Set();
     private selectedCollections: Set<string> = new Set();
-    private selectedSpecialFilters: Set<string> = new Set(); // For task special filters (Flagged, Upcoming, etc.)
     private selectedHighlightIds: Set<string> = new Set(); // Multi-select for highlights
     private actionsButton: HTMLElement | null = null; // Actions menu button for multi-select
     private collectionNavButton: HTMLElement | null = null; // Collection navigation button
-    private viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks' = 'current';
+    private viewMode: 'current' | 'folder' | 'all' | 'collections' = 'current';
     private currentCollectionId: string | null = null;
-    private taskManager: TaskManager;
-    private taskRenderer: TaskRenderer;
-    private currentTasks: Task[] = [];
-    /** Tasks actually rendered in the Tasks tab, after every filter. */
-    private currentVisibleTasks: Task[] = [];
-    private cachedAllTasks: Task[] | null = null; // Cache all scanned tasks
     private preservedScrollTop: number = 0;
     private isHighlightFocusing: boolean = false;
     
@@ -94,14 +77,8 @@ export class HighlightsSidebarView extends ItemView {
     private currentGroupPage: number = 0;
     private totalGroups: [string, Highlight[]][] = [];
 
-    // Pagination for tasks
-    private currentTaskPage: number = 0;
-    private totalTasks: Task[] = [];
-
     private isColorChanging: boolean = false;
     private searchExpanded: boolean = false;
-    private isRenderingTasks: boolean = false; // Guard to prevent concurrent task renders
-    private recentlyMovedTaskId: string | null = null; // Track task that was just moved for flash animation
     private searchButton!: HTMLElement;
     private simpleSearchManager!: SimpleSearchManager;
     private currentSearchTokens: SearchToken[] = [];
@@ -112,17 +89,8 @@ export class HighlightsSidebarView extends ItemView {
     private typeFilter: HighlightTypeFilter = 'all'; // Show highlights, native comments, or both
     private selectedColors: Set<string> = new Set(); // Colour filter, per tab like the others
     private sortButton!: HTMLElement; // Store sort button reference for state updates
-    private taskRefreshTimeout?: number; // Debounce timer for task auto-refresh
-    private collapsedSections: Set<string> = new Set(); // Track collapsed task sections
-    /**
-     * Collapsed highlight groups, persisted in settings.
-     *
-     * Deliberately separate from collapsedSections: the task code prunes that set
-     * by prefix-matching group names, which would silently drop highlight entries
-     * whose key happened to match.
-     */
+    /** Collapsed highlight groups, persisted in settings. */
     private collapsedGroups: Set<string> = new Set();
-    private fileTaskCache: Map<string, string[]> = new Map(); // Cache extracted tasks per file for comparison
 
     // Current folder tab: the button itself (its tooltip names the folder in view),
     // and whether it reaches into subfolders as well
@@ -147,8 +115,6 @@ export class HighlightsSidebarView extends ItemView {
         super(leaf);
         this.plugin = plugin;
         this.highlightRenderer = new HighlightRenderer(plugin);
-        this.taskManager = new TaskManager(plugin);
-        this.taskRenderer = new TaskRenderer(plugin);
 
         // Initialize tabSettings if it doesn't exist
         if (!this.plugin.settings.tabSettings) {
@@ -165,8 +131,6 @@ export class HighlightsSidebarView extends ItemView {
         // Restore which highlight groups were left collapsed
         this.collapsedGroups = new Set(plugin.settings.collapsedGroups || []);
 
-        // Load task secondary grouping mode from settings
-        this.taskSecondaryGroupingMode = plugin.settings.taskSecondaryGroupingMode || 'none';
         // Load the type filter from vault-specific localStorage, honouring the state
         // stored by versions that only had a native-comments on/off toggle
         const storedTypeFilter = this.plugin.app.loadLocalStorage('sidebar-highlights-type-filter');
@@ -186,17 +150,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Get default settings for a specific tab
      */
-    private getDefaultTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks'): { groupingMode: typeof this.groupingMode, sortMode: typeof this.sortMode, commentsExpanded: boolean, searchExpanded: boolean } {
-        // Tasks tab has different defaults
-        if (viewMode === 'tasks') {
-            return {
-                groupingMode: 'none',
-                sortMode: 'none',
-                commentsExpanded: false,
-                searchExpanded: false
-            };
-        }
-        // Highlight tabs (current, folder, all, collections)
+    private getDefaultTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections'): { groupingMode: typeof this.groupingMode, sortMode: typeof this.sortMode, commentsExpanded: boolean, searchExpanded: boolean } {
         return {
             groupingMode: 'none',
             sortMode: 'none',
@@ -220,7 +174,6 @@ export class HighlightsSidebarView extends ItemView {
             searchExpanded: this.searchExpanded,
             selectedTags: Array.from(this.selectedTags),
             selectedCollections: Array.from(this.selectedCollections),
-            selectedSpecialFilters: Array.from(this.selectedSpecialFilters),
             selectedColors: Array.from(this.selectedColors)
         };
 
@@ -230,7 +183,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Restore tab settings when switching tabs
      */
-    private restoreTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections' | 'tasks'): void {
+    private restoreTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections'): void {
         const tabSettings = this.plugin.settings.tabSettings?.[viewMode];
 
         if (tabSettings) {
@@ -243,7 +196,6 @@ export class HighlightsSidebarView extends ItemView {
             // Restore filter selections
             this.selectedTags = new Set(tabSettings.selectedTags || []);
             this.selectedCollections = new Set(tabSettings.selectedCollections || []);
-            this.selectedSpecialFilters = new Set(tabSettings.selectedSpecialFilters || []);
             this.selectedColors = new Set(tabSettings.selectedColors || []);
 
             // Sync highlightCommentsVisible map with commentsExpanded state
@@ -263,19 +215,14 @@ export class HighlightsSidebarView extends ItemView {
             // Clear filters for new tabs
             this.selectedTags.clear();
             this.selectedCollections.clear();
-            this.selectedSpecialFilters.clear();
             this.selectedColors.clear();
 
             // Sync highlightCommentsVisible map with default state (always collapsed)
             this.collapseAllCommentsInMap();
         }
 
-        // Reset sort modes that do not apply to the tab being switched to
-        const isTasksView = viewMode === 'tasks';
-        const isTaskSpecificSort = this.sortMode === 'priority' || this.sortMode === 'date-asc' || this.sortMode === 'date-desc';
-        // Highlight creation time has no task equivalent
-        const isHighlightSpecificSort = this.sortMode === 'created-asc' || this.sortMode === 'created-desc';
-        if ((!isTasksView && isTaskSpecificSort) || (isTasksView && isHighlightSpecificSort)) {
+        // The old Tasks tab's sorts may still be saved, and don't apply to highlights
+        if (this.sortMode === 'priority' || this.sortMode === 'date-asc' || this.sortMode === 'date-desc') {
             this.sortMode = 'none';
         }
 
@@ -321,87 +268,8 @@ export class HighlightsSidebarView extends ItemView {
         }
     }
 
-    public getViewMode(): 'current' | 'folder' | 'all' | 'collections' | 'tasks' {
+    public getViewMode(): 'current' | 'folder' | 'all' | 'collections' {
         return this.viewMode;
-    }
-
-    /**
-     * Extract task lines AND their context from content for comparison
-     * Returns array of normalized task strings (including context lines)
-     */
-    private extractTaskLines(content: string): string[] {
-        const lines = content.split('\n');
-        const taskBlocks: string[] = [];
-        let currentBlock: string[] = [];
-        let inTaskBlock = false;
-        let lastHeader: string | null = null;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const isTaskLine = /^[\s]*[-*]\s*\[[ xX-]\]/.test(line);
-            const isHeader = /^#{1,6}\s+/.test(line);
-
-            // Track the most recent header
-            if (isHeader) {
-                lastHeader = line.trim();
-            }
-
-            if (isTaskLine) {
-                // Save previous block if exists
-                if (currentBlock.length > 0) {
-                    taskBlocks.push(currentBlock.join('\n'));
-                }
-                // Start new block with header (if any) + task
-                currentBlock = [];
-                if (lastHeader) {
-                    currentBlock.push(lastHeader);
-                }
-                currentBlock.push(line.trim());
-                inTaskBlock = true;
-            } else if (inTaskBlock) {
-                // Check if this is a context line (indented or starts with whitespace)
-                const trimmedLine = line.trim();
-                if (trimmedLine.length > 0 && (line.startsWith(' ') || line.startsWith('\t'))) {
-                    // This is context for the current task - preserve indentation for proper comparison
-                    currentBlock.push(line);
-                } else if (trimmedLine.length === 0) {
-                    // Empty line might still be part of context, but end block after it
-                    inTaskBlock = false;
-                } else {
-                    // Non-indented, non-empty line - end the task block
-                    inTaskBlock = false;
-                }
-            }
-        }
-
-        // Don't forget the last block
-        if (currentBlock.length > 0) {
-            taskBlocks.push(currentBlock.join('\n'));
-        }
-
-        return taskBlocks;
-    }
-
-    /**
-     * Check if tasks have changed between old and new content
-     */
-    private haveTasksChanged(oldContent: string, newContent: string): boolean {
-        const oldTasks = this.extractTaskLines(oldContent);
-        const newTasks = this.extractTaskLines(newContent);
-
-        // Quick length check
-        if (oldTasks.length !== newTasks.length) {
-            return true;
-        }
-
-        // Deep comparison - check if any task content changed
-        for (let i = 0; i < oldTasks.length; i++) {
-            if (oldTasks[i] !== newTasks[i]) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     async onOpen(skipInitialRender: boolean = false) {
@@ -433,7 +301,6 @@ export class HighlightsSidebarView extends ItemView {
             this.updateGroupButtonState(groupButton);
             groupButton.addEventListener('click', (event) => {
                 const menu = new Menu();
-                const isTasksView = this.viewMode === 'tasks';
 
                 menu.addItem((item) => {
                     item
@@ -442,178 +309,134 @@ export class HighlightsSidebarView extends ItemView {
                         .setChecked(this.groupingMode === 'none')
                         .onClick(() => {
                             this.groupingMode = 'none';
-                            // Reset secondary grouping when primary grouping is disabled
-                            if (this.taskSecondaryGroupingMode !== 'none') {
-                                this.taskSecondaryGroupingMode = 'none';
-                                this.saveTaskSecondaryGroupingModeToSettings();
-                            }
                             this.updateGroupButtonState(groupButton);
                             this.updateSortButtonState(this.sortButton);
-                            // COMMENTED OUT FOR NOW
-                            /*
-                            const secondaryGroupButton = this.contentEl.querySelector('.highlights-secondary-group-button') as HTMLElement;
-                            if (secondaryGroupButton) {
-                                this.updateSecondaryGroupButtonState(secondaryGroupButton);
-                            }
-                            */
                             this.saveGroupingModeToSettings();
                             // Use renderContent instead of renderFilteredList to handle all view modes
                             this.renderContent();
                         });
                 });
 
-                // Only show these grouping options for highlights, not tasks
-                if (!isTasksView) {
-                    menu.addSeparator();
+                menu.addSeparator();
 
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.color'))
-                            .setIcon('palette')
-                            .setChecked(this.groupingMode === 'color')
-                            .onClick(() => {
-                                this.groupingMode = 'color';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addSeparator();
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.commentsAsc'))
-                            .setIcon('sort-asc')
-                            .setChecked(this.groupingMode === 'comments-asc')
-                            .onClick(() => {
-                                this.groupingMode = 'comments-asc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.commentsDesc'))
-                            .setIcon('sort-desc')
-                            .setChecked(this.groupingMode === 'comments-desc')
-                            .onClick(() => {
-                                this.groupingMode = 'comments-desc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addSeparator();
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.dateAsc'))
-                            .setIcon('calendar')
-                            .setChecked(this.groupingMode === 'date-created-asc')
-                            .onClick(() => {
-                                this.groupingMode = 'date-created-asc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.dateDesc'))
-                            .setIcon('calendar')
-                            .setChecked(this.groupingMode === 'date-created-desc')
-                            .onClick(() => {
-                                this.groupingMode = 'date-created-desc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-                }
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.color'))
+                        .setIcon('palette')
+                        .setChecked(this.groupingMode === 'color')
+                        .onClick(() => {
+                            this.groupingMode = 'color';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
                 menu.addSeparator();
 
-                // Only show parent grouping for highlights
-                if (!isTasksView) {
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.parent'))
-                            .setIcon('folder')
-                            .setChecked(this.groupingMode === 'parent')
-                            .onClick(() => {
-                                this.groupingMode = 'parent';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-                }
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.commentsAsc'))
+                        .setIcon('sort-asc')
+                        .setChecked(this.groupingMode === 'comments-asc')
+                        .onClick(() => {
+                            this.groupingMode = 'comments-asc';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
-                // Only show date grouping for tasks
-                if (isTasksView) {
-                    menu.addSeparator();
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.commentsDesc'))
+                        .setIcon('sort-desc')
+                        .setChecked(this.groupingMode === 'comments-desc')
+                        .onClick(() => {
+                            this.groupingMode = 'comments-desc';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.dueDate'))
-                            .setIcon('calendar')
-                            .setChecked(this.groupingMode === 'date-asc')
-                            .onClick(() => {
-                                this.groupingMode = 'date-asc';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
+                menu.addSeparator();
 
-                    menu.addSeparator();
-                }
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.dateAsc'))
+                        .setIcon('calendar')
+                        .setChecked(this.groupingMode === 'date-created-asc')
+                        .onClick(() => {
+                            this.groupingMode = 'date-created-asc';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
-                // Only show collection grouping for highlights
-                if (!isTasksView) {
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.collection'))
-                            .setIcon('folder-open')
-                            .setChecked(this.groupingMode === 'collection')
-                            .onClick(() => {
-                                this.groupingMode = 'collection';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-                }
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.dateDesc'))
+                        .setIcon('calendar')
+                        .setChecked(this.groupingMode === 'date-created-desc')
+                        .onClick(() => {
+                            this.groupingMode = 'date-created-desc';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
-                // Only show heading grouping for highlights (tasks already group by section)
-                if (!isTasksView) {
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('grouping.heading'))
-                            .setIcon('heading')
-                            .setChecked(this.groupingMode === 'heading')
-                            .onClick(() => {
-                                this.groupingMode = 'heading';
-                                this.updateGroupButtonState(groupButton);
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveGroupingModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-                }
+                menu.addSeparator();
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.parent'))
+                        .setIcon('folder')
+                        .setChecked(this.groupingMode === 'parent')
+                        .onClick(() => {
+                            this.groupingMode = 'parent';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.collection'))
+                        .setIcon('folder-open')
+                        .setChecked(this.groupingMode === 'collection')
+                        .onClick(() => {
+                            this.groupingMode = 'collection';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
+
+                menu.addItem((item) => {
+                    item
+                        .setTitle(t('grouping.heading'))
+                        .setIcon('heading')
+                        .setChecked(this.groupingMode === 'heading')
+                        .onClick(() => {
+                            this.groupingMode = 'heading';
+                            this.updateGroupButtonState(groupButton);
+                            this.updateSortButtonState(this.sortButton);
+                            this.saveGroupingModeToSettings();
+                            this.renderContent();
+                        });
+                });
 
                 menu.addItem((item) => {
                     item
@@ -632,76 +455,6 @@ export class HighlightsSidebarView extends ItemView {
                 menu.showAtMouseEvent(event);
             });
 
-            // Add secondary grouping button for tasks (positioned between group and sort buttons)
-            // COMMENTED OUT FOR NOW
-            /*
-            const secondaryGroupButton = searchContainer.createEl('button', {
-                cls: 'highlights-group-button highlights-secondary-group-button'
-            });
-            setIcon(secondaryGroupButton, 'list-tree');
-            setTooltip(secondaryGroupButton, t('toolbar.secondaryGroup'));
-            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-            secondaryGroupButton.addEventListener('click', (event) => {
-                const menu = new Menu();
-
-                menu.addItem((item) => {
-                    item
-                        .setTitle(t('grouping.none'))
-                        .setIcon('list')
-                        .setChecked(this.taskSecondaryGroupingMode === 'none')
-                        .onClick(() => {
-                            this.taskSecondaryGroupingMode = 'none';
-                            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-                            this.saveTaskSecondaryGroupingModeToSettings();
-                            this.renderContent();
-                        });
-                });
-
-                menu.addSeparator();
-
-                menu.addItem((item) => {
-                    item
-                        .setTitle(t('grouping.tag'))
-                        .setIcon('hash')
-                        .setChecked(this.taskSecondaryGroupingMode === 'tag')
-                        .onClick(() => {
-                            this.taskSecondaryGroupingMode = 'tag';
-                            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-                            this.saveTaskSecondaryGroupingModeToSettings();
-                            this.renderContent();
-                        });
-                });
-
-                menu.addItem((item) => {
-                    item
-                        .setTitle(t('grouping.date'))
-                        .setIcon('calendar')
-                        .setChecked(this.taskSecondaryGroupingMode === 'date')
-                        .onClick(() => {
-                            this.taskSecondaryGroupingMode = 'date';
-                            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-                            this.saveTaskSecondaryGroupingModeToSettings();
-                            this.renderContent();
-                        });
-                });
-
-                menu.addItem((item) => {
-                    item
-                        .setTitle(t('grouping.flagged'))
-                        .setIcon('flag')
-                        .setChecked(this.taskSecondaryGroupingMode === 'flagged')
-                        .onClick(() => {
-                            this.taskSecondaryGroupingMode = 'flagged';
-                            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-                            this.saveTaskSecondaryGroupingModeToSettings();
-                            this.renderContent();
-                        });
-                });
-
-                menu.showAtMouseEvent(event);
-            });
-            */
-
             // Add sort button (positioned after group button)
             this.sortButton = searchContainer.createEl('button', {
                 cls: 'highlights-group-button',
@@ -712,7 +465,6 @@ export class HighlightsSidebarView extends ItemView {
             this.updateSortButtonState(this.sortButton);
             this.sortButton.addEventListener('click', (event) => {
                 const menu = new Menu();
-                const isTasksView = this.viewMode === 'tasks';
 
                 menu.addItem((item) => {
                     item
@@ -782,58 +534,10 @@ export class HighlightsSidebarView extends ItemView {
                 addSortItem(t('sorting.noteCreatedNewest'), 'calendar', 'note-created-desc');
                 addSortItem(t('sorting.noteCreatedOldest'), 'calendar', 'note-created-asc');
 
-                // A highlight's own creation time only exists for highlights.
-                if (!isTasksView) {
-                    menu.addSeparator();
-                    addSortItem(t('sorting.createdNewest'), 'clock', 'created-desc');
-                    addSortItem(t('sorting.createdOldest'), 'clock', 'created-asc');
-                }
+                menu.addSeparator();
+                addSortItem(t('sorting.createdNewest'), 'clock', 'created-desc');
+                addSortItem(t('sorting.createdOldest'), 'clock', 'created-asc');
 
-                // Tasks-specific sorting options
-                if (isTasksView) {
-                    menu.addSeparator();
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('sorting.priority'))
-                            .setIcon('flag')
-                            .setChecked(this.sortMode === 'priority')
-                            .onClick(() => {
-                                this.sortMode = 'priority';
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveSortModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addSeparator();
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('sorting.dateEarliestFirst'))
-                            .setIcon('calendar-arrow-up')
-                            .setChecked(this.sortMode === 'date-asc')
-                            .onClick(() => {
-                                this.sortMode = 'date-asc';
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveSortModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-
-                    menu.addItem((item) => {
-                        item
-                            .setTitle(t('sorting.dateLatestFirst'))
-                            .setIcon('calendar-arrow-down')
-                            .setChecked(this.sortMode === 'date-desc')
-                            .onClick(() => {
-                                this.sortMode = 'date-desc';
-                                this.updateSortButtonState(this.sortButton);
-                                this.saveSortModeToSettings();
-                                this.renderContent();
-                            });
-                    });
-                }
 
                 menu.showAtMouseEvent(event);
             });
@@ -972,13 +676,6 @@ export class HighlightsSidebarView extends ItemView {
                     setIcon(tabEl, 'folder-open');
                     setTooltip(tabEl, t('tabs.collections'));
                     break;
-                case 'tasks':
-                    // square-check rather than circle-check so squircleifyIcon can swap its
-                    // outline, matching the squircle checkboxes the tab leads to.
-                    setIcon(tabEl, 'square-check');
-                    squircleifyIcon(tabEl);
-                    setTooltip(tabEl, t('tabs.tasks'));
-                    break;
             }
 
             tabEl.addEventListener('click', () => {
@@ -997,108 +694,6 @@ export class HighlightsSidebarView extends ItemView {
 
         this.contentAreaEl = this.contentEl.createDiv({ cls: 'highlights-list-area' });
         this.listContainerEl = this.contentAreaEl.createDiv({ cls: 'highlights-list' });
-
-        // Register vault events for task auto-updates
-        this.registerEvent(
-            this.app.vault.on('modify', async (file) => {
-                if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Debounce to avoid excessive re-renders while typing
-                    if (this.taskRefreshTimeout) {
-                        window.clearTimeout(this.taskRefreshTimeout);
-                    }
-                    this.taskRefreshTimeout = window.setTimeout(() => void (async () => {
-                        // Get current content and update cache for comparison
-                        const newContent = await this.app.vault.cachedRead(file);
-                        this.fileTaskCache.set(file.path, this.extractTaskLines(newContent));
-
-                        // Only re-scan the modified file, not all files
-                        if (this.cachedAllTasks) {
-                            // Remove old tasks from this file
-                            this.cachedAllTasks = this.cachedAllTasks.filter(task => task.filePath !== file.path);
-
-                            // Re-scan just this file for new tasks
-                            const newFileTasks = await this.taskManager.scanFileForTasks(
-                                file,
-                                true, // Include completed tasks
-                                this.plugin.settings.showTaskContext
-                            );
-
-                            // Add the new tasks from this file
-                            this.cachedAllTasks.push(...newFileTasks);
-                        } else {
-                            // No cache yet, clear it to trigger full scan
-                            this.cachedAllTasks = null;
-                        }
-
-                        // Re-render with updated cache (no full rescan!)
-                        this.renderContent();
-                    })(), 300); // 300ms - more responsive than 1 second
-                }
-            })
-        );
-
-        this.registerEvent(
-            this.app.vault.on('create', async (file) => {
-                if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Check if new file contains tasks
-                    const content = await this.app.vault.cachedRead(file);
-                    const tasks = this.extractTaskLines(content);
-
-                    if (tasks.length > 0) {
-                        // Initialize cache for this file
-                        this.fileTaskCache.set(file.path, tasks);
-                        this.cachedAllTasks = null;
-
-                        // Debounce to avoid excessive re-renders during bulk operations
-                        if (this.taskRefreshTimeout) {
-                            window.clearTimeout(this.taskRefreshTimeout);
-                        }
-                        this.taskRefreshTimeout = window.setTimeout(() => {
-                            this.renderContent();
-                        }, 300);
-                    }
-                }
-            })
-        );
-
-        this.registerEvent(
-            this.app.vault.on('delete', (file) => {
-                if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Clear cache for deleted file
-                    this.fileTaskCache.delete(file.path);
-                    this.cachedAllTasks = null;
-
-                    // Debounce to avoid excessive re-renders during bulk deletions
-                    if (this.taskRefreshTimeout) {
-                        window.clearTimeout(this.taskRefreshTimeout);
-                    }
-                    this.taskRefreshTimeout = window.setTimeout(() => {
-                        this.renderContent();
-                    }, 300);
-                }
-            })
-        );
-
-        this.registerEvent(
-            this.app.vault.on('rename', async (file, oldPath) => {
-                if (file instanceof TFile && this.viewMode === 'tasks') {
-                    // Update cache for renamed file
-                    this.fileTaskCache.delete(oldPath);
-                    // Re-extract tasks from the file with new path
-                    const content = await this.app.vault.cachedRead(file);
-                    this.fileTaskCache.set(file.path, this.extractTaskLines(content));
-                    this.cachedAllTasks = null;
-
-                    // Debounce to avoid excessive re-renders during bulk operations
-                    if (this.taskRefreshTimeout) {
-                        window.clearTimeout(this.taskRefreshTimeout);
-                    }
-                    this.taskRefreshTimeout = window.setTimeout(() => {
-                        this.renderContent();
-                    }, 300);
-                }
-            })
-        );
 
         // Re-evaluate the follow-editor-scroll target whenever the active leaf
         // changes or the workspace layout changes. attachEditorScrollListener
@@ -1149,7 +744,6 @@ export class HighlightsSidebarView extends ItemView {
         // Clear maps to free memory
         this.highlightCommentsVisible.clear();
         this.selectedTags.clear();
-        this.selectedSpecialFilters.clear();
     }
 
     // Navigate to a specific collection (called from command palette)
@@ -1171,7 +765,6 @@ export class HighlightsSidebarView extends ItemView {
 
         // Clear any tag filters
         this.selectedTags.clear();
-        this.selectedSpecialFilters.clear();
 
         // Render the collection detail view
         this.renderContent();
@@ -1179,9 +772,6 @@ export class HighlightsSidebarView extends ItemView {
 
     refresh() {
         this.selectedTags.clear();
-        this.selectedSpecialFilters.clear();
-        // Invalidate task cache on refresh (settings may have changed)
-        this.cachedAllTasks = null;
         // When toolbar setting changes, we need to rebuild the entire view structure
         // because onOpen() conditionally creates toolbar elements
 
@@ -1390,12 +980,6 @@ export class HighlightsSidebarView extends ItemView {
      * keeps its own state.
      */
     private getHighlightGroupId(groupName: string): string {
-        // The current-note section is not part of the grouping, so its state is
-        // keyed by the tab alone and survives a change of grouping mode.
-        if (groupName === CURRENT_NOTE_GROUP_KEY) {
-            return `${this.viewMode}::${groupName}`;
-        }
-
         return `${this.viewMode}::${this.groupingMode}::${groupName}`;
     }
 
@@ -1469,9 +1053,6 @@ export class HighlightsSidebarView extends ItemView {
                 this.disableSearchAndToolbar();
                 this.renderCollectionsView();
             }
-        } else if (this.viewMode === 'tasks') {
-            this.enableSearchAndToolbar();
-            void this.renderTasksView();
         } else {
             this.enableSearchAndToolbar();
             this.renderFilteredList();
@@ -1590,1833 +1171,6 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     /**
-     * Get tasks from the current active file
-     * @returns Array of tasks from the active file, or empty array if no active file
-     */
-    private getCurrentFileTasks(): Task[] {
-        const file = this.plugin.app.workspace.getActiveFile();
-        if (!file) return [];
-
-        // Filter cached tasks by current file path
-        let currentFileTasks = this.cachedAllTasks?.filter(t => t.filePath === file.path) || [];
-
-        // Filter by completion status if needed
-        if (!this.plugin.settings.showCompletedTasks) {
-            currentFileTasks = currentFileTasks.filter(task => !task.completed);
-        }
-
-        // Apply search filter if present
-        const searchTerm = this.getSearchTerm();
-        if (searchTerm && searchTerm.length > 0) {
-            currentFileTasks = currentFileTasks.filter(task =>
-                task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.filePath.toLowerCase().includes(searchTerm.toLowerCase())
-            );
-        }
-
-        // Apply tag filters if present
-        if (this.selectedTags.size > 0) {
-            currentFileTasks = currentFileTasks.filter(task => {
-                // Extract tags from task text using regex (supports nested tags with /)
-                const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
-                const taskTags: string[] = [];
-                let match;
-                while ((match = tagRegex.exec(task.text)) !== null) {
-                    taskTags.push(match[1]);
-                }
-
-                // Check if any selected tag matches any task tag
-                return Array.from(this.selectedTags).some(selectedTag =>
-                    taskTags.includes(selectedTag)
-                );
-            });
-        }
-
-        // Apply special filters if present
-        if (this.selectedSpecialFilters.size > 0) {
-            currentFileTasks = currentFileTasks.filter(task => {
-                const today = moment().startOf('day');
-
-                // Check each selected special filter
-                return Array.from(this.selectedSpecialFilters).every(filterId => {
-                    switch (filterId) {
-                        case 'flagged':
-                            return task.flagged;
-
-                        case 'upcoming': {
-                            if (!task.date) return false;
-                            const taskDate = moment(task.date, 'YYYY-MM-DD');
-                            const startOfWeek = moment().startOf('week'); // Sunday
-                            const endOfWeek = moment().endOf('week'); // Saturday
-                            return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
-                        }
-
-                        case 'completed':
-                            return task.completed;
-
-                        case 'incomplete':
-                            return !task.completed;
-
-                        case 'due-today': {
-                            if (!task.date) return false;
-                            const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
-                            return dueTodayDate.isSame(today, 'day');
-                        }
-
-                        case 'overdue': {
-                            if (!task.date) return false;
-                            const overdueDate = moment(task.date, 'YYYY-MM-DD');
-                            return overdueDate.isBefore(today) && !task.completed;
-                        }
-
-                        case 'no-date':
-                            return !task.date;
-
-                        case 'created-last-7-days': {
-                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                            if (!file || !(file instanceof TFile)) return false;
-                            const fileCreationDate = moment(file.stat.ctime);
-                            const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
-                            return fileCreationDate.isSameOrAfter(sevenDaysAgo);
-                        }
-
-                        case 'created-last-30-days': {
-                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                            if (!file || !(file instanceof TFile)) return false;
-                            const fileCreationDate = moment(file.stat.ctime);
-                            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
-                            return fileCreationDate.isSameOrAfter(thirtyDaysAgo);
-                        }
-
-                        case 'created-last-year': {
-                            const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                            if (!file || !(file instanceof TFile)) return false;
-                            const fileCreationDate = moment(file.stat.ctime);
-                            const oneYearAgo = moment().subtract(1, 'year').startOf('day');
-                            return fileCreationDate.isSameOrAfter(oneYearAgo);
-                        }
-
-                        default:
-                            return true;
-                    }
-                });
-            });
-        }
-
-        // Filtering above can remove a task's parent, so re-resolve nesting to stop
-        // survivors appearing as children of an unrelated preceding task.
-        return normalizeVisibleNesting(currentFileTasks);
-    }
-
-    /**
-     * Render the current note tasks section at the top of the Task tab
-     */
-    private async renderCurrentNoteTasksSection() {
-        const file = this.plugin.app.workspace.getActiveFile();
-        if (!file) return; // No active file, don't show section
-
-        const currentFileTasks = this.getCurrentFileTasks();
-        if (currentFileTasks.length === 0) return; // No tasks in current file, don't show section
-
-        // Create header (OUTSIDE the card)
-        const headerEl = this.contentAreaEl.createDiv({
-            cls: 'highlight-group-header current-note-group-header'
-        });
-
-        const headerContent = headerEl.createSpan();
-
-        // Add icon and filename
-        const iconSpan = headerContent.createSpan({ cls: 'tree-item-icon' });
-        setIcon(iconSpan, 'file-pen-line');
-
-        headerContent.createSpan({
-            text: file.basename
-        });
-
-        // Add task count with same style as other counts
-        headerContent.createSpan({
-            cls: 'tree-item-flair',
-            text: currentFileTasks.length.toString()
-        });
-
-        // Create card container for tasks
-        const cardContainer = this.contentAreaEl.createDiv({
-            cls: 'current-note-tasks-card'
-        });
-
-        // Keyed by the section rather than the file: collapsing it means "I don't
-        // want this section taking space", which should hold as the active note
-        // changes rather than needing re-collapsing for every note.
-        this.makeGroupCollapsible(headerEl, [cardContainer], CURRENT_NOTE_GROUP_KEY);
-
-        // Sort tasks based on current sort mode
-        const sortedTasks = currentFileTasks.sort((a, b) => {
-            return this.compareTasksBySortMode(a, b, 'position');
-        });
-
-        // Render tasks (flat list, no grouping or filtering)
-        sortedTasks.forEach(task => {
-            this.taskRenderer.createTaskItem(cardContainer, task, {
-                hideFilename: true, // Hide filename since we're in a file-specific section
-                hideDateBadge: false, // Show date badges
-                onTaskToggle: async (task, checkboxEl) => {
-                    await this.handleTaskToggle(task, checkboxEl);
-                },
-                onTaskClick: (task, event) => {
-                    this.handleTaskClick(task, event);
-                },
-                onFileNameClick: (filePath, event) => {
-                    this.openNoteReusingLeaf(filePath, event);
-                },
-                onFlagToggle: async (task, event) => {
-                    await this.handleFlagToggle(task, event);
-                },
-                onCalendarToggle: async (task) => {
-                    await this.handleCalendarToggle(task);
-                }
-            });
-        });
-    }
-
-    private async renderTasksView() {
-        // Guard against concurrent renders (prevents task duplication when grouping is enabled)
-        if (this.isRenderingTasks) {
-            return;
-        }
-        this.isRenderingTasks = true;
-
-        try {
-            // Capture scroll position before DOM rebuild
-            this.captureScrollPosition();
-
-            // Preserve collapsed sections state from DOM before clearing
-            this.preserveCollapsedSections();
-
-            this.contentAreaEl.empty();
-
-            let allTasks: Task[];
-
-            // Load/cache tasks FIRST before rendering any UI
-            // This ensures cachedAllTasks is available for current note section
-            if (this.cachedAllTasks !== null) {
-                allTasks = this.cachedAllTasks;
-            } else {
-                // Show loading state in contentAreaEl temporarily
-                const loadingEl = this.contentAreaEl.createDiv({ cls: 'task-loading' });
-                loadingEl.textContent = t('emptyStates.loadingTasks');
-
-                // Scan all tasks (always include completed for accurate progress calculation)
-                allTasks = await this.taskManager.scanAllTasks(
-                    true, // Always scan completed tasks for progress calculation
-                    this.plugin.settings.showTaskContext // Show context based on settings
-                );
-
-                // Cache the scanned tasks
-                this.cachedAllTasks = allTasks;
-
-                // Populate task cache for each file with tasks
-                // This provides baseline for future comparisons
-                // Read actual file content to capture tasks with context
-                this.fileTaskCache.clear();
-                const uniqueFilePaths = new Set(allTasks.map(t => t.filePath));
-                for (const filePath of uniqueFilePaths) {
-                    const file = this.app.vault.getAbstractFileByPath(filePath);
-                    if (file instanceof TFile) {
-                        const content = await this.app.vault.cachedRead(file);
-                        const taskBlocks = this.extractTaskLines(content);
-                        this.fileTaskCache.set(filePath, taskBlocks);
-                    }
-                }
-
-                // Remove loading state
-                loadingEl.remove();
-            }
-
-            // Render current note tasks section FIRST (pinned at top)
-            if (this.plugin.settings.showCurrentNoteTasksSection) {
-                await this.renderCurrentNoteTasksSection();
-            }
-
-            // If "only current note tasks" is enabled, skip rendering the main task list
-            if (this.plugin.settings.showOnlyCurrentNoteTasks && this.plugin.settings.showCurrentNoteTasksSection) {
-                // Restore scroll position and exit early
-                this.restoreScrollPosition();
-                return;
-            }
-
-            // Create the standard list container AFTER current note section
-            // This ensures it appears below the current note section
-            this.listContainerEl = this.contentAreaEl.createDiv({
-                cls: 'highlights-list tasks-container'
-            });
-
-            // Filter by completion status if needed
-            let tasks = allTasks;
-            if (!this.plugin.settings.showCompletedTasks) {
-                tasks = allTasks.filter(task => !task.completed);
-            }
-
-            // Store tasks for later use
-            this.currentTasks = tasks;
-
-            // Filter tasks by search term if present
-            const searchTerm = this.getSearchTerm();
-            let filteredTasks = tasks;
-            if (searchTerm && searchTerm.length > 0) {
-                filteredTasks = tasks.filter(task =>
-                    task.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    task.filePath.toLowerCase().includes(searchTerm.toLowerCase())
-                );
-            }
-
-            // Filter tasks by selected tags if present
-            if (this.selectedTags.size > 0) {
-                filteredTasks = filteredTasks.filter(task => {
-                    // Extract tags from task text using regex (supports nested tags with /)
-                    const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
-                    const taskTags: string[] = [];
-                    let match;
-                    while ((match = tagRegex.exec(task.text)) !== null) {
-                        taskTags.push(match[1]);
-                    }
-
-                    // Check if any selected tag matches any task tag
-                    return Array.from(this.selectedTags).some(selectedTag =>
-                        taskTags.includes(selectedTag)
-                    );
-                });
-            }
-
-            // Filter tasks by selected special filters if present
-            if (this.selectedSpecialFilters.size > 0) {
-                filteredTasks = filteredTasks.filter(task => {
-                    const today = moment().startOf('day');
-
-                    // Check each selected special filter
-                    return Array.from(this.selectedSpecialFilters).every(filterId => {
-                        switch (filterId) {
-                            case 'flagged':
-                                return task.flagged;
-
-                            case 'upcoming': {
-                                if (!task.date) return false;
-                                const taskDate = moment(task.date, 'YYYY-MM-DD');
-                                const startOfWeek = moment().startOf('week'); // Sunday
-                                const endOfWeek = moment().endOf('week'); // Saturday
-                                return taskDate.isSameOrAfter(startOfWeek) && taskDate.isSameOrBefore(endOfWeek);
-                            }
-
-                            case 'completed':
-                                return task.completed;
-
-                            case 'incomplete':
-                                return !task.completed;
-
-                            case 'due-today': {
-                                if (!task.date) return false;
-                                const dueTodayDate = moment(task.date, 'YYYY-MM-DD');
-                                return dueTodayDate.isSame(today, 'day');
-                            }
-
-                            case 'overdue': {
-                                if (!task.date) return false;
-                                const overdueDate = moment(task.date, 'YYYY-MM-DD');
-                                return overdueDate.isBefore(today) && !task.completed;
-                            }
-
-                            case 'no-date':
-                                return !task.date;
-
-                            case 'created-last-7-days': {
-                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                                if (!file || !(file instanceof TFile)) return false;
-                                const fileCreationDate = moment(file.stat.ctime);
-                                const sevenDaysAgo = moment().subtract(7, 'days').startOf('day');
-                                return fileCreationDate.isSameOrAfter(sevenDaysAgo);
-                            }
-
-                            case 'created-last-30-days': {
-                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                                if (!file || !(file instanceof TFile)) return false;
-                                const fileCreationDate = moment(file.stat.ctime);
-                                const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
-                                return fileCreationDate.isSameOrAfter(thirtyDaysAgo);
-                            }
-
-                            case 'created-last-year': {
-                                const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-                                if (!file || !(file instanceof TFile)) return false;
-                                const fileCreationDate = moment(file.stat.ctime);
-                                const oneYearAgo = moment().subtract(1, 'year').startOf('day');
-                                return fileCreationDate.isSameOrAfter(oneYearAgo);
-                            }
-
-                            default:
-                                return true;
-                        }
-                    });
-                });
-            }
-
-            // Filtering above can remove a task's parent, so re-resolve nesting to stop
-            // survivors appearing as children of an unrelated preceding task.
-            filteredTasks = normalizeVisibleNesting(filteredTasks);
-
-            // Remember exactly what is on screen so "copy visible results" matches it
-            this.currentVisibleTasks = filteredTasks;
-
-            // Render tasks
-            if (filteredTasks.length === 0) {
-                const hasActiveFilters = (searchTerm && searchTerm.length > 0) || this.selectedTags.size > 0 || this.selectedSpecialFilters.size > 0;
-                this.taskRenderer.createEmptyState(
-                    this.listContainerEl,
-                    hasActiveFilters ? t('emptyStates.noMatchingTasks') : t('emptyStates.noTasksAcrossAll')
-                );
-            } else {
-                if (this.groupingMode === 'none') {
-                    // Sort tasks
-                    const sortedTasks = filteredTasks.sort((a, b) => {
-                        return this.compareTasksBySortMode(a, b, 'path-then-position');
-                    });
-
-                    // Use pagination for performance
-                    this.renderTasksWithPagination(sortedTasks, searchTerm);
-                } else {
-                    // Render grouped tasks (pass allTasks for progress calculation)
-                    this.renderGroupedTasks(filteredTasks, searchTerm, allTasks);
-                }
-            }
-
-            // Restore scroll position after DOM rebuild
-            this.restoreScrollPosition();
-
-            // Update filter button state
-            this.showTagActive();
-
-            // Apply flash animation to recently moved task
-            if (this.recentlyMovedTaskId) {
-                this.applyTaskFlashAnimation(this.recentlyMovedTaskId);
-                this.recentlyMovedTaskId = null;
-            }
-        } finally {
-            // Always reset the guard flag, even if an error occurs
-            this.isRenderingTasks = false;
-            // Tasks load asynchronously, so the count is only known once this pass ends
-            this.plugin.requestStatusBarUpdate();
-        }
-    }
-
-    /**
-     * Apply a brief flash animation to a task that was just moved
-     */
-    private applyTaskFlashAnimation(taskId: string) {
-        // Wait for next frame to ensure DOM is ready
-        window.requestAnimationFrame(() => {
-            const taskElement = this.listContainerEl.querySelector(`[data-task-id="${taskId}"]`) as HTMLElement;
-            if (taskElement) {
-                taskElement.addClass('task-flash');
-                // Remove class after animation completes
-                window.setTimeout(() => {
-                    taskElement.removeClass('task-flash');
-                }, 600); // Match CSS animation duration
-            }
-        });
-    }
-
-    private renderGroupedTasks(tasks: Task[], searchTerm?: string, allTasks?: Task[]) {
-        const today = moment().startOf('day');
-
-        // Helper function to determine group key for a task
-        const getGroupKey = (task: Task): string => {
-            if (this.groupingMode === 'date-asc') {
-                // Group by due date
-                if (task.date) {
-                    const taskDate = moment(task.date, 'YYYY-MM-DD');
-                    // Check if overdue (before today AND not completed)
-                    if (taskDate.isBefore(today) && !task.completed) {
-                        return 'OVERDUE'; // Special group key for overdue tasks
-                    }
-
-                    const daysFromToday = taskDate.diff(today, 'days');
-
-                    // First 7 days (today through day 6): individual dates
-                    if (daysFromToday >= 0 && daysFromToday <= 6) {
-                        return task.date; // YYYY-MM-DD format
-                    }
-
-                    // Rest of current month
-                    if (taskDate.year() === today.year() && taskDate.month() === today.month()) {
-                        return `${taskDate.format('YYYY-MM')}-CURRENT-MONTH`;
-                    }
-
-                    // Next 4 months: group by month
-                    const endOfFourMonths = moment(today).add(4, 'months').endOf('month');
-                    if (taskDate.isSameOrBefore(endOfFourMonths, 'day')) {
-                        return taskDate.format('YYYY-MM'); // Group by month
-                    }
-
-                    // Years thereafter: group by year
-                    return taskDate.format('YYYY');
-                } else {
-                    return 'No Date';
-                }
-            } else if (this.groupingMode === 'filename') {
-                // Extract filename from path (remove extension for cleaner display)
-                const filename = task.filePath.split('/').pop() || task.filePath;
-                return filename.replace(/\.md$/, ''); // Remove .md extension
-            } else {
-                // For other grouping modes that don't apply to tasks, fall back to none
-                return 'All Tasks';
-            }
-        };
-
-        // Group tasks for display (filtered by completion status setting)
-        const groups = new Map<string, Task[]>();
-        tasks.forEach(task => {
-            const groupKey = getGroupKey(task);
-            if (!groups.has(groupKey)) {
-                groups.set(groupKey, []);
-            }
-            groups.get(groupKey)!.push(task);
-        });
-
-        // Group ALL tasks for accurate progress calculation
-        const allGroups = new Map<string, Task[]>();
-        if (allTasks) {
-            allTasks.forEach(task => {
-                const groupKey = getGroupKey(task);
-                if (!allGroups.has(groupKey)) {
-                    allGroups.set(groupKey, []);
-                }
-                allGroups.get(groupKey)!.push(task);
-            });
-        }
-
-        // Sort groups
-        const sortedGroups = Array.from(groups.entries()).sort(([a], [b]) => {
-            if (this.groupingMode === 'date-asc') {
-                // Pin "OVERDUE" at the top
-                if (a === 'OVERDUE' && b === 'OVERDUE') return 0;
-                if (a === 'OVERDUE') return -1;
-                if (b === 'OVERDUE') return 1;
-
-                // Sort date groups chronologically, with "No Date" at the end
-                if (a === 'No Date' && b === 'No Date') return 0;
-                if (a === 'No Date') return 1;
-                if (b === 'No Date') return -1;
-
-                // Helper to get sort priority for date groups
-                const getSortValue = (key: string): string => {
-                    // Individual dates (YYYY-MM-DD) - use as is
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
-                        return key;
-                    }
-                    // Current month remainder - extract month and append high day number
-                    if (key.endsWith('-CURRENT-MONTH')) {
-                        const monthKey = key.replace('-CURRENT-MONTH', '');
-                        return `${monthKey}-32`; // Day 32 ensures it comes after individual dates
-                    }
-                    // Month groups (YYYY-MM) - append day 33 to sort after current month
-                    if (/^\d{4}-\d{2}$/.test(key)) {
-                        return `${key}-33`;
-                    }
-                    // Year groups (YYYY) - append month 13 and day 34 to sort after month groups
-                    if (/^\d{4}$/.test(key)) {
-                        return `${key}-13-34`;
-                    }
-                    return key;
-                };
-
-                // Sort dates chronologically (always ascending - today first)
-                return getSortValue(a).localeCompare(getSortValue(b));
-            } else if (this.groupingMode === 'filename') {
-                // Sort filename groups alphabetically
-                return a.localeCompare(b);
-            } else {
-                return a.localeCompare(b);
-            }
-        });
-
-        // Render each group
-        sortedGroups.forEach(([groupName, groupTasks]) => {
-            // Create group header
-            const groupHeader = this.listContainerEl.createDiv({ cls: 'highlight-group-header' });
-            const headerContent = groupHeader.createSpan();
-
-            // Everything this group renders below its header, so the header can
-            // hide the group as a whole. Sections keep collapsing independently.
-            const groupBodyElements: HTMLElement[] = [];
-
-            // Calculate completion percentage from ALL tasks in this group (not just filtered)
-            const allGroupTasks = allGroups.has(groupName) ? allGroups.get(groupName)! : groupTasks;
-            const completedCount = allGroupTasks.filter(t => t.completed).length;
-            const totalCount = allGroupTasks.length;
-            const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-            // Create progress circle (add BEFORE text so it appears on left)
-            this.createTaskProgressCircle(headerContent, percentage, completedCount, totalCount);
-
-            // Add group name text after progress circle
-            headerContent.createSpan({ text: this.getGroupDisplayName(groupName) });
-
-            // Add task count
-            headerContent.createSpan({
-                cls: 'tree-item-flair',
-                text: totalCount.toString()
-            });
-
-            // Skip section grouping when grouping by date (reduces clutter)
-            const skipSectionGrouping = this.groupingMode === 'date-asc';
-
-            if (skipSectionGrouping) {
-                // Render tasks directly without section grouping
-                const sortedTasks = groupTasks.sort((a, b) => {
-                    return this.compareTasksBySortMode(a, b, 'position');
-                });
-
-                // Create wrapper container for consistent spacing
-                const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
-                groupBodyElements.push(groupTasksContainer);
-
-                // Only hide date badge for individual day groups (YYYY-MM-DD format)
-                // Show it for month/year groups so users can see the specific date
-                const isIndividualDayGroup = /^\d{4}-\d{2}-\d{2}$/.test(groupName) || groupName === 'OVERDUE';
-
-                sortedTasks.forEach(task => {
-                    // Only render top-level tasks (indent level 0)
-                    // Sub-tasks will be rendered with their parents
-                    let parentTask: Task | undefined = undefined;
-
-                    if (task.indentLevel > 0) {
-                        // Check if this sub-task has its own date - if so, render it as a standalone task
-                        if (!task.date) {
-                            return; // Skip - will be rendered with parent
-                        }
-
-                        // Find the parent task for this sub-task
-                        if (this.cachedAllTasks) {
-                            parentTask = this.cachedAllTasks.find(t =>
-                                t.filePath === task.filePath &&
-                                t.lineNumber < task.lineNumber &&
-                                t.indentLevel < task.indentLevel
-                            );
-                        }
-                    }
-
-                    // Render the main task
-                    this.taskRenderer.createTaskItem(groupTasksContainer, task, {
-                        searchTerm,
-                        hideFilename: false, // Show filename when grouping by date
-                        hideDateBadge: isIndividualDayGroup, // Only hide for Today/Tomorrow/named days
-                        parentTask, // Pass parent task if this is a sub-task with own date
-                        onTaskToggle: async (task, checkboxEl) => {
-                            await this.handleTaskToggle(task, checkboxEl);
-                        },
-                        onTaskClick: (task, event) => {
-                            this.handleTaskClick(task, event);
-                        },
-                        onFileNameClick: (filePath, event) => {
-                            this.openNoteReusingLeaf(filePath, event);
-                        },
-                        onFlagToggle: async (task, event) => {
-                            await this.handleFlagToggle(task, event);
-                        },
-                        onCalendarToggle: async (task) => {
-                            await this.handleCalendarToggle(task);
-                        }
-                    });
-
-                    // Find and render child tasks (if any) immediately after parent
-                    if (task.indentLevel === 0 && this.cachedAllTasks) {
-                        const children = this.cachedAllTasks.filter(t =>
-                            t.filePath === task.filePath &&
-                            t.lineNumber > task.lineNumber &&
-                            t.indentLevel > task.indentLevel &&
-                            !t.date // Only include children without their own dates
-                        );
-
-                        // Find the next sibling or parent to determine where children end
-                        const nextSibling = this.cachedAllTasks.find(t =>
-                            t.filePath === task.filePath &&
-                            t.lineNumber > task.lineNumber &&
-                            t.indentLevel <= task.indentLevel
-                        );
-
-                        // Filter children to only include those before the next sibling
-                        const immediateChildren = nextSibling
-                            ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
-                            : children;
-
-                        // Render each child
-                        immediateChildren.forEach(childTask => {
-                            this.taskRenderer.createTaskItem(groupTasksContainer, childTask, {
-                                searchTerm,
-                                hideFilename: false,
-                                hideDateBadge: isIndividualDayGroup,
-                                onTaskToggle: async (task, checkboxEl) => {
-                                    await this.handleTaskToggle(task, checkboxEl);
-                                },
-                                onTaskClick: (task, event) => {
-                                    this.handleTaskClick(task, event);
-                                },
-                                onFileNameClick: (filePath, event) => {
-                                    this.openNoteReusingLeaf(filePath, event);
-                                },
-                                onFlagToggle: async (task, event) => {
-                                    await this.handleFlagToggle(task, event);
-                                },
-                                onCalendarToggle: async (task) => {
-                                    await this.handleCalendarToggle(task);
-                                }
-                            });
-                        });
-                    }
-                });
-            } else {
-                // First, group by section (markdown headers)
-                const sectionGroups = new Map<string, Task[]>();
-                groupTasks.forEach(task => {
-                    const sectionKey = task.section || t('emptyStates.noSection');
-                    if (!sectionGroups.has(sectionKey)) {
-                        sectionGroups.set(sectionKey, []);
-                    }
-                    sectionGroups.get(sectionKey)!.push(task);
-                });
-
-            // Sort sections
-            const sortedSections = Array.from(sectionGroups.entries()).sort(([a], [b]) => {
-                // Put "No section" at the beginning
-                if (a === t('emptyStates.noSection') && b === t('emptyStates.noSection')) return 0;
-                if (a === t('emptyStates.noSection')) return -1;
-                if (b === t('emptyStates.noSection')) return 1;
-                return a.localeCompare(b);
-            });
-
-            // Render each section
-            sortedSections.forEach(([sectionName, sectionTasks], sectionIndex) => {
-                // Store reference to containers for this section (for collapse functionality)
-                const sectionContainers: HTMLElement[] = [];
-
-                // Show section header if not "No section"
-                if (sectionName !== t('emptyStates.noSection')) {
-                    const sectionId = `${groupName}::${sectionName}`;
-                    const sectionPositionId = `${groupName}::__position__::${sectionIndex}`;
-                    // Check both name-based and position-based collapsed state
-                    const isCollapsed = this.collapsedSections.has(sectionId) || this.collapsedSections.has(sectionPositionId);
-
-                    const sectionHeader = this.listContainerEl.createDiv({ cls: 'task-section-header' });
-                    groupBodyElements.push(sectionHeader);
-                    sectionHeader.setAttribute('data-section-id', sectionId);
-                    sectionHeader.setAttribute('data-section-position-id', sectionPositionId);
-                    sectionHeader.setAttribute('data-group-name', groupName);
-                    if (isCollapsed) {
-                        sectionHeader.addClass('collapsed');
-                    }
-
-                    // Add section name
-                    sectionHeader.createSpan({ text: sectionName });
-
-                    // Add ellipsis indicator for collapsed sections with items
-                    sectionHeader.createSpan({
-                        cls: 'task-section-ellipsis',
-                        text: '...'
-                    });
-
-                    // Add click handler to toggle collapse
-                    sectionHeader.addEventListener('click', () => {
-                        const nowCollapsed = this.collapsedSections.has(sectionId);
-                        if (nowCollapsed) {
-                            this.collapsedSections.delete(sectionId);
-                            this.collapsedSections.delete(sectionPositionId);
-                            sectionHeader.removeClass('collapsed');
-                            sectionContainers.forEach(container => container.style.display = '');
-                        } else {
-                            this.collapsedSections.add(sectionId);
-                            this.collapsedSections.add(sectionPositionId);
-                            sectionHeader.addClass('collapsed');
-                            sectionContainers.forEach(container => container.style.display = 'none');
-                        }
-                    });
-                }
-
-                // Check if section is collapsed
-                const sectionId = `${groupName}::${sectionName}`;
-                const sectionPositionId = `${groupName}::__position__::${sectionIndex}`;
-                const isSectionCollapsed = sectionName !== t('emptyStates.noSection') && (this.collapsedSections.has(sectionId) || this.collapsedSections.has(sectionPositionId));
-
-                // If secondary grouping is enabled, group tasks within this section by secondary key
-                // COMMENTED OUT FOR NOW
-                /*
-                if (this.taskSecondaryGroupingMode !== 'none' && !isSectionCollapsed) {
-                    const secondaryGroups = new Map<string, Task[]>();
-                    sectionTasks.forEach(task => {
-                        const secondaryKey = this.getSecondaryGroupKey(task);
-                        if (!secondaryGroups.has(secondaryKey)) {
-                            secondaryGroups.set(secondaryKey, []);
-                        }
-                        secondaryGroups.get(secondaryKey)!.push(task);
-                    });
-
-                    // Sort secondary groups
-                    const sortedSecondaryGroups = this.sortSecondaryGroups(Array.from(secondaryGroups.entries()));
-
-                    // Render each secondary group within this section
-                    sortedSecondaryGroups.forEach(([secondaryGroupName, secondaryGroupTasks]) => {
-                        const secondaryGroupId = `${groupName}::${sectionName}::${secondaryGroupName}`;
-                        const isSecondaryCollapsed = this.collapsedSections.has(secondaryGroupId);
-
-                        // Show secondary group header
-                        const secondaryHeader = this.listContainerEl.createDiv({ cls: 'task-secondary-group-header' });
-
-                        // Add chevron icon
-                        const chevron = secondaryHeader.createDiv({ cls: 'task-section-chevron' });
-                        setIcon(chevron, 'chevron-down');
-                        if (isSecondaryCollapsed) {
-                            chevron.addClass('collapsed');
-                        }
-
-                        // Add secondary group name
-                        const headerText = secondaryHeader.createSpan({ text: secondaryGroupName });
-
-                        // Sort tasks within secondary group
-                        const sortedTasks = secondaryGroupTasks.sort((a, b) => {
-                            return this.compareTasksBySortMode(a, b, 'position');
-                        });
-
-                        // Create a wrapper container for tasks in this secondary group
-                        const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
-                    groupBodyElements.push(groupTasksContainer);
-
-                        // Hide container if secondary group is collapsed
-                        if (isSecondaryCollapsed) {
-                            groupTasksContainer.style.display = 'none';
-                        }
-
-                        // Add click handler to toggle collapse
-                        secondaryHeader.addEventListener('click', () => {
-                            const nowCollapsed = this.collapsedSections.has(secondaryGroupId);
-                            if (nowCollapsed) {
-                                this.collapsedSections.delete(secondaryGroupId);
-                                chevron.removeClass('collapsed');
-                                groupTasksContainer.style.display = '';
-                            } else {
-                                this.collapsedSections.add(secondaryGroupId);
-                                chevron.addClass('collapsed');
-                                groupTasksContainer.style.display = 'none';
-                            }
-                        });
-
-                        // Add both header and container to section's containers array so they collapse together
-                        if (sectionName !== t('emptyStates.noSection')) {
-                            sectionContainers.push(secondaryHeader);
-                            sectionContainers.push(groupTasksContainer);
-                        }
-
-                        // Render tasks in this secondary group
-                        sortedTasks.forEach(task => {
-                            this.taskRenderer.createTaskItem(groupTasksContainer, task, {
-                                searchTerm,
-                                hideFilename: true,
-                                hideDateBadge: this.groupingMode === 'date-asc',
-                                onTaskToggle: async (task, checkboxEl) => {
-                                    await this.handleTaskToggle(task, checkboxEl);
-                                },
-                                onTaskClick: (task, event) => {
-                                    this.handleTaskClick(task, event);
-                                },
-                                onFileNameClick: (filePath, event) => {
-                                    this.openNoteReusingLeaf(filePath, event);
-                                },
-                                onFlagToggle: async (task) => {
-                                    await this.handleFlagToggle(task);
-                                },
-                                onCalendarToggle: async (task) => {
-                                    await this.handleCalendarToggle(task);
-                                }
-                            });
-                        });
-                    });
-                }
-                */
-                // else {
-                    // No secondary grouping - render tasks directly in this section
-                    // Sort tasks within section
-                    const sortedTasks = sectionTasks.sort((a, b) => {
-                        return this.compareTasksBySortMode(a, b, 'position');
-                    });
-
-                    // Create a wrapper container for tasks in this section
-                    const groupTasksContainer = this.listContainerEl.createDiv({ cls: 'task-group-container' });
-                    groupBodyElements.push(groupTasksContainer);
-
-                    // Hide container if section is collapsed
-                    if (isSectionCollapsed) {
-                        groupTasksContainer.style.display = 'none';
-                    }
-
-                    // Add this container to section's containers array
-                    if (sectionName !== t('emptyStates.noSection')) {
-                        sectionContainers.push(groupTasksContainer);
-                    }
-
-                    // Render tasks in this section (show filenames for date grouping, hide for others)
-                    sortedTasks.forEach(task => {
-                        // Only render top-level tasks or sub-tasks with their own dates
-                        let parentTask: Task | undefined = undefined;
-
-                        if (task.indentLevel > 0) {
-                            if (!task.date) {
-                                return; // Skip - will be rendered with parent
-                            }
-
-                            // Find parent task for sub-task with own date
-                            if (this.cachedAllTasks) {
-                                parentTask = this.cachedAllTasks.find(t =>
-                                    t.filePath === task.filePath &&
-                                    t.lineNumber < task.lineNumber &&
-                                    t.indentLevel < task.indentLevel
-                                );
-                            }
-                        }
-
-                        this.taskRenderer.createTaskItem(groupTasksContainer, task, {
-                            searchTerm,
-                            hideFilename: !(this.groupingMode === 'date-asc'), // Show filename when grouping by due date
-                            hideDateBadge: this.groupingMode === 'date-asc', // Hide date badge when grouping by due date
-                            parentTask,
-                            onTaskToggle: async (task, checkboxEl) => {
-                                await this.handleTaskToggle(task, checkboxEl);
-                            },
-                            onTaskClick: (task, event) => {
-                                this.handleTaskClick(task, event);
-                            },
-                            onFileNameClick: (filePath, event) => {
-                                this.openNoteReusingLeaf(filePath, event);
-                            },
-                            onFlagToggle: async (task) => {
-                                await this.handleFlagToggle(task);
-                            },
-                            onCalendarToggle: async (task) => {
-                                await this.handleCalendarToggle(task);
-                            }
-                        });
-
-                        // Find and render child tasks immediately after parent
-                        if (task.indentLevel === 0 && this.cachedAllTasks) {
-                            const children = this.cachedAllTasks.filter(t =>
-                                t.filePath === task.filePath &&
-                                t.lineNumber > task.lineNumber &&
-                                t.indentLevel > task.indentLevel &&
-                                !t.date // Only children without dates
-                            );
-
-                            const nextSibling = this.cachedAllTasks.find(t =>
-                                t.filePath === task.filePath &&
-                                t.lineNumber > task.lineNumber &&
-                                t.indentLevel <= task.indentLevel
-                            );
-
-                            const immediateChildren = nextSibling
-                                ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
-                                : children;
-
-                            immediateChildren.forEach(childTask => {
-                                this.taskRenderer.createTaskItem(groupTasksContainer, childTask, {
-                                    searchTerm,
-                                    hideFilename: !(this.groupingMode === 'date-asc'),
-                                    hideDateBadge: this.groupingMode === 'date-asc',
-                                    onTaskToggle: async (task, checkboxEl) => {
-                                        await this.handleTaskToggle(task, checkboxEl);
-                                    },
-                                    onTaskClick: (task, event) => {
-                                        this.handleTaskClick(task, event);
-                                    },
-                                    onFileNameClick: (filePath, event) => {
-                                        this.openNoteReusingLeaf(filePath, event);
-                                    },
-                                    onFlagToggle: async (task) => {
-                                        await this.handleFlagToggle(task);
-                                    },
-                                    onCalendarToggle: async (task) => {
-                                        await this.handleCalendarToggle(task);
-                                    }
-                                });
-                            });
-                        }
-                    });
-                // }
-            });
-            } // End else (section grouping)
-
-            // Let the group header fold everything it rendered above
-            this.makeGroupCollapsible(groupHeader, groupBodyElements, groupName);
-        });
-    }
-
-    /**
-     * Create a circular progress indicator for task groups
-     */
-    private createTaskProgressCircle(container: HTMLElement, percentage: number, completed: number, total: number): void {
-        const progressContainer = container.createDiv({ cls: 'task-progress-circle-container' });
-
-        // If 100% complete, show checkmark icon instead of circle
-        if (percentage === 100 && total > 0) {
-            setIcon(progressContainer, 'circle-check');
-            progressContainer.addClass('task-progress-complete');
-            progressContainer.setAttribute('aria-label', `${completed}/${total} tasks completed`);
-            progressContainer.setAttribute('title', `${completed}/${total} tasks completed`);
-            return;
-        }
-
-        // Create SVG circle
-        const svg = progressContainer.createSvg('svg', {
-            attr: {
-                width: '20',
-                height: '20',
-                viewBox: '0 0 20 20'
-            }
-        });
-
-        const radius = 7.5;
-        const circumference = 2 * Math.PI * radius;
-        const offset = circumference - (percentage / 100) * circumference;
-
-        // Background circle
-        svg.createSvg('circle', {
-            attr: {
-                cx: '10',
-                cy: '10',
-                r: radius.toString(),
-                fill: 'none',
-                stroke: 'var(--interactive-accent)',
-                'stroke-width': '2.5',
-                opacity: '0.2'
-            }
-        });
-
-        // Progress circle
-        svg.createSvg('circle', {
-            cls: 'task-progress-circle',
-            attr: {
-                cx: '10',
-                cy: '10',
-                r: radius.toString(),
-                fill: 'none',
-                stroke: 'var(--interactive-accent)',
-                'stroke-width': '2.5',
-                'stroke-dasharray': circumference.toString(),
-                'stroke-dashoffset': offset.toString(),
-                'stroke-linecap': 'round',
-                transform: 'rotate(-90 10 10)'
-            }
-        });
-
-        // Add tooltip with count
-        progressContainer.setAttribute('aria-label', `${completed}/${total} tasks completed`);
-        progressContainer.setAttribute('title', `${completed}/${total} tasks completed`);
-    }
-
-    /**
-     * Preserve collapsed sections state before DOM rebuild
-     * This allows sections to stay collapsed even if their names change
-     */
-    private preserveCollapsedSections(): void {
-        if (!this.listContainerEl) return;
-
-        // Get all currently collapsed section headers from DOM
-        const collapsedHeaders = this.listContainerEl.querySelectorAll('.task-section-header.collapsed');
-
-        // Build a map of group -> collapsed section names
-        const collapsedByGroup = new Map<string, Set<string>>();
-
-        collapsedHeaders.forEach((header) => {
-            const groupName = header.getAttribute('data-group-name');
-            const sectionId = header.getAttribute('data-section-id');
-            const sectionPositionId = header.getAttribute('data-section-position-id');
-
-            if (groupName) {
-                if (!collapsedByGroup.has(groupName)) {
-                    collapsedByGroup.set(groupName, new Set());
-                }
-                // Preserve both name-based and position-based IDs
-                if (sectionId) {
-                    collapsedByGroup.get(groupName)!.add(sectionId);
-                }
-                if (sectionPositionId) {
-                    collapsedByGroup.get(groupName)!.add(sectionPositionId);
-                }
-            }
-        });
-
-        // Clear old collapsed sections for groups that will be re-rendered
-        // and add the current ones from DOM
-        collapsedByGroup.forEach((sectionIds, groupName) => {
-            // Remove old entries for this group
-            const toRemove: string[] = [];
-            this.collapsedSections.forEach(id => {
-                if (id.startsWith(groupName + '::')) {
-                    toRemove.push(id);
-                }
-            });
-            toRemove.forEach(id => this.collapsedSections.delete(id));
-
-            // Add current collapsed sections from DOM
-            sectionIds.forEach(id => this.collapsedSections.add(id));
-        });
-    }
-
-    /**
-     * Update the progress circle for a task's group immediately for smooth animation
-     */
-    private updateGroupProgressCircle(task: Task, newCompletedState: boolean): void {
-        // Only update if we're in grouped mode
-        if (this.groupingMode === 'none') return;
-
-        const today = moment().startOf('day');
-
-        // Find the group this task belongs to
-        const getGroupKey = (task: Task): string => {
-            if (this.groupingMode === 'date-asc') {
-                // Group by due date
-                if (task.date) {
-                    const taskDate = moment(task.date, 'YYYY-MM-DD');
-                    // Check if overdue (before today AND not completed)
-                    if (taskDate.isBefore(today) && !task.completed) {
-                        return 'OVERDUE'; // Special group key for overdue tasks
-                    }
-
-                    const daysFromToday = taskDate.diff(today, 'days');
-
-                    // First 7 days (today through day 6): individual dates
-                    if (daysFromToday >= 0 && daysFromToday <= 6) {
-                        return task.date; // YYYY-MM-DD format
-                    }
-
-                    // Rest of current month
-                    if (taskDate.year() === today.year() && taskDate.month() === today.month()) {
-                        return `${taskDate.format('YYYY-MM')}-CURRENT-MONTH`;
-                    }
-
-                    // Next 4 months: group by month
-                    const endOfFourMonths = moment(today).add(4, 'months').endOf('month');
-                    if (taskDate.isSameOrBefore(endOfFourMonths, 'day')) {
-                        return taskDate.format('YYYY-MM'); // Group by month
-                    }
-
-                    // Years thereafter: group by year
-                    return taskDate.format('YYYY');
-                } else {
-                    return 'No Date';
-                }
-            } else if (this.groupingMode === 'filename') {
-                const filename = task.filePath.split('/').pop() || task.filePath;
-                return filename.replace(/\.md$/, '');
-            } else {
-                return 'All Tasks';
-            }
-        };
-
-        const groupKey = getGroupKey(task);
-
-        // Find all progress circles in the DOM
-        const allHeaders = this.listContainerEl.querySelectorAll('.highlight-group-header');
-        allHeaders.forEach((header) => {
-            const headerText = header.querySelector('span')?.textContent;
-            const groupDisplayName = this.getGroupDisplayName(groupKey);
-
-            if (headerText && headerText.includes(groupDisplayName)) {
-                // Found the right header, now find all tasks in this group
-                const allTasksInGroup = this.currentTasks?.filter(t => getGroupKey(t) === groupKey) || [];
-
-                // Calculate new completion
-                let completedCount = allTasksInGroup.filter(t => t.completed).length;
-
-                // Adjust for the task we just toggled (since currentTasks hasn't been updated yet)
-                if (task.completed !== newCompletedState) {
-                    completedCount += newCompletedState ? 1 : -1;
-                }
-
-                const totalCount = allTasksInGroup.length;
-                const percentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-                const progressContainer = header.querySelector('.task-progress-circle-container') as HTMLElement;
-                if (progressContainer) {
-                    // Check if we need to switch between circle and checkmark
-                    const isComplete = percentage === 100 && totalCount > 0;
-                    const hasCheckmark = progressContainer.classList.contains('task-progress-complete');
-
-                    if (isComplete && !hasCheckmark) {
-                        // Switch to checkmark
-                        progressContainer.empty();
-                        setIcon(progressContainer, 'circle-check');
-                        progressContainer.addClass('task-progress-complete');
-                    } else if (!isComplete && hasCheckmark) {
-                        // Switch back to progress circle
-                        progressContainer.empty();
-                        progressContainer.removeClass('task-progress-complete');
-
-                        // Recreate SVG circle
-                        const svg = progressContainer.createSvg('svg', {
-                            attr: {
-                                width: '20',
-                                height: '20',
-                                viewBox: '0 0 20 20'
-                            }
-                        });
-
-                        const radius = 7.5;
-                        const circumference = 2 * Math.PI * radius;
-                        const offset = circumference - (percentage / 100) * circumference;
-
-                        // Background circle
-                        svg.createSvg('circle', {
-                            attr: {
-                                cx: '10',
-                                cy: '10',
-                                r: radius.toString(),
-                                fill: 'none',
-                                stroke: 'var(--interactive-accent)',
-                                'stroke-width': '2.5',
-                                opacity: '0.2'
-                            }
-                        });
-
-                        // Progress circle
-                        svg.createSvg('circle', {
-                            cls: 'task-progress-circle',
-                            attr: {
-                                cx: '10',
-                                cy: '10',
-                                r: radius.toString(),
-                                fill: 'none',
-                                stroke: 'var(--interactive-accent)',
-                                'stroke-width': '2.5',
-                                'stroke-dasharray': circumference.toString(),
-                                'stroke-dashoffset': offset.toString(),
-                                'stroke-linecap': 'round',
-                                transform: 'rotate(-90 10 10)'
-                            }
-                        });
-                    } else if (!isComplete && !hasCheckmark) {
-                        // Just update the existing progress circle
-                        const progressCircle = progressContainer.querySelector('.task-progress-circle') as SVGCircleElement;
-                        if (progressCircle) {
-                            const radius = 7.5;
-                            const circumference = 2 * Math.PI * radius;
-                            const offset = circumference - (percentage / 100) * circumference;
-                            progressCircle.setAttribute('stroke-dashoffset', offset.toString());
-                        }
-                    }
-
-                    // Update tooltip
-                    progressContainer.setAttribute('aria-label', `${completedCount}/${totalCount} tasks completed`);
-                    progressContainer.setAttribute('title', `${completedCount}/${totalCount} tasks completed`);
-                }
-            }
-        });
-    }
-
-    /**
-     * Get the secondary group key for a task based on taskSecondaryGroupingMode
-     * Note: This is only called when taskSecondaryGroupingMode !== 'none'
-     */
-    private getSecondaryGroupKey(task: Task): string {
-        if (this.taskSecondaryGroupingMode === 'tag') {
-            // Extract tags from task text (supports nested tags with /)
-            const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
-            const tags: string[] = [];
-            let match;
-            while ((match = tagRegex.exec(task.text)) !== null) {
-                tags.push(`#${match[1]}`);
-            }
-            return tags.length > 0 ? tags[0] : t('emptyStates.noTags'); // Use first tag for grouping
-        } else if (this.taskSecondaryGroupingMode === 'date') {
-            if (!task.date) return t('emptyStates.noDate');
-
-            const taskDate = moment(task.date, 'YYYY-MM-DD');
-            const today = moment().startOf('day');
-
-            if (taskDate.isBefore(today)) {
-                return t('emptyStates.overdue');
-            } else if (taskDate.isSame(today, 'day')) {
-                return t('emptyStates.today');
-            } else {
-                return t('emptyStates.upcoming');
-            }
-        } else if (this.taskSecondaryGroupingMode === 'flagged') {
-            return task.flagged ? t('emptyStates.flagged') : t('emptyStates.unflagged');
-        }
-
-        // This should never be reached since we check taskSecondaryGroupingMode !== 'none' before calling
-        return '';
-    }
-
-    /**
-     * Sort secondary groups based on taskSecondaryGroupingMode
-     */
-    private sortSecondaryGroups(groups: [string, Task[]][]): [string, Task[]][] {
-        return groups.sort(([a], [b]) => {
-            if (this.taskSecondaryGroupingMode === 'tag') {
-                // Put "No Tags" at the end, otherwise alphabetical
-                if (a === t('emptyStates.noTags') && b === t('emptyStates.noTags')) return 0;
-                if (a === t('emptyStates.noTags')) return 1;
-                if (b === t('emptyStates.noTags')) return -1;
-                return a.localeCompare(b);
-            } else if (this.taskSecondaryGroupingMode === 'date') {
-                // Order: Overdue, Today, Upcoming, No Date
-                const order = [t('emptyStates.overdue'), t('emptyStates.today'), t('emptyStates.upcoming'), t('emptyStates.noDate')];
-                const indexA = order.indexOf(a);
-                const indexB = order.indexOf(b);
-                return indexA - indexB;
-            } else if (this.taskSecondaryGroupingMode === 'flagged') {
-                // Flagged first, then unflagged
-                if (a === t('emptyStates.flagged')) return -1;
-                if (b === t('emptyStates.flagged')) return 1;
-                return 0;
-            } else {
-                // Default section sorting: "No section" at the end
-                if (a === t('emptyStates.noSection') && b === t('emptyStates.noSection')) return 0;
-                if (a === t('emptyStates.noSection')) return 1;
-                if (b === t('emptyStates.noSection')) return -1;
-                return a.localeCompare(b);
-            }
-        });
-    }
-
-    private async handleTaskToggle(task: Task, checkboxEl: HTMLElement) {
-        // Optimistically update the checkbox icon immediately
-        const newCompletedState = !task.completed;
-        const isSubtask = task.indentLevel > 0;
-
-        // Add animation class
-        const animationClass = newCompletedState ? 'checking' : 'unchecking';
-        checkboxEl.addClass(animationClass);
-
-        // Update icon
-        if (isSubtask) {
-            setIcon(checkboxEl, newCompletedState ? 'circle-check' : 'circle');
-        } else {
-            setIcon(checkboxEl, newCompletedState ? 'square-check' : 'square');
-        }
-        squircleifyIcon(checkboxEl);
-
-        // Remove animation class after animation completes
-        const animationDuration = newCompletedState ? 600 : 400;
-        window.setTimeout(() => {
-            checkboxEl.removeClass(animationClass);
-        }, animationDuration);
-
-        // Update progress circle immediately for smooth animation
-        this.updateGroupProgressCircle(task, newCompletedState);
-
-        try {
-            await this.taskManager.toggleTaskCompletion(task);
-            new Notice('Task updated');
-            // Don't call renderTasksView() here - the file modification will trigger
-            // a file change event which will call renderContent() automatically
-        } catch (error) {
-            console.error('[Task Toggle] ERROR', error);
-            // Remove animation class and revert the checkbox on error
-            checkboxEl.removeClass(animationClass);
-            if (isSubtask) {
-                setIcon(checkboxEl, task.completed ? 'circle-check' : 'circle');
-            } else {
-                setIcon(checkboxEl, task.completed ? 'square-check' : 'square');
-            }
-            squircleifyIcon(checkboxEl);
-            // Revert progress circle on error
-            this.updateGroupProgressCircle(task, task.completed);
-            new Notice(`Failed to toggle task: ${error.message}`);
-        }
-    }
-
-    private async handleFlagToggle(task: Task, event?: MouseEvent) {
-        const menu = new Menu();
-
-        // Checkbox status. Status and priority share the same brackets in markdown,
-        // so they live in one menu — choosing either necessarily clears the other.
-        const statusOptions: Array<{ status: TaskStatus; title: string; icon: string }> = [
-            { status: 'todo', title: t('tasks.status.todo'), icon: 'square' },
-            { status: 'in-progress', title: t('tasks.status.inProgress'), icon: 'circle-slash' },
-            { status: 'question', title: t('tasks.status.question'), icon: 'circle-help' },
-            { status: 'cancelled', title: t('tasks.status.cancelled'), icon: 'circle-minus' }
-        ];
-
-        for (const option of statusOptions) {
-            menu.addItem((item) =>
-                item
-                    .setTitle(option.title)
-                    .setIcon(option.icon)
-                    .setChecked((task.status ?? 'todo') === option.status)
-                    .onClick(async () => {
-                        try {
-                            this.updateTaskStatusInCache(task, option.status);
-                            this.renderContent();
-
-                            await this.taskManager.setTaskStatus(task, option.status);
-                        } catch (error) {
-                            new Notice(`Failed to set status: ${error.message}`);
-                            this.cachedAllTasks = null;
-                            this.renderContent();
-                        }
-                    })
-            );
-        }
-
-        menu.addSeparator();
-
-        // Priority 1 - Red/High
-        menu.addItem((item) =>
-            item
-                .setTitle('Priority 1 (High)')
-                .setIcon('flag')
-                .onClick(async () => {
-                    try {
-                        // Optimistic UI update
-                        this.updateTaskPriorityInCache(task, 1);
-                        this.renderContent();
-
-                        // Then update the file
-                        await this.taskManager.setTaskPriority(task, 1);
-                        new Notice('Priority set to 1 (High)');
-                    } catch (error) {
-                        new Notice(`Failed to set priority: ${error.message}`);
-                        // Revert on error
-                        this.cachedAllTasks = null;
-                        this.renderContent();
-                    }
-                })
-        );
-
-        // Priority 2 - Yellow/Medium
-        menu.addItem((item) =>
-            item
-                .setTitle('Priority 2 (Medium)')
-                .setIcon('flag')
-                .onClick(async () => {
-                    try {
-                        // Optimistic UI update
-                        this.updateTaskPriorityInCache(task, 2);
-                        this.renderContent();
-
-                        // Then update the file
-                        await this.taskManager.setTaskPriority(task, 2);
-                        new Notice('Priority set to 2 (Medium)');
-                    } catch (error) {
-                        new Notice(`Failed to set priority: ${error.message}`);
-                        // Revert on error
-                        this.cachedAllTasks = null;
-                        this.renderContent();
-                    }
-                })
-        );
-
-        // Priority 3 - Blue/Low
-        menu.addItem((item) =>
-            item
-                .setTitle('Priority 3 (Low)')
-                .setIcon('flag')
-                .onClick(async () => {
-                    try {
-                        // Optimistic UI update
-                        this.updateTaskPriorityInCache(task, 3);
-                        this.renderContent();
-
-                        // Then update the file
-                        await this.taskManager.setTaskPriority(task, 3);
-                        new Notice('Priority set to 3 (Low)');
-                    } catch (error) {
-                        new Notice(`Failed to set priority: ${error.message}`);
-                        // Revert on error
-                        this.cachedAllTasks = null;
-                        this.renderContent();
-                    }
-                })
-        );
-
-        // Remove priority
-        if (task.priority) {
-            menu.addSeparator();
-            menu.addItem((item) =>
-                item
-                    .setTitle('Remove priority')
-                    .setIcon('flag-off')
-                    .onClick(async () => {
-                        try {
-                            // Optimistic UI update
-                            this.updateTaskPriorityInCache(task, null);
-                            this.renderContent();
-
-                            // Then update the file
-                            await this.taskManager.setTaskPriority(task, null);
-                            new Notice('Priority removed');
-                        } catch (error) {
-                            new Notice(`Failed to remove priority: ${error.message}`);
-                            // Revert on error
-                            this.cachedAllTasks = null;
-                            this.renderContent();
-                        }
-                    })
-            );
-        }
-
-        if (event) {
-            menu.showAtMouseEvent(event);
-        } else {
-            menu.showAtPosition({ x: 0, y: 0 });
-        }
-    }
-
-    /**
-     * Update task status in cache for optimistic UI updates.
-     * Mirrors updateTaskPriorityInCache, and clears priority for the same reason
-     * setTaskStatus does: the status and priority markers occupy the same brackets.
-     */
-    private updateTaskStatusInCache(task: Task, status: TaskStatus) {
-        const apply = (target: Task) => {
-            target.status = status;
-            target.completed = status === 'done';
-            target.priority = undefined;
-            target.flagged = false;
-        };
-
-        if (this.cachedAllTasks) {
-            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
-            if (cachedTask) {
-                apply(cachedTask);
-            }
-        }
-
-        apply(task);
-    }
-
-    /**
-     * Update task priority in cache for optimistic UI updates
-     */
-    private updateTaskPriorityInCache(task: Task, priority: 1 | 2 | 3 | null) {
-        if (this.cachedAllTasks) {
-            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
-            if (cachedTask) {
-                cachedTask.priority = priority ?? undefined;
-                cachedTask.flagged = priority !== null;
-            }
-        }
-
-        // Also update the task object reference directly
-        task.priority = priority ?? undefined;
-        task.flagged = priority !== null;
-    }
-
-    /**
-     * Update task date in cache for optimistic UI updates
-     */
-    private updateTaskDateInCache(task: Task, newDate: string | null, dateText: string | null) {
-        if (this.cachedAllTasks) {
-            const cachedTask = this.cachedAllTasks.find(t => t.id === task.id);
-            if (cachedTask) {
-                // Save old date text before updating
-                const oldDateText = cachedTask.dateText;
-
-                // Update task text to reflect the change
-                if (oldDateText && cachedTask.text.includes(oldDateText)) {
-                    // Remove old date from text
-                    cachedTask.text = cachedTask.text.replace(oldDateText, '').trim();
-                }
-                if (dateText && newDate) {
-                    // Add new date to beginning of text
-                    cachedTask.text = `${dateText} ${cachedTask.text}`.trim();
-                }
-
-                // Update date properties AFTER modifying text
-                cachedTask.date = newDate ?? undefined;
-                cachedTask.dateText = dateText ?? undefined;
-            }
-        }
-
-        // Also update the task object reference directly
-        const oldDateText = task.dateText;
-
-        // Update task text
-        if (oldDateText && task.text.includes(oldDateText)) {
-            task.text = task.text.replace(oldDateText, '').trim();
-        }
-        if (dateText && newDate) {
-            task.text = `${dateText} ${task.text}`.trim();
-        }
-
-        // Update date properties AFTER modifying text
-        task.date = newDate ?? undefined;
-        task.dateText = dateText ?? undefined;
-    }
-
-    private async handleCalendarToggle(task: Task) {
-        const dateFormat = this.plugin.settings.taskDateFormat || 'YYYY-MM-DD';
-
-        // If task already has a date, prompt to remove or update
-        if (task.date) {
-            const modal = new DateInputModal(
-                this.plugin.app,
-                dateFormat,
-                task.dateText || '',
-                async (newDate) => {
-                    try {
-                        // Parse date to ISO format for optimistic update
-                        let isoDate: string | null = null;
-                        if (newDate) {
-                            const parsedDate = moment(newDate, dateFormat, true);
-                            if (parsedDate.isValid()) {
-                                isoDate = parsedDate.format('YYYY-MM-DD');
-                            }
-                        }
-
-                        // Optimistic UI update
-                        this.updateTaskDateInCache(task, isoDate, newDate);
-                        this.recentlyMovedTaskId = task.id; // Mark for flash animation
-                        this.renderContent();
-
-                        // Then update the file
-                        await this.taskManager.updateTaskDate(task, newDate);
-                        new Notice(newDate ? 'Date updated' : 'Date removed');
-                    } catch (error) {
-                        new Notice(`Failed to update date: ${error.message}`);
-                        // Revert on error
-                        this.cachedAllTasks = null;
-                        this.recentlyMovedTaskId = null;
-                        this.renderContent();
-                    }
-                }
-            );
-            modal.open();
-        } else {
-            // No date, prompt to add one
-            const modal = new DateInputModal(
-                this.plugin.app,
-                dateFormat,
-                '',
-                async (newDate) => {
-                    if (newDate) {
-                        try {
-                            // Parse date to ISO format for optimistic update
-                            const parsedDate = moment(newDate, dateFormat, true);
-                            let isoDate: string | null = null;
-                            if (parsedDate.isValid()) {
-                                isoDate = parsedDate.format('YYYY-MM-DD');
-                            }
-
-                            // Optimistic UI update
-                            this.updateTaskDateInCache(task, isoDate, newDate);
-                            this.recentlyMovedTaskId = task.id; // Mark for flash animation
-                            this.renderContent();
-
-                            // Then update the file
-                            await this.taskManager.updateTaskDate(task, newDate);
-                            new Notice('Date added');
-                        } catch (error) {
-                            new Notice(`Failed to add date: ${error.message}`);
-                            // Revert on error
-                            this.cachedAllTasks = null;
-                            this.recentlyMovedTaskId = null;
-                            this.renderContent();
-                        }
-                    }
-                }
-            );
-            modal.open();
-        }
-    }
-
-    /**
-     * Render tasks with pagination for performance
-     * @param tasks Array of all tasks available
-     * @param searchTerm Optional search term for highlighting
-     */
-    private renderTasksWithPagination(tasks: Task[], searchTerm?: string): void {
-        this.totalTasks = tasks;
-
-        // Only reset to first page if we have new data AND we're not preserving pagination
-        // (e.g., when switching tabs or searching, but not when clicking tasks)
-        if (!this.isPreservingPagination) {
-            this.currentTaskPage = 0;
-        }
-
-        // Ensure current page is valid for the new data
-        const maxPage = Math.max(0, Math.ceil(tasks.length / this.itemsPerPage) - 1);
-        if (this.currentTaskPage > maxPage) {
-            this.currentTaskPage = maxPage;
-        }
-
-        this.renderCurrentTaskPage(searchTerm);
-        this.renderTaskPaginationControls();
-
-        // Reset the flag after rendering
-        this.isPreservingPagination = false;
-    }
-
-    /**
-     * Render the current page of tasks
-     */
-    private renderCurrentTaskPage(searchTerm?: string): void {
-        const startIndex = this.currentTaskPage * this.itemsPerPage;
-        const endIndex = Math.min(startIndex + this.itemsPerPage, this.totalTasks.length);
-        const pageTasks = this.totalTasks.slice(startIndex, endIndex);
-
-        // Clear ALL content from the container (tasks AND pagination controls)
-        this.listContainerEl.empty();
-
-        // Render current page items first
-        pageTasks.forEach(task => {
-            // Only render top-level tasks or sub-tasks with their own dates
-            let parentTask: Task | undefined = undefined;
-
-            if (task.indentLevel > 0) {
-                if (!task.date) {
-                    return; // Skip - will be rendered with parent
-                }
-
-                // Find parent task for sub-task with own date
-                if (this.cachedAllTasks) {
-                    parentTask = this.cachedAllTasks.find(t =>
-                        t.filePath === task.filePath &&
-                        t.lineNumber < task.lineNumber &&
-                        t.indentLevel < task.indentLevel
-                    );
-                }
-            }
-
-            // Render the main task
-            this.taskRenderer.createTaskItem(this.listContainerEl, task, {
-                searchTerm,
-                parentTask,
-                onTaskToggle: async (task, checkboxEl) => {
-                    await this.handleTaskToggle(task, checkboxEl);
-                },
-                onTaskClick: (task, event) => {
-                    this.handleTaskClick(task, event);
-                },
-                onFileNameClick: (filePath, event) => {
-                    this.openNoteReusingLeaf(filePath, event);
-                },
-                onFlagToggle: async (task) => {
-                    await this.handleFlagToggle(task);
-                },
-                onCalendarToggle: async (task) => {
-                    await this.handleCalendarToggle(task);
-                }
-            });
-
-            // Find and render child tasks (if any) immediately after parent
-            if (task.indentLevel === 0 && this.cachedAllTasks) {
-                const children = this.cachedAllTasks.filter(t =>
-                    t.filePath === task.filePath &&
-                    t.lineNumber > task.lineNumber &&
-                    t.indentLevel > task.indentLevel &&
-                    !t.date // Only include children without their own dates
-                );
-
-                // Find the next sibling or parent to determine where children end
-                const nextSibling = this.cachedAllTasks.find(t =>
-                    t.filePath === task.filePath &&
-                    t.lineNumber > task.lineNumber &&
-                    t.indentLevel <= task.indentLevel
-                );
-
-                // Filter children to only include those before the next sibling
-                const immediateChildren = nextSibling
-                    ? children.filter(c => c.lineNumber < nextSibling.lineNumber)
-                    : children;
-
-                // Render each child
-                immediateChildren.forEach(childTask => {
-                    this.taskRenderer.createTaskItem(this.listContainerEl, childTask, {
-                        searchTerm,
-                        onTaskToggle: async (task, checkboxEl) => {
-                            await this.handleTaskToggle(task, checkboxEl);
-                        },
-                        onTaskClick: (task, event) => {
-                            this.handleTaskClick(task, event);
-                        },
-                        onFileNameClick: (filePath, event) => {
-                            this.openNoteReusingLeaf(filePath, event);
-                        },
-                        onFlagToggle: async (task) => {
-                            await this.handleFlagToggle(task);
-                        },
-                        onCalendarToggle: async (task) => {
-                            await this.handleCalendarToggle(task);
-                        }
-                    });
-                });
-            }
-        });
-    }
-
-    /**
-     * Render pagination controls at the bottom
-     */
-    private renderTaskPaginationControls(): void {
-        // Remove existing pagination
-        const existingPagination = this.listContainerEl.querySelector('.pagination-controls');
-        if (existingPagination) {
-            existingPagination.remove();
-        }
-
-        const totalPages = Math.ceil(this.totalTasks.length / this.itemsPerPage);
-
-        // Only show pagination if we have more than one page
-        if (totalPages <= 1) {
-            return;
-        }
-
-        const paginationContainer = this.listContainerEl.createDiv({
-            cls: 'pagination-controls'
-        });
-
-        // Previous button
-        const prevButton = paginationContainer.createEl('button', {
-            cls: 'clickable-icon'
-        });
-        prevButton.disabled = this.currentTaskPage === 0;
-        // Add Lucide chevron-left icon using Obsidian's setIcon
-        setIcon(prevButton, 'chevron-left');
-        prevButton.addEventListener('click', () => {
-            if (this.currentTaskPage > 0) {
-                this.currentTaskPage--;
-                this.renderCurrentTaskPage(this.getSearchTerm());
-                this.renderTaskPaginationControls();
-                // Ensure scroll to top happens after DOM updates
-                window.requestAnimationFrame(() => {
-                    this.contentAreaEl.scrollTop = 0;
-                });
-            }
-        });
-
-        // Page info
-        paginationContainer.createSpan({
-            text: `${this.currentTaskPage + 1}/${totalPages}`,
-            cls: 'pagination-info pagination-info-compact'
-        });
-
-        // Next button
-        const nextButton = paginationContainer.createEl('button', {
-            cls: 'clickable-icon'
-        });
-        nextButton.disabled = this.currentTaskPage >= totalPages - 1;
-        // Add Lucide chevron-right icon using Obsidian's setIcon
-        setIcon(nextButton, 'chevron-right');
-        nextButton.addEventListener('click', () => {
-            if (this.currentTaskPage < totalPages - 1) {
-                this.currentTaskPage++;
-                this.renderCurrentTaskPage(this.getSearchTerm());
-                this.renderTaskPaginationControls();
-                // Ensure scroll to top happens after DOM updates
-                window.requestAnimationFrame(() => {
-                    this.contentAreaEl.scrollTop = 0;
-                });
-            }
-        });
-    }
-
-    /**
      * Find a markdown view already showing this file, preferring the active one.
      *
      * `getLeavesOfType` walks every leaf — main area, popout windows and the
@@ -3463,60 +1217,6 @@ export class HighlightsSidebarView extends ItemView {
         }
 
         void this.plugin.app.workspace.openLinkText(filePath, filePath, false);
-    }
-
-    private handleTaskClick(task: Task, event?: MouseEvent) {
-        const file = this.plugin.app.vault.getAbstractFileByPath(task.filePath);
-        if (!(file instanceof TFile)) {
-            return;
-        }
-
-        // Reuse a view that already has this file open, wherever it lives, rather
-        // than opening another copy in the main area.
-        const openView = this.findOpenMarkdownView(task.filePath, true);
-        if (openView) {
-            this.focusTaskInView(openView, task);
-            return;
-        }
-
-        void this.plugin.app.workspace.openLinkText(task.filePath, '', false).then(() => {
-            const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-            if (activeView) {
-                this.focusTaskInView(activeView, task);
-            }
-        });
-    }
-
-    /** Select and scroll to a task's line within an already-resolved view. */
-    private focusTaskInView(targetView: MarkdownView, task: Task) {
-        // Reading View has no visible editor, so the selection and scroll below
-        // would act on an offscreen CodeMirror. Scroll the rendered view instead.
-        if (targetView.getMode() === 'preview') {
-            this.scrollPreviewToLine(targetView, task.lineNumber);
-            return;
-        }
-
-        const editor = targetView.editor;
-        const line = editor.getLine(task.lineNumber);
-
-        // Find the start of the task text (after the checkbox). Uses the shared
-        // pattern so every supported state — including [/], [?] and the priority
-        // markers — is stripped rather than selected.
-        const taskMatch = line.match(CHECKBOX_REGEX_WITH_PREFIX);
-        const taskTextStart = taskMatch ? line.length - taskMatch[4].length : 0;
-        const taskTextEnd = line.length;
-
-        // Select the task text (highlighting it)
-        editor.setSelection(
-            { line: task.lineNumber, ch: taskTextStart },
-            { line: task.lineNumber, ch: taskTextEnd }
-        );
-
-        // Scroll to the line
-        editor.scrollIntoView({
-            from: { line: task.lineNumber, ch: taskTextStart },
-            to: { line: task.lineNumber, ch: taskTextEnd }
-        }, true);
     }
 
     private renderCollectionDetailView(collectionId: string) {
@@ -4210,30 +1910,6 @@ export class HighlightsSidebarView extends ItemView {
         this.plugin.settings.groupingMode = this.groupingMode;
     }
 
-    private updateSecondaryGroupButtonState(button: HTMLElement) {
-        const isTasksView = this.viewMode === 'tasks';
-        const hasPrimaryGrouping = this.groupingMode !== 'none';
-
-        // Disable button if not in tasks view or if no primary grouping
-        if (!isTasksView || !hasPrimaryGrouping) {
-            button.classList.add('disabled');
-            button.classList.remove('active');
-        } else {
-            button.classList.remove('disabled');
-            // Show active state if secondary grouping is enabled
-            if (this.taskSecondaryGroupingMode === 'none') {
-                button.classList.remove('active');
-            } else {
-                button.classList.add('active');
-            }
-        }
-    }
-
-    private saveTaskSecondaryGroupingModeToSettings() {
-        this.plugin.settings.taskSecondaryGroupingMode = this.taskSecondaryGroupingMode;
-        void this.plugin.saveSettings();
-    }
-
     /**
      * Update Actions button visibility based on selected highlights
      */
@@ -4412,21 +2088,19 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private updateSortButtonState(button: HTMLElement) {
-        const isTasksView = this.viewMode === 'tasks';
         // Check if date-based grouping is active (sorting doesn't apply for highlights)
         const isDateGrouping = this.groupingMode === 'date-created-asc' || this.groupingMode === 'date-created-desc';
 
         // Keep icon consistent
         setIcon(button, 'arrow-up-down');
 
-        // Only disable for highlights with date-based grouping, not for tasks
-        if (!isTasksView && isDateGrouping) {
+        if (isDateGrouping) {
             // Disable button when sorting doesn't apply (highlights only)
             (button as HTMLButtonElement).disabled = true;
             button.classList.remove('active');
             setTooltip(button, t('toolbar.sort'));
         } else {
-            // Normal sorting state (tasks always enabled)
+            // Normal sorting state
             (button as HTMLButtonElement).disabled = false;
             if (this.sortMode === 'none') {
                 button.classList.remove('active');
@@ -6479,21 +4153,6 @@ export class HighlightsSidebarView extends ItemView {
                 const tags = this.extractTagsFromHighlight(highlight);
                 tags.forEach(tag => allTags.add(tag));
             });
-        } else if (this.viewMode === 'tasks') {
-            // Get tags from task text using regex (supports nested tags with /)
-            const tagRegex = /#([a-zA-Z0-9_/-]+)/g;
-
-            // We need to scan all tasks to get tags
-            // Use the current tasks if available
-            if (this.currentTasks) {
-                this.currentTasks.forEach(task => {
-                    let match;
-                    const regex = new RegExp(tagRegex);
-                    while ((match = regex.exec(task.text)) !== null) {
-                        allTags.add(match[1]);
-                    }
-                });
-            }
         }
 
         return Array.from(allTags).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
@@ -6537,91 +4196,9 @@ export class HighlightsSidebarView extends ItemView {
         return collections.filter(collection => allCollections.has(collection.id));
     }
 
-    /**
-     * Get available special filters for tasks based on current task data
-     * Only returns filters that are relevant (have matching tasks)
-     */
-    private getAvailableSpecialFilters(): Array<{id: string, label: string, icon: string}> {
-        const filters: Array<{id: string, label: string, icon: string}> = [];
-
-        // Only show special filters in tasks mode
-        if (this.viewMode !== 'tasks' || !this.currentTasks) {
-            return filters;
-        }
-
-        const today = moment().startOf('day');
-
-        // Check if there are any flagged tasks
-        const hasFlagged = this.currentTasks.some(task => task.flagged);
-        if (hasFlagged) {
-            filters.push({ id: 'flagged', label: t('filterMenu.flagged'), icon: 'flag' });
-        }
-
-        // Check if there are any tasks with future dates
-        const hasUpcoming = this.currentTasks.some(task => {
-            if (!task.date) return false;
-            const taskDate = moment(task.date, 'YYYY-MM-DD');
-            return taskDate.isAfter(today);
-        });
-        if (hasUpcoming) {
-            filters.push({ id: 'upcoming', label: t('filterMenu.upcoming'), icon: 'calendar-arrow-up' });
-        }
-
-        // Check if there are any completed tasks
-        const hasCompleted = this.currentTasks.some(task => task.completed);
-        if (hasCompleted) {
-            filters.push({ id: 'completed', label: t('filterMenu.completed'), icon: 'check-circle' });
-        }
-
-        // Check if there are any incomplete tasks
-        const hasIncomplete = this.currentTasks.some(task => !task.completed);
-        if (hasIncomplete) {
-            filters.push({ id: 'incomplete', label: t('filterMenu.incomplete'), icon: 'circle' });
-        }
-
-        // Check if there are any tasks due today
-        const hasDueToday = this.currentTasks.some(task => {
-            if (!task.date) return false;
-            const taskDate = moment(task.date, 'YYYY-MM-DD');
-            return taskDate.isSame(today, 'day');
-        });
-        if (hasDueToday) {
-            filters.push({ id: 'due-today', label: t('filterMenu.dueToday'), icon: 'calendar-check' });
-        }
-
-        // Check if there are any overdue tasks
-        const hasOverdue = this.currentTasks.some(task => {
-            if (!task.date) return false;
-            const taskDate = moment(task.date, 'YYYY-MM-DD');
-            return taskDate.isBefore(today) && !task.completed;
-        });
-        if (hasOverdue) {
-            filters.push({ id: 'overdue', label: t('filterMenu.overdue'), icon: 'calendar-x' });
-        }
-
-        // Check if there are any tasks without dates
-        const hasNoDate = this.currentTasks.some(task => !task.date);
-        if (hasNoDate) {
-            filters.push({ id: 'no-date', label: t('filterMenu.noDate'), icon: 'calendar-off' });
-        }
-
-        return filters;
-    }
-
-    private getNoteDateFilters(): Array<{ id: string, label: string, icon: string }> {
-        // Note creation date filters - always available
-        return [
-            { id: 'created-last-7-days', label: t('filterMenu.last7Days'), icon: 'calendar-days' },
-            { id: 'created-last-30-days', label: t('filterMenu.last30Days'), icon: 'calendar-range' },
-            { id: 'created-last-year', label: t('filterMenu.lastYear'), icon: 'calendar-clock' }
-        ];
-    }
-
     private showTagFilterMenu(event: MouseEvent) {
         const availableTags = this.getAllTagsInFile();
         const availableCollections = this.getAllCollectionsInCurrentScope();
-        const availableSpecialFilters = this.getAvailableSpecialFilters();
-        const noteDateFilters = this.viewMode === 'tasks' ? this.getNoteDateFilters() : [];
 
         // Sort collections alphabetically with locale-aware sorting
         const sortedCollections = availableCollections.sort((a, b) =>
@@ -6636,7 +4213,6 @@ export class HighlightsSidebarView extends ItemView {
                 onClick: () => {
                     this.selectedTags.clear();
                     this.selectedCollections.clear();
-                    this.selectedSpecialFilters.clear();
                     this.selectedColors.clear();
                     this.setTypeFilter('all');
                     this.saveCurrentTabSettings();
@@ -6645,97 +4221,6 @@ export class HighlightsSidebarView extends ItemView {
                 }
             }
         ];
-
-        // Group status filters (Flagged, Completed, Incomplete)
-        const statusFilters = availableSpecialFilters.filter(f =>
-            f.id === 'flagged' || f.id === 'completed' || f.id === 'incomplete'
-        );
-
-        // Group due date filters (Overdue, Due Today, This Week, No Date)
-        const dueDateFilters = availableSpecialFilters.filter(f =>
-            f.id === 'overdue' || f.id === 'due-today' || f.id === 'upcoming' || f.id === 'no-date'
-        );
-
-        // Add Status category (if filters exist)
-        if (statusFilters.length > 0) {
-            items.push({
-                id: 'category-status',
-                text: 'Status',
-                icon: 'list-checks',
-                expandable: true,
-                expanded: false,
-                children: statusFilters.map(filter => ({
-                    id: `special-${filter.id}`,
-                    text: filter.label,
-                    uncheckedIcon: filter.icon,
-                    checked: this.selectedSpecialFilters.has(filter.id),
-                    onClick: () => {
-                        if (this.selectedSpecialFilters.has(filter.id)) {
-                            this.selectedSpecialFilters.delete(filter.id);
-                        } else {
-                            this.selectedSpecialFilters.add(filter.id);
-                        }
-                        this.saveCurrentTabSettings();
-                        this.renderContent();
-                        this.showTagActive();
-                    }
-                }))
-            });
-        }
-
-        // Add Due Date category (if filters exist)
-        if (dueDateFilters.length > 0) {
-            items.push({
-                id: 'category-due-date',
-                text: 'Due Date',
-                icon: 'calendar',
-                expandable: true,
-                expanded: false,
-                children: dueDateFilters.map(filter => ({
-                    id: `special-${filter.id}`,
-                    text: filter.label,
-                    uncheckedIcon: filter.icon,
-                    checked: this.selectedSpecialFilters.has(filter.id),
-                    onClick: () => {
-                        if (this.selectedSpecialFilters.has(filter.id)) {
-                            this.selectedSpecialFilters.delete(filter.id);
-                        } else {
-                            this.selectedSpecialFilters.add(filter.id);
-                        }
-                        this.saveCurrentTabSettings();
-                        this.renderContent();
-                        this.showTagActive();
-                    }
-                }))
-            });
-        }
-
-        // Add Note Created category (if filters exist)
-        if (noteDateFilters.length > 0) {
-            items.push({
-                id: 'category-note-created',
-                text: t('filterMenu.noteCreated'),
-                icon: 'file-clock',
-                expandable: true,
-                expanded: false,
-                children: noteDateFilters.map(filter => ({
-                    id: `special-${filter.id}`,
-                    text: filter.label,
-                    uncheckedIcon: filter.icon,
-                    checked: this.selectedSpecialFilters.has(filter.id),
-                    onClick: () => {
-                        if (this.selectedSpecialFilters.has(filter.id)) {
-                            this.selectedSpecialFilters.delete(filter.id);
-                        } else {
-                            this.selectedSpecialFilters.add(filter.id);
-                        }
-                        this.saveCurrentTabSettings();
-                        this.renderContent();
-                        this.showTagActive();
-                    }
-                }))
-            });
-        }
 
         // Add Tags category (if tags exist)
         if (availableTags.length > 0) {
@@ -7003,28 +4488,12 @@ export class HighlightsSidebarView extends ItemView {
             this.searchInputEl.classList.remove('disabled');
         }
 
-        // Enable toolbar buttons. Addressed by role rather than by position: the row's
-        // contents have changed over time and index-based rules silently target the
-        // wrong button when one is added or moved.
-        this.setToolbarButtonsDisabled(button => {
-            const action = button.getAttribute('data-action');
-            // Comment controls act on highlights, which the Tasks tab does not show
-            return this.viewMode === 'tasks' && action === 'comments';
-        });
+        this.setToolbarButtonsDisabled(() => false);
 
         // Update collection nav button styling
         if (this.collectionNavButton) {
             this.updateCollectionNavButton(this.collectionNavButton);
         }
-
-        // Update secondary group button state
-        // COMMENTED OUT FOR NOW
-        /*
-        const secondaryGroupButton = this.contentEl.querySelector('.highlights-secondary-group-button') as HTMLElement;
-        if (secondaryGroupButton) {
-            this.updateSecondaryGroupButtonState(secondaryGroupButton);
-        }
-        */
     }
 
     private disableSearchAndToolbar() {
@@ -7072,7 +4541,7 @@ export class HighlightsSidebarView extends ItemView {
 
         const tagFilterButton = this.contentEl.querySelector('.highlights-tag-filter-button') as HTMLElement;
         if (tagFilterButton) {
-            if (this.selectedTags.size > 0 || this.selectedCollections.size > 0 || this.selectedSpecialFilters.size > 0
+            if (this.selectedTags.size > 0 || this.selectedCollections.size > 0
                 || this.selectedColors.size > 0 || this.typeFilter !== 'all') {
                 tagFilterButton.classList.add('active');
             } else {
@@ -7314,9 +4783,6 @@ export class HighlightsSidebarView extends ItemView {
      * but without grouping/sorting/pagination.
      */
     private getCurrentlyVisibleHighlights(): Highlight[] {
-        // Tasks tab has no highlights
-        if (this.viewMode === 'tasks') return [];
-
         let source: Highlight[] = [];
 
         if (this.viewMode === 'current') {
@@ -7378,33 +4844,11 @@ export class HighlightsSidebarView extends ItemView {
         });
     }
 
-    private compareTasksBySortMode(a: Task, b: Task, fallback: SortFallback): number {
-        return compareTasks(a, b, this.sortMode, {
-            fallback,
-            getNoteCreated: this.getNoteCreated
-        });
-    }
-
-    /**
-     * Tasks currently rendered in the Tasks tab, after every filter has been
-     * applied. Captured during render so the copy action can reuse exactly what
-     * the user is looking at rather than recomputing the filter chain.
-     */
-    private getCurrentlyVisibleTasks(): Task[] {
-        return this.currentVisibleTasks ?? [];
-    }
-
     /**
      * What this panel's tab is showing, after search and filters, for the
      * status bar counter (issue #129).
      */
     public getStatusBarCounts(): StatusBarCounts {
-        if (this.viewMode === 'tasks') {
-            // With only the current note's tasks on screen, the main list isn't rendered
-            const settings = this.plugin.settings;
-            const onlyCurrentNote = settings.showOnlyCurrentNoteTasks && settings.showCurrentNoteTasksSection;
-            return { tasks: onlyCurrentNote ? this.getCurrentFileTasks().length : this.getCurrentlyVisibleTasks().length };
-        }
         if (this.viewMode === 'collections' && !this.currentCollectionId) {
             return { collections: this.plugin.collectionsManager.getAllCollections().length };
         }
@@ -7420,14 +4864,8 @@ export class HighlightsSidebarView extends ItemView {
      * three formats are added as flat items so the feature still works.
      */
     private addCopyVisibleMenuItems(menu: Menu) {
-        const isTasks = this.viewMode === 'tasks';
-        const count = isTasks
-            ? this.getCurrentlyVisibleTasks().length
-            : this.getCurrentlyVisibleHighlights().length;
-
-        const title = isTasks
-            ? t('toolbar.copyVisibleResults', { count })
-            : t('toolbar.copyVisibleHighlights', { count });
+        const count = this.getCurrentlyVisibleHighlights().length;
+        const title = t('toolbar.copyVisibleHighlights', { count });
 
         const formats: Array<{ format: CopyFormat; label: string; icon: string }> = [
             { format: 'with-syntax', label: t('toolbar.copyFormat.withSyntax'), icon: 'code' },
@@ -7435,13 +4873,7 @@ export class HighlightsSidebarView extends ItemView {
             { format: 'list', label: t('toolbar.copyFormat.list'), icon: 'list' }
         ];
 
-        const copy = (format: CopyFormat) => {
-            if (isTasks) {
-                void this.copyVisibleTasksToClipboard(format);
-            } else {
-                void this.copyVisibleHighlightsToClipboard(format);
-            }
-        };
+        const copy = (format: CopyFormat) => void this.copyVisibleHighlightsToClipboard(format);
 
         let usedSubmenu = false;
 
@@ -7502,33 +4934,6 @@ export class HighlightsSidebarView extends ItemView {
             ordered.map(h => formatHighlightForCopy(h, format)),
             format
         );
-
-        await this.writeToClipboard(text, visible.length);
-    }
-
-    /**
-     * Copy all currently-visible (post-filter) tasks to the clipboard.
-     */
-    private async copyVisibleTasksToClipboard(format: CopyFormat) {
-        const visible = this.getCurrentlyVisibleTasks();
-        if (visible.length === 0) {
-            new Notice(t('notices.noHighlightsToCopy'));
-            return;
-        }
-
-        // Sort by file path then line so the output reflects document order.
-        const ordered = [...visible].sort((a, b) => {
-            if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
-            return a.lineNumber - b.lineNumber;
-        });
-
-        // Copy what is on screen: if Tasks plugin metadata is hidden in the
-        // sidebar, it should not reappear in the clipboard either.
-        const hideMetadata = this.plugin.settings.hideTasksPluginMetadata;
-        const text = joinTaskEntries(ordered.map(task => formatTaskForCopy(
-            hideMetadata ? { ...task, text: stripTasksPluginMetadata(task.text) } : task,
-            format
-        )));
 
         await this.writeToClipboard(text, visible.length);
     }
@@ -8018,220 +5423,5 @@ export class HighlightsSidebarView extends ItemView {
             return collectionNames.includes(filterNode.value);
         }
         return false;
-    }
-}
-
-/**
- * Modal for entering or editing a task date
- */
-class DateInputModal extends Modal {
-    private dateFormat: string;
-    private currentDate: string;
-    private onSubmit: (date: string | null) => void | Promise<void>;
-    private dateSuggest: DateSuggest;
-
-    constructor(app: App, dateFormat: string, currentDate: string, onSubmit: (date: string | null) => void | Promise<void>) {
-        super(app);
-        this.dateFormat = dateFormat;
-        this.currentDate = currentDate;
-        this.onSubmit = onSubmit;
-    }
-
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.empty();
-
-        // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: t('modals.taskDate.title') });
-        titleEl.style.marginBottom = '20px';
-
-        // Date input field container
-        const inputContainer = contentEl.createDiv({ cls: 'date-input-container' });
-
-        const input = inputContainer.createEl('input', {
-            type: 'text',
-            placeholder: this.dateFormat,
-            value: this.currentDate,
-            cls: 'date-input-field'
-        });
-
-        // Initialize the date suggestion system
-        this.dateSuggest = new DateSuggest(this.app, input, this.dateFormat);
-
-        // Error message element (hidden by default)
-        const errorEl = inputContainer.createDiv({ cls: 'date-input-error' });
-        errorEl.style.display = 'none';
-
-        // Focus the input
-        input.focus();
-
-        // Only trigger input event to show suggestions if there's no current date
-        window.setTimeout(() => {
-            if (!this.currentDate) {
-                input.dispatchEvent(new Event('input'));
-            }
-            input.select();
-        }, 50);
-
-        // Natural language date parser
-        const parseNaturalLanguage = (input: string): moment.Moment | null => {
-            const normalized = input.toLowerCase().trim();
-
-            // Absolute dates
-            if (normalized === 'today') {
-                return moment();
-            }
-            if (normalized === 'tomorrow') {
-                return moment().add(1, 'day');
-            }
-            if (normalized === 'yesterday') {
-                return moment().subtract(1, 'day');
-            }
-
-            // Relative dates: "2 weeks from now", "3 days ago", "1 month from now"
-            const relativeRegex = /^(\d+)\s+(day|days|week|weeks|month|months|year|years)\s+(ago|from now)$/;
-            const relativeMatch = normalized.match(relativeRegex);
-            if (relativeMatch) {
-                const amount = parseInt(relativeMatch[1]);
-                const unit = relativeMatch[2].replace(/s$/, '') as moment.unitOfTime.DurationConstructor; // Remove plural 's'
-                const direction = relativeMatch[3];
-
-                if (direction === 'ago') {
-                    return moment().subtract(amount, unit);
-                } else {
-                    return moment().add(amount, unit);
-                }
-            }
-
-            // Named day references: "last Friday", "next Monday", "this Thursday"
-            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const namedDayRegex = /^(last|next|this)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/;
-            const namedDayMatch = normalized.match(namedDayRegex);
-            if (namedDayMatch) {
-                const direction = namedDayMatch[1];
-                const dayName = namedDayMatch[2];
-                const targetDay = dayNames.indexOf(dayName);
-                const today = moment();
-                const currentDay = today.day();
-
-                if (direction === 'last') {
-                    // Find the most recent occurrence of that day
-                    const daysAgo = currentDay >= targetDay ? currentDay - targetDay : 7 - (targetDay - currentDay);
-                    return moment().subtract(daysAgo === 0 ? 7 : daysAgo, 'days');
-                } else if (direction === 'next') {
-                    // Find the next occurrence of that day
-                    const daysAhead = targetDay > currentDay ? targetDay - currentDay : 7 - (currentDay - targetDay);
-                    return moment().add(daysAhead === 0 ? 7 : daysAhead, 'days');
-                } else if (direction === 'this') {
-                    // Find this week's occurrence of that day
-                    if (targetDay >= currentDay) {
-                        // If the target day is today or later this week
-                        return moment().add(targetDay - currentDay, 'days');
-                    } else {
-                        // If the target day already passed this week, use next week's
-                        return moment().add(7 + (targetDay - currentDay), 'days');
-                    }
-                }
-            }
-
-            return null;
-        };
-
-        // Validation function
-        const validateDate = (dateStr: string): boolean => {
-            if (!dateStr) {
-                return true; // Empty is valid (will remove date)
-            }
-
-            // Try natural language parsing first
-            const naturalDate = parseNaturalLanguage(dateStr);
-            if (naturalDate && naturalDate.isValid()) {
-                return true;
-            }
-
-            // Fall back to exact format parsing
-            const parsedDate = moment(dateStr, this.dateFormat, true);
-            return parsedDate.isValid();
-        };
-
-        // Show/hide error message
-        const showError = (message: string) => {
-            errorEl.textContent = message;
-            errorEl.style.display = 'block';
-            input.addClass('has-error');
-        };
-
-        const hideError = () => {
-            errorEl.style.display = 'none';
-            input.removeClass('has-error');
-        };
-
-        // Handle save action
-        const handleSave = () => {
-            const dateValue = input.value.trim();
-
-            if (validateDate(dateValue)) {
-                hideError();
-
-                // Convert natural language to proper format if needed
-                let finalDate: string | null = dateValue || null;
-                if (dateValue) {
-                    const naturalDate = parseNaturalLanguage(dateValue);
-                    if (naturalDate && naturalDate.isValid()) {
-                        // Convert to the expected format
-                        finalDate = naturalDate.format(this.dateFormat);
-                    }
-                }
-
-                void this.onSubmit(finalDate);
-                this.close();
-            } else {
-                showError(`Invalid date format. Please use ${this.dateFormat} or natural language (e.g., "today", "2 weeks from now")`);
-            }
-        };
-
-        // Button container
-        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-
-        // Save button
-        const saveButton = buttonContainer.createEl('button', { text: 'Save', cls: 'mod-cta' });
-        saveButton.addEventListener('click', handleSave);
-
-        // Remove button (only if there's a current date)
-        if (this.currentDate) {
-            const removeButton = buttonContainer.createEl('button', { text: 'Remove Date', cls: 'mod-warning' });
-            removeButton.addEventListener('click', () => {
-                void this.onSubmit(null);
-                this.close();
-            });
-        }
-
-        // Cancel button
-        const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
-        cancelButton.addEventListener('click', () => {
-            this.close();
-        });
-
-        // Handle Enter key (AbstractInputSuggest handles arrow keys automatically)
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                // Small delay to allow AbstractInputSuggest to handle selection first
-                window.setTimeout(() => {
-                    handleSave();
-                }, 0);
-            } else if (e.key === 'Escape') {
-                this.close();
-            }
-        });
-
-        // Clear error on input
-        input.addEventListener('input', () => {
-            hideError();
-        });
-    }
-
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
     }
 }

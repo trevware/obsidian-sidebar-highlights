@@ -10,22 +10,20 @@
  */
 
 /** Tabs in render order: narrowest scope first, widening outward. */
-export type TabId = 'current' | 'folder' | 'all' | 'collections' | 'tasks';
+export type TabId = 'current' | 'folder' | 'all' | 'collections';
 
 export interface TabVisibility {
     showCurrentNoteTab: boolean;
     showCurrentFolderTab: boolean;
     showAllNotesTab: boolean;
     showCollectionsTab: boolean;
-    showTasksTab: boolean;
 }
 
 const TAB_ORDER: ReadonlyArray<{ id: TabId; setting: keyof TabVisibility }> = [
     { id: 'current', setting: 'showCurrentNoteTab' },
     { id: 'folder', setting: 'showCurrentFolderTab' },
     { id: 'all', setting: 'showAllNotesTab' },
-    { id: 'collections', setting: 'showCollectionsTab' },
-    { id: 'tasks', setting: 'showTasksTab' }
+    { id: 'collections', setting: 'showCollectionsTab' }
 ];
 
 /** The tabs actually rendered, in the order they appear. */

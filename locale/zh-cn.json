@@ -9,7 +9,6 @@
     "currentNote": "当前笔记",
     "allNotes": "所有笔记",
     "collections": "合集",
-    "tasks": "任务",
     "currentFolder": "当前文件夹",
     "currentFolderNamed": "当前文件夹：{{folder}}"
   },
@@ -60,10 +59,6 @@
       "showCollectionsTab": {
         "name": "显示【合集】标签页",
         "desc": "在侧边栏中显示【合集】标签页。"
-      },
-      "showTasksTab": {
-        "name": "显示【任务】标签页",
-        "desc": "在侧边栏中显示【任务】标签页。"
       },
       "showCurrentFolderTab": {
         "name": "显示【当前文件夹】标签页",
@@ -180,25 +175,9 @@
     },
     "tasks": {
       "heading": "任务",
-      "showTaskContext": {
-        "name": "显示任务笔记",
-        "desc": "包含项目符号文本的任务将在任务下方显示为笔记。"
-      },
       "hideTasksPluginMetadata": {
         "name": "隐藏 Tasks 插件元数据",
         "desc": "在侧边栏的任务文本中隐藏 Tasks 插件添加的计划元数据（截止日期、计划日期、重复规则、优先级）。不会修改您的笔记。"
-      },
-      "showCompletedTasks": {
-        "name": "显示已完成的任务",
-        "desc": "在【任务】标签页中包含已完成和已取消的任务 (- [x]、- [-])。"
-      },
-      "showCurrentNoteSection": {
-        "name": "显示当前笔记任务",
-        "desc": "在【任务】标签页顶部显示一个专门部分,显示当前活动笔记中的任务。"
-      },
-      "showOnlyCurrentNoteTasks": {
-        "name": "仅显示当前笔记任务",
-        "desc": "启用时，隐藏所有其他任务，仅显示当前笔记中的任务。"
       },
       "taskDateFormat": {
         "name": "截止日期格式",
@@ -246,12 +225,10 @@
     "search": "搜索",
     "searchPlaceholder": "搜索高亮，使用 #标签 @合集（-# 排除）...",
     "group": "分组高亮",
-    "secondaryGroup": "二级分组",
     "sort": "排序高亮",
     "toggleFollowEditorScroll": "跟随编辑器滚动",
     "moreActions": "更多操作",
     "copyVisibleHighlights": "复制可见高亮 ({{count}})",
-    "copyVisibleResults": "复制可见结果 ({{count}})",
     "copyFormat": {
       "withSyntax": "包含标记",
       "plain": "纯文本",
@@ -278,14 +255,10 @@
     "commentsDesc": "高亮注释 ↓",
     "dateAsc": "创建日期 ↑",
     "dateDesc": "创建日期 ↓",
-    "dueDate": "截止日期",
     "parent": "父级",
     "collection": "合集",
     "filename": "文件名",
-    "heading": "标题",
-    "tag": "标签",
-    "date": "日期",
-    "flagged": "已标记"
+    "heading": "标题"
   },
   "sorting": {
     "none": "无",
@@ -320,16 +293,10 @@
     "noHighlightsInFile": "此文件中无高亮。",
     "noMatchingAcrossAll": "所有文件中无匹配的高亮。",
     "noHighlightsAcrossAll": "所有文件中未找到高亮。",
-    "loadingTasks": "加载任务中...",
-    "noMatchingTasks": "所有文件中无匹配的任务。",
-    "noTasksAcrossAll": "所有文件中未找到任务。",
     "noCollectionsAvailable": "无可用合集",
     "noTagsOrFilters": "未找到标签或过滤器",
     "overdue": "已逾期",
     "today": "今天",
-    "upcoming": "即将到来",
-    "flagged": "已标记",
-    "unflagged": "未标记",
     "noHighlightsInFolder": "{{folder}} 中没有高亮。",
     "noMatchingInFolder": "{{folder}} 中没有匹配的高亮。"
   },
@@ -348,62 +315,12 @@
   },
   "filterMenu": {
     "clear": "清除",
-    "flagged": "已标记",
-    "upcoming": "本周",
-    "completed": "已完成",
-    "incomplete": "未完成",
-    "dueToday": "今天到期",
-    "overdue": "已逾期",
-    "noDate": "无日期",
-    "noteCreated": "笔记创建",
-    "last7Days": "最近7天",
-    "last30Days": "最近30天",
-    "lastYear": "最近一年",
     "colors": "颜色",
     "type": {
       "heading": "类型",
       "all": "高亮与批注",
       "highlightsOnly": "仅高亮",
       "commentsOnly": "仅批注"
-    }
-  },
-  "dateSuggestions": {
-    "today": "今天",
-    "tomorrow": "明天",
-    "yesterday": "昨天",
-    "endOfWeek": "本周结束",
-    "inOneWeek": "一周后",
-    "inTwoWeeks": "两周后",
-    "dayFromNow": "{{count}} 天后",
-    "daysFromNow": "{{count}} 天后",
-    "dayAgo": "{{count}} 天前",
-    "daysAgo": "{{count}} 天前",
-    "weekFromNow": "{{count}} 周后",
-    "weeksFromNow": "{{count}} 周后",
-    "weekAgo": "{{count}} 周前",
-    "weeksAgo": "{{count}} 周前",
-    "monthFromNow": "{{count}} 月后",
-    "monthsFromNow": "{{count}} 月后",
-    "monthAgo": "{{count}} 月前",
-    "monthsAgo": "{{count}} 月前",
-    "next": "下",
-    "last": "上",
-    "this": "本",
-    "monday": "周一",
-    "tuesday": "周二",
-    "wednesday": "周三",
-    "thursday": "周四",
-    "friday": "周五",
-    "saturday": "周六",
-    "sunday": "周日"
-  },
-  "tasks": {
-    "currentNote": "当前笔记",
-    "status": {
-      "todo": "待办",
-      "inProgress": "进行中",
-      "question": "疑问",
-      "cancelled": "已取消"
     }
   },
   "modals": {
@@ -437,9 +354,6 @@
       "save": "保存",
       "removedNonExistent": "已删除 {{count}} 个不存在的{{paths}}",
       "alreadyExists": "{{path}} 已在过滤器列表中"
-    },
-    "taskDate": {
-      "title": "截止日期"
     },
     "customPattern": {
       "editTitle": "编辑自定义模式",
@@ -505,8 +419,6 @@
     "file": "{{count}} 篇笔记",
     "files": "{{count}} 篇笔记",
     "collection": "{{count}} 个合集",
-    "collections": "{{count}} 个合集",
-    "task": "{{count}} 个任务",
-    "tasks": "{{count}} 个任务"
+    "collections": "{{count}} 个合集"
   }
 }

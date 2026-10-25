@@ -1,6 +1,5 @@
 import { setIcon, setTooltip } from 'obsidian';
 import { t } from '../i18n';
-import { squircleifyIcon } from '../utils/squircle-icon';
 import { describeSegments, StatusBarCountKind, StatusBarCounts, visibleSegments } from '../utils/status-bar-counts';
 
 // The same icons the sidebar uses for each thing, so the two read as one counter
@@ -9,7 +8,6 @@ const SEGMENT_ICONS: Record<StatusBarCountKind, string> = {
     nativeComments: 'captions',
     files: 'file-text',
     collections: 'folder-open',
-    tasks: 'square-check',
 };
 
 /**
@@ -59,7 +57,6 @@ export class StatusBarCounter {
             const segmentEl = this.el.createSpan({ cls: 'sidebar-highlights-status-bar-segment' });
             const iconEl = segmentEl.createSpan({ cls: 'sidebar-highlights-status-bar-icon' });
             setIcon(iconEl, SEGMENT_ICONS[kind]);
-            if (kind === 'tasks') squircleifyIcon(iconEl);
             segmentEl.createSpan({ text: count.toLocaleString() });
         }
         setTooltip(this.el, describeSegments(segments, t), { placement: 'top' });

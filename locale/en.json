@@ -12,7 +12,6 @@
     "currentNote": "Current note",
     "allNotes": "All notes",
     "collections": "Collections",
-    "tasks": "Tasks",
     "currentFolder": "Current folder",
     "currentFolderNamed": "Current folder: {{folder}}"
   },
@@ -64,10 +63,6 @@
         "name": "Show Collections tab",
         "desc": "Show the Collections tab in the sidebar."
       },
-      "showTasksTab": {
-        "name": "Show Tasks tab",
-        "desc": "Show the Tasks tab in the sidebar."
-      },
       "showCurrentFolderTab": {
         "name": "Show Current Folder tab",
         "desc": "Lists highlights from every note in the folder of the note you're viewing."
@@ -110,10 +105,6 @@
       "highlightTextWeight": {
         "name": "Highlight text weight",
         "desc": "Adjust font weight for sidebar highlights (default Normal)."
-      },
-      "taskTextWeight": {
-        "name": "Task text weight",
-        "desc": "Adjust font weight for sidebar tasks (default Normal)."
       },
       "fontWeight": {
         "light": "Light (300)",
@@ -198,25 +189,9 @@
     },
     "tasks": {
       "heading": "Tasks",
-      "showTaskContext": {
-        "name": "Show task notes",
-        "desc": "Tasks containing bulleted text will display as notes under the task."
-      },
       "hideTasksPluginMetadata": {
         "name": "Hide Tasks plugin metadata",
         "desc": "Hide scheduling metadata added by the Tasks plugin (due and scheduled dates, recurrence, priority) from task text in the sidebar. Your notes are not changed."
-      },
-      "showCompletedTasks": {
-        "name": "Show completed tasks",
-        "desc": "Include completed and cancelled tasks (- [x], - [-]) in the Tasks tab."
-      },
-      "showCurrentNoteSection": {
-        "name": "Show current note tasks",
-        "desc": "Display a dedicated section at the top of the Tasks tab showing tasks from the currently active note."
-      },
-      "showOnlyCurrentNoteTasks": {
-        "name": "Only display current note tasks",
-        "desc": "When enabled, hide all other tasks and only show tasks from the current note."
       },
       "taskDateFormat": {
         "name": "Due date format",
@@ -264,12 +239,10 @@
     "search": "Search",
     "searchPlaceholder": "Search highlights, use #tag @collection (-# to exclude)...",
     "group": "Group highlights",
-    "secondaryGroup": "Secondary grouping",
     "sort": "Sort highlights",
     "toggleFollowEditorScroll": "Follow editor scroll",
     "moreActions": "More actions",
     "copyVisibleHighlights": "Copy visible highlights ({{count}})",
-    "copyVisibleResults": "Copy visible results ({{count}})",
     "copyFormat": {
       "withSyntax": "With syntax",
       "plain": "Plain text",
@@ -296,14 +269,10 @@
     "commentsDesc": "Highlight comments ↓",
     "dateAsc": "Date created ↑",
     "dateDesc": "Date created ↓",
-    "dueDate": "Due date",
     "parent": "Parent",
     "collection": "Collection",
     "filename": "Filename",
-    "heading": "Heading",
-    "tag": "Tag",
-    "date": "Date",
-    "flagged": "Flagged"
+    "heading": "Heading"
   },
   "sorting": {
     "none": "None",
@@ -338,16 +307,10 @@
     "noHighlightsInFile": "No highlights in this file.",
     "noMatchingAcrossAll": "No matching highlights across all files.",
     "noHighlightsAcrossAll": "No highlights found across all files.",
-    "loadingTasks": "Loading tasks...",
-    "noMatchingTasks": "No matching tasks across all files.",
-    "noTasksAcrossAll": "No tasks found across all files.",
     "noCollectionsAvailable": "No collections available",
     "noTagsOrFilters": "No tags or filters found",
     "overdue": "Overdue",
     "today": "Today",
-    "upcoming": "Upcoming",
-    "flagged": "Flagged",
-    "unflagged": "Unflagged",
     "noHighlightsInFolder": "No highlights in {{folder}}.",
     "noMatchingInFolder": "No matching highlights in {{folder}}."
   },
@@ -366,62 +329,12 @@
   },
   "filterMenu": {
     "clear": "Clear",
-    "flagged": "Flagged",
-    "upcoming": "This Week",
-    "completed": "Completed",
-    "incomplete": "Incomplete",
-    "dueToday": "Due Today",
-    "overdue": "Overdue",
-    "noDate": "No Date",
-    "noteCreated": "Note Created",
-    "last7Days": "Last 7 days",
-    "last30Days": "Last 30 days",
-    "lastYear": "Last year",
     "colors": "Colours",
     "type": {
       "heading": "Type",
       "all": "Highlights and comments",
       "highlightsOnly": "Highlights only",
       "commentsOnly": "Comments only"
-    }
-  },
-  "dateSuggestions": {
-    "today": "Today",
-    "tomorrow": "Tomorrow",
-    "yesterday": "Yesterday",
-    "endOfWeek": "End of this week",
-    "inOneWeek": "In one week",
-    "inTwoWeeks": "In two weeks",
-    "dayFromNow": "{{count}} day from now",
-    "daysFromNow": "{{count}} days from now",
-    "dayAgo": "{{count}} day ago",
-    "daysAgo": "{{count}} days ago",
-    "weekFromNow": "{{count}} week from now",
-    "weeksFromNow": "{{count}} weeks from now",
-    "weekAgo": "{{count}} week ago",
-    "weeksAgo": "{{count}} weeks ago",
-    "monthFromNow": "{{count}} month from now",
-    "monthsFromNow": "{{count}} months from now",
-    "monthAgo": "{{count}} month ago",
-    "monthsAgo": "{{count}} months ago",
-    "next": "Next",
-    "last": "Last",
-    "this": "This",
-    "monday": "Monday",
-    "tuesday": "Tuesday",
-    "wednesday": "Wednesday",
-    "thursday": "Thursday",
-    "friday": "Friday",
-    "saturday": "Saturday",
-    "sunday": "Sunday"
-  },
-  "tasks": {
-    "currentNote": "Current Note",
-    "status": {
-      "todo": "To do",
-      "inProgress": "In progress",
-      "question": "Question",
-      "cancelled": "Cancelled"
     }
   },
   "modals": {
@@ -455,9 +368,6 @@
       "save": "Save",
       "removedNonExistent": "Removed {{count}} {{paths}} that no longer exist",
       "alreadyExists": "{{path}} is already in the filter list"
-    },
-    "taskDate": {
-      "title": "Due Date"
     },
     "customPattern": {
       "editTitle": "Edit custom pattern",
@@ -523,9 +433,7 @@
     "file": "{{count}} note",
     "files": "{{count}} notes",
     "collection": "{{count}} collection",
-    "collections": "{{count}} collections",
-    "task": "{{count}} task",
-    "tasks": "{{count}} tasks"
+    "collections": "{{count}} collections"
   },
   "tasksTab": {
     "title": "Tasks",

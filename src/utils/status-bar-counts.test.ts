@@ -33,8 +33,8 @@ describe('visibleSegments', () => {
     });
 
     it('keeps the same order whatever order the counts arrive in', () => {
-        const segments = visibleSegments({ tasks: 1, files: 2, collections: 3, nativeComments: 4, highlights: 5 });
-        expect(segments.map(s => s.kind)).toEqual(['highlights', 'nativeComments', 'files', 'collections', 'tasks']);
+        const segments = visibleSegments({ files: 2, collections: 3, nativeComments: 4, highlights: 5 });
+        expect(segments.map(s => s.kind)).toEqual(['highlights', 'nativeComments', 'files', 'collections']);
     });
 
     it('carries each count through', () => {

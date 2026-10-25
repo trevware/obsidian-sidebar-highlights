@@ -4,34 +4,32 @@ const ALL: TabVisibility = {
     showCurrentNoteTab: true,
     showCurrentFolderTab: true,
     showAllNotesTab: true,
-    showCollectionsTab: true,
-    showTasksTab: true
+    showCollectionsTab: true
 };
 
 const NONE: TabVisibility = {
     showCurrentNoteTab: false,
     showCurrentFolderTab: false,
     showAllNotesTab: false,
-    showCollectionsTab: false,
-    showTasksTab: false
+    showCollectionsTab: false
 };
 
 describe('visibleTabs', () => {
     it('orders tabs from the narrowest scope outward', () => {
-        expect(visibleTabs(ALL)).toEqual(['current', 'folder', 'all', 'collections', 'tasks']);
+        expect(visibleTabs(ALL)).toEqual(['current', 'folder', 'all', 'collections']);
     });
 
     it('omits hidden tabs', () => {
         expect(visibleTabs({ ...ALL, showCurrentFolderTab: false, showCollectionsTab: false }))
-            .toEqual(['current', 'all', 'tasks']);
+            .toEqual(['current', 'all']);
     });
 
     it('returns nothing when every tab is hidden', () => {
         expect(visibleTabs(NONE)).toEqual([]);
     });
 
-    it('matches the shipped default, where the folder and tasks tabs are opt-in', () => {
-        expect(visibleTabs({ ...ALL, showCurrentFolderTab: false, showTasksTab: false }))
+    it('matches the shipped default, where the folder tab is opt-in', () => {
+        expect(visibleTabs({ ...ALL, showCurrentFolderTab: false }))
             .toEqual(['current', 'all', 'collections']);
     });
 });
@@ -42,7 +40,7 @@ describe('tabIndex', () => {
         const visibility = { ...ALL, showCurrentNoteTab: false };
         expect(tabIndex(visibility, 'folder')).toBe(0);
         expect(tabIndex(visibility, 'all')).toBe(1);
-        expect(tabIndex(visibility, 'tasks')).toBe(3);
+        expect(tabIndex(visibility, 'collections')).toBe(2);
     });
 
     it('shifts later tabs when an earlier one is added', () => {
@@ -52,7 +50,7 @@ describe('tabIndex', () => {
     });
 
     it('reports -1 for a hidden tab', () => {
-        expect(tabIndex({ ...ALL, showTasksTab: false }, 'tasks')).toBe(-1);
+        expect(tabIndex({ ...ALL, showCollectionsTab: false }, 'collections')).toBe(-1);
     });
 });
 
@@ -63,8 +61,8 @@ describe('firstVisibleTab', () => {
 
     it('falls through the order as tabs are hidden', () => {
         expect(firstVisibleTab({ ...ALL, showCurrentNoteTab: false })).toBe('folder');
-        expect(firstVisibleTab({ ...NONE, showCollectionsTab: true, showTasksTab: true })).toBe('collections');
-        expect(firstVisibleTab({ ...NONE, showTasksTab: true })).toBe('tasks');
+        expect(firstVisibleTab({ ...NONE, showAllNotesTab: true, showCollectionsTab: true })).toBe('all');
+        expect(firstVisibleTab({ ...NONE, showCollectionsTab: true })).toBe('collections');
     });
 
     it('returns null when every tab is hidden', () => {

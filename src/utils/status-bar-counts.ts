@@ -5,7 +5,7 @@
  * Kept free of Obsidian imports so it can be unit tested directly.
  */
 
-export type StatusBarCountKind = 'highlights' | 'nativeComments' | 'files' | 'collections' | 'tasks';
+export type StatusBarCountKind = 'highlights' | 'nativeComments' | 'files' | 'collections';
 
 export type StatusBarCounts = Partial<Record<StatusBarCountKind, number>>;
 
@@ -16,7 +16,7 @@ export interface StatusBarSegment {
 
 // Left to right as they appear in the status bar, matching the order of the
 // sidebar's own group headers (highlights, native comments, files).
-const SEGMENT_ORDER: StatusBarCountKind[] = ['highlights', 'nativeComments', 'files', 'collections', 'tasks'];
+const SEGMENT_ORDER: StatusBarCountKind[] = ['highlights', 'nativeComments', 'files', 'collections'];
 
 /**
  * Count the rows a tab is showing. The note count is only asked for on tabs
@@ -57,7 +57,6 @@ const SEGMENT_WORDING: Record<StatusBarCountKind, [string, string]> = {
     nativeComments: ['nativeComment', 'nativeComments'],
     files: ['file', 'files'],
     collections: ['collection', 'collections'],
-    tasks: ['task', 'tasks'],
 };
 
 /** The counts spelled out in words, e.g. "12 highlights, 3 native comments". */

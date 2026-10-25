@@ -99,7 +99,6 @@ export interface DisplayMode {
     showCurrentFolderTab: boolean;
     showAllNotesTab: boolean;
     showCollectionsTab: boolean;
-    showTasksTab: boolean;
 }
 
 export interface TabSettings {
@@ -110,7 +109,6 @@ export interface TabSettings {
     selectedTags?: string[]; // Selected tag filters for this tab
     selectedCollections?: string[];
     selectedColors?: string[]; // Selected colour filters for this tab // Selected collection filters for this tab
-    selectedSpecialFilters?: string[]; // Selected special filters (Flagged, Upcoming, etc.) for this tab
 }
 
 export interface CommentPluginSettings {
@@ -120,9 +118,8 @@ export interface CommentPluginSettings {
     highlights: { [filePath: string]: Highlight[] };
     collections: { [id: string]: Collection }; // Add collections to settings
     groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc'; // Add grouping mode persistence (legacy - kept for backwards compatibility)
-    taskSecondaryGroupingMode: 'none' | 'tag' | 'date' | 'flagged'; // Secondary grouping for tasks (nested within primary groups)
     sortMode: SortMode; // Add sort mode for A-Z and Z-A sorting (legacy - kept for backwards compatibility)
-    tabSettings: { [key in 'current' | 'folder' | 'all' | 'collections' | 'tasks']?: TabSettings }; // Per-tab settings storage
+    tabSettings: { [key in 'current' | 'folder' | 'all' | 'collections']?: TabSettings }; // Per-tab settings storage
     showFilenames: boolean; // Show note titles in All Notes and Collections
     showTimestamps: boolean; // Show note timestamps
     showHighlightActions: boolean; // Show highlight actions area (filename, stats, buttons)
@@ -141,7 +138,6 @@ export interface CommentPluginSettings {
     detailsFontSize: number; // Font size for details (buttons, filename, etc.)
     commentFontSize: number; // Font size for comment text
     highlightFontWeight: number; // Font weight for highlight text
-    taskFontWeight: number; // Font weight for task text
     detectHtmlComments: boolean; // Detect HTML comments (<!-- -->)
     detectAdjacentNativeComments: boolean; // Detect native comments (%% %%) adjacent to highlights as comments for those highlights
     customPatterns: CustomPattern[]; // User-defined custom highlight/comment patterns
@@ -163,13 +159,8 @@ export interface CommentPluginSettings {
     showCurrentFolderTab: boolean; // Show/hide Current Folder tab
     showAllNotesTab: boolean; // Show/hide All Notes tab
     showCollectionsTab: boolean; // Show/hide Collections tab
-    showTasksTab: boolean; // Show/hide Tasks tab
     showStatusBarCounts: boolean; // Show the sidebar's counts in Obsidian's status bar
-    showCompletedTasks: boolean; // Include completed tasks (- [x])
-    showTaskContext: boolean; // Show indented text below tasks as context
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
-    showCurrentNoteTasksSection: boolean; // Show current note's tasks section at top of Task tab
-    showOnlyCurrentNoteTasks: boolean; // When enabled, only show current note tasks (hide main task list)
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
@@ -184,7 +175,6 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     highlights: {},
     collections: {}, // Initialize empty collections
     groupingMode: 'none', // Default grouping mode (legacy)
-    taskSecondaryGroupingMode: 'none', // Default task secondary grouping mode
     sortMode: 'none', // Default sort mode (legacy)
     tabSettings: {}, // Initialize empty per-tab settings
     showFilenames: true, // Show filenames by default
@@ -205,7 +195,6 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     detailsFontSize: 11, // Default details font size
     commentFontSize: 11, // Default comment text font size
     highlightFontWeight: 400, // Default highlight text font weight (normal)
-    taskFontWeight: 400, // Default task text font weight (normal)
     detectHtmlComments: false, // Do not detect HTML comments by default
     detectAdjacentNativeComments: true, // Detect adjacent native comments by default (new behavior)
     customPatterns: [], // Empty array by default
@@ -227,13 +216,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCurrentFolderTab: false, // Current Folder tab hidden by default (enable in Settings > Views)
     showAllNotesTab: true, // Show All Notes tab by default
     showCollectionsTab: true, // Show Collections tab by default
-    showTasksTab: false, // Tasks tab hidden by default (enable in Settings > Views)
     showStatusBarCounts: true, // Status bar counter on by default
-    showCompletedTasks: true, // Show completed tasks by default
-    showTaskContext: true, // Show task context by default
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
-    showCurrentNoteTasksSection: true, // Show current note tasks section by default
-    showOnlyCurrentNoteTasks: false, // Show all tasks by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
@@ -597,7 +581,6 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Set font weight custom properties
         document.body.style.setProperty('--sh-highlight-font-weight', `${this.settings.highlightFontWeight}`);
-        document.body.style.setProperty('--sh-task-font-weight', `${this.settings.taskFontWeight}`);
     }
 
     // Returns the leaf it revealed, so a caller that must act on exactly one
@@ -788,8 +771,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             showCurrentNoteTab: this.settings.showCurrentNoteTab,
             showCurrentFolderTab: this.settings.showCurrentFolderTab,
             showAllNotesTab: this.settings.showAllNotesTab,
-            showCollectionsTab: this.settings.showCollectionsTab,
-            showTasksTab: this.settings.showTasksTab
+            showCollectionsTab: this.settings.showCollectionsTab
         };
     }
 
@@ -807,7 +789,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.settings.showCurrentFolderTab = displayMode.showCurrentFolderTab ?? false;
         this.settings.showAllNotesTab = displayMode.showAllNotesTab;
         this.settings.showCollectionsTab = displayMode.showCollectionsTab;
-        this.settings.showTasksTab = displayMode.showTasksTab;
 
         // Mark this mode as active
         this.settings.currentDisplayModeId = displayMode.id;
@@ -833,7 +814,6 @@ export default class HighlightCommentsPlugin extends Plugin {
         displayMode.showCurrentFolderTab = this.settings.showCurrentFolderTab;
         displayMode.showAllNotesTab = this.settings.showAllNotesTab;
         displayMode.showCollectionsTab = this.settings.showCollectionsTab;
-        displayMode.showTasksTab = this.settings.showTasksTab;
 
         // Keep this mode as active
         this.settings.currentDisplayModeId = displayMode.id;
@@ -2665,13 +2645,12 @@ export default class HighlightCommentsPlugin extends Plugin {
     private smartUpdateSidebar(oldHighlights: Highlight[], newHighlights: Highlight[]): void {
         // Panels on a tab that doesn't display highlights take no update. Decided
         // per panel rather than once: two panels can be on different tabs, and one
-        // sitting on Tasks shouldn't hold back another on Highlights. Gathered
+        // sitting on Collections shouldn't hold back another on Highlights. Gathered
         // before the diff so a layout with nothing to update stays free, and data
         // is still updated in storage either way.
         const targets: HighlightsSidebarView[] = [];
         this.forEachSidebarView(view => {
-            const viewMode = view.getViewMode();
-            if (viewMode !== 'tasks' && viewMode !== 'collections') {
+            if (view.getViewMode() !== 'collections') {
                 targets.push(view);
             }
         });
@@ -3592,17 +3571,6 @@ class HighlightSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
-            .setName(t('settings.views.showTasksTab.name'))
-            .setDesc(t('settings.views.showTasksTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showTasksTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showTasksTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
             .setName(t('settings.views.showStatusBarCounts.name'))
             .setDesc(t('settings.views.showStatusBarCounts.desc'))
             .addToggle(toggle => toggle
@@ -3702,23 +3670,6 @@ class HighlightSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.highlightFontWeight.toString())
                 .onChange(async (value) => {
                     this.plugin.settings.highlightFontWeight = parseInt(value);
-                    await this.plugin.saveSettings();
-                    this.plugin.updateStyles();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.typography.taskTextWeight.name'))
-            .setDesc(t('settings.typography.taskTextWeight.desc'))
-            .addDropdown(dropdown => dropdown
-                .addOption('300', t('settings.typography.fontWeight.light'))
-                .addOption('400', t('settings.typography.fontWeight.normal'))
-                .addOption('500', t('settings.typography.fontWeight.medium'))
-                .addOption('600', t('settings.typography.fontWeight.semiBold'))
-                .addOption('700', t('settings.typography.fontWeight.bold'))
-                .setValue(this.plugin.settings.taskFontWeight.toString())
-                .onChange(async (value) => {
-                    this.plugin.settings.taskFontWeight = parseInt(value);
                     await this.plugin.saveSettings();
                     this.plugin.updateStyles();
                     this.plugin.refreshSidebar();
@@ -4127,17 +4078,6 @@ class HighlightSettingTab extends PluginSettingTab {
         new Setting(containerEl).setHeading().setName(t('settings.tasks.heading'));
 
         new Setting(containerEl)
-            .setName(t('settings.tasks.showTaskContext.name'))
-            .setDesc(t('settings.tasks.showTaskContext.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showTaskContext)
-                .onChange(async (value) => {
-                    this.plugin.settings.showTaskContext = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
             .setName(t('settings.tasks.hideTasksPluginMetadata.name'))
             .setDesc(t('settings.tasks.hideTasksPluginMetadata.desc'))
             .addToggle(toggle => toggle
@@ -4148,50 +4088,6 @@ class HighlightSettingTab extends PluginSettingTab {
                     this.plugin.refreshSidebar();
                 }));
 
-        new Setting(containerEl)
-            .setName(t('settings.tasks.showCompletedTasks.name'))
-            .setDesc(t('settings.tasks.showCompletedTasks.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCompletedTasks)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCompletedTasks = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.tasks.showCurrentNoteSection.name'))
-            .setDesc(t('settings.tasks.showCurrentNoteSection.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCurrentNoteTasksSection)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCurrentNoteTasksSection = value;
-                    await this.plugin.saveSettings();
-                    // Update the disabled state and opacity of the "only current note" setting
-                    onlyCurrentNoteTasksSetting.setDisabled(!value);
-                    onlyCurrentNoteTasksSetting.settingEl.style.opacity = value ? '1' : '0.5';
-                    // If disabling current note section, also disable "only current note"
-                    if (!value && this.plugin.settings.showOnlyCurrentNoteTasks) {
-                        this.plugin.settings.showOnlyCurrentNoteTasks = false;
-                        await this.plugin.saveSettings();
-                    }
-                    this.plugin.refreshSidebar();
-                }));
-
-        const onlyCurrentNoteTasksSetting = new Setting(containerEl)
-            .setName(t('settings.tasks.showOnlyCurrentNoteTasks.name'))
-            .setDesc(t('settings.tasks.showOnlyCurrentNoteTasks.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showOnlyCurrentNoteTasks)
-                .setDisabled(!this.plugin.settings.showCurrentNoteTasksSection)
-                .onChange(async (value) => {
-                    this.plugin.settings.showOnlyCurrentNoteTasks = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        // Set initial opacity based on disabled state
-        onlyCurrentNoteTasksSetting.settingEl.style.opacity = this.plugin.settings.showCurrentNoteTasksSection ? '1' : '0.5';
 
         new Setting(containerEl)
             .setName(t('settings.tasks.taskDateFormat.name'))
