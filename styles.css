@@ -3183,17 +3183,48 @@
     text-decoration: underline;
 }
 
-.sh-task-actions {
+/* The row's buttons float over its right end as a small glass pill. Out of
+   the row's layout on purpose: the one shared set moves from row to row
+   under the pointer, and taking up space would re-wrap each row it visits. */
+.sh-tasks-view .sh-task-actions {
+    position: absolute;
+    top: 2px;
+    right: 8px;
+    z-index: 1;
     display: flex;
-    gap: 2px;
-    margin: -4px -6px 0 0;
+    gap: 1px;
+    padding: 2px;
+    border-radius: 999px;
+    background-color: var(--sh-surface);
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
     opacity: 0;
+    pointer-events: none;
     transition: opacity 100ms ease;
 }
 
 .sh-task-row:hover .sh-task-actions,
 .sh-task-row.is-highlighted .sh-task-actions {
     opacity: 1;
+    pointer-events: auto;
+}
+
+.sh-tasks-view .sh-task-actions button.sh-task-action {
+    width: 26px;
+    height: 26px;
+    border-radius: 999px;
+    color: var(--sh-surface-mid);
+}
+
+.sh-tasks-view .sh-task-actions button.sh-task-action:hover {
+    background-color: var(--sh-inner-active);
+    color: var(--sh-surface-text);
+}
+
+.sh-tasks-view .sh-task-actions button.sh-task-action .svg-icon {
+    width: 15px;
+    height: 15px;
 }
 
 .sh-task-row.is-expanded .sh-task-actions {
