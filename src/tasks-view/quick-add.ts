@@ -59,6 +59,7 @@ export class QuickAdd {
     private draft: Draft = { text: '', ignored: new Set() };
     private parsed: QuickParse = { title: '', tokens: [] };
     private onKey: ((event: KeyboardEvent) => void) | null = null;
+    private onPointer: ((event: PointerEvent) => void) | null = null;
     private busy = false;
     private menu: GlassMenu;
 
@@ -109,6 +110,16 @@ export class QuickAdd {
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
         document.addEventListener('keydown', this.onKey, true);
+        // A click outside puts it away, the way Escape does; a click on the
+        // panel itself keeps the cursor in the field.
+        this.onPointer = (event: PointerEvent) => {
+            if (!this.panel || this.menu.isOpen || this.panel.hasClass('is-hidden')) return;
+            if (!this.panel.contains(event.target as Node)) this.close(true);
+        };
+        document.addEventListener('pointerdown', this.onPointer, true);
+        this.panel.addEventListener('mousedown', (event) => {
+            if (event.target !== this.input) event.preventDefault();
+        });
 
         this.refresh();
         this.input.focus({ preventScroll: true });
@@ -119,7 +130,9 @@ export class QuickAdd {
     close(keepDraft = true): void {
         if (!this.isOpen) return;
         if (this.onKey) document.removeEventListener('keydown', this.onKey, true);
+        if (this.onPointer) document.removeEventListener('pointerdown', this.onPointer, true);
         this.onKey = null;
+        this.onPointer = null;
         this.menu.close();
         this.panel?.remove();
         this.panel = null;
@@ -303,14 +316,18 @@ export class QuickAdd {
     private handleKey(event: KeyboardEvent): void {
         if (!this.isOpen || !this.input) return;
         // A menu or the note picker is up over the panel and owns the keys.
-        if (this.menu.isOpen || document.activeElement !== this.input) return;
+        if (this.menu.isOpen || this.panel?.hasClass('is-hidden')) return;
 
-        if (event.key === 'Escape') {
+        // Escape puts it away wherever the cursor went in the tab, even
+        // after a click took it out of the field.
+        const active = document.activeElement;
+        if (event.key === 'Escape' && (!active || active === document.body || this.container.contains(active))) {
             event.preventDefault();
             event.stopPropagation();
             this.close(true);
             return;
         }
+        if (active !== this.input) return;
 
         if (event.key === 'Enter' && !event.isComposing) {
             event.preventDefault();
