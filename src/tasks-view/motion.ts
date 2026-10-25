@@ -52,21 +52,21 @@ export function flip(root: HTMLElement, before: Map<string, number>): void {
     });
 }
 
-/** Grows an element open from nothing to its natural height. */
-export function reveal(el: HTMLElement, duration = 240): void {
+/** Brings an element in with a short fade and settle. Transform and opacity only. */
+export function reveal(el: HTMLElement, duration = 180): void {
     if (!motionAllowed()) return;
-    const height = el.offsetHeight;
-    el.addClass('is-animating');
-    const animation = el.animate(
-        [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }],
+    el.animate(
+        [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }],
         { duration, easing: EASE }
     );
-    animation.onfinish = () => el.removeClass('is-animating');
-    animation.oncancel = () => el.removeClass('is-animating');
 }
 
-/** Folds elements away, then calls back once they're gone from view. */
-export function collapse(els: HTMLElement[], done: () => void, duration = 220): void {
+/**
+ * Fades elements out, then calls back once they're gone from view. No height
+ * animation: resizing a row relays out every row after it on every frame,
+ * which is what made a long list stutter.
+ */
+export function collapse(els: HTMLElement[], done: () => void, duration = 140): void {
     if (!motionAllowed() || els.length === 0) {
         done();
         return;
@@ -77,13 +77,8 @@ export function collapse(els: HTMLElement[], done: () => void, duration = 220): 
         if (pending === 0) done();
     };
     for (const el of els) {
-        const style = getComputedStyle(el);
-        el.addClass('is-animating');
         const animation = el.animate(
-            [
-                { height: `${el.offsetHeight}px`, opacity: 1, paddingTop: style.paddingTop, paddingBottom: style.paddingBottom },
-                { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' }
-            ],
+            [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.98)' }],
             { duration, easing: EASE, fill: 'forwards' }
         );
         animation.onfinish = finish;

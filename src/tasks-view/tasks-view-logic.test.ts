@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, insertionLine, locateTaskLine, setDateInText, taskBlockEnd, withState } from './task-line';
+import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, DEFAULT_DISPLAY, listCounts, railAreas, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
@@ -103,6 +103,22 @@ describe('task-line', () => {
         expect(taskBlockEnd(lines, 3)).toBe(5);
         expect(taskBlockEnd(lines, 5)).toBe(6);
         expect(taskBlockEnd(['> - [ ] In a callout', '>     - its note', '> - [ ] Next'], 0)).toBe(2);
+    });
+
+    it('finds a task\'s notes, stopping at its first subtask', () => {
+        const lines = ['- [ ] Parent', '    - note one', '', '    more', '    - [ ] Child', '    - after child', '- [ ] Next'];
+        expect(contextRange(lines, 0)).toEqual([1, 4]);
+        expect(contextRange(lines, 6)).toEqual([7, 7]);
+    });
+
+    it('turns notes into Markdown and back, one step deeper than the task', () => {
+        expect(notesText(['    - note one', '        - nested', '    plain'])).toBe('- note one\n    - nested\nplain');
+        const lines = ['- [ ] Parent', '- [ ] Next'];
+        expect(notesLines(lines, 0, '- first\n  - second\n\n')).toEqual(['    - first', '      - second']);
+        expect(notesLines(['\t- [ ] Tabbed'], 0, 'hi')).toEqual(['\t\thi']);
+        expect(notesLines(['> - [ ] In a callout'], 0, 'note')).toEqual(['>     note']);
+        expect(notesLines(['- [ ] Parent', '  - two-space note'], 0, 'a\nb')).toEqual(['  a', '  b']);
+        expect(notesLines(lines, 0, '   ')).toEqual([]);
     });
 
     it('inserts at the end of a heading section, above blank lines', () => {

@@ -2577,9 +2577,20 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     outline: none;
-    /* The list fades out under the top bar instead of running into it. */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 52px);
-    mask-image: linear-gradient(to bottom, transparent 0, #000 52px);
+}
+
+/* The list fades out under the top bar. A painted overlay, not a mask: a
+   mask on the scroller would repaint the whole list on every scroll frame. */
+.sh-tasks-main::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 2;
+    height: 52px;
+    background: linear-gradient(to bottom, var(--background-primary) 20%, transparent);
+    pointer-events: none;
 }
 
 .sh-tasks-column {
@@ -2648,7 +2659,14 @@
 }
 
 .sh-rail-icon.is-note {
-    color: var(--sh-surface-dim);
+    height: 17px;
+    background-color: var(--sh-surface-dim);
+    -webkit-mask: var(--sh-icon-note) center / 16px no-repeat;
+    mask: var(--sh-icon-note) center / 16px no-repeat;
+}
+
+.sh-rail-item.is-active .sh-rail-icon.is-note {
+    background-color: var(--sh-accent);
 }
 
 .sh-rail-label {
@@ -3014,7 +3032,13 @@
     position: relative;
     padding: 4px 12px 4px calc(14px + var(--sh-indent, 0) * 26px);
     border-radius: var(--sh-inner-radius);
-    transition: background-color 80ms ease, opacity 140ms ease;
+    /* Rows off screen skip layout and paint entirely. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 30px;
+}
+
+.sh-task-row.is-expanded {
+    content-visibility: visible;
 }
 
 .sh-task-row:hover {
@@ -3097,6 +3121,29 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+}
+
+/* Row icons come from CSS masks of Obsidian's own icons, so a row holds no
+   SVG for them. */
+.sh-meta-date::before,
+.sh-meta-item::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    background-color: currentColor;
+    -webkit-mask: var(--sh-icon-calendar) center / contain no-repeat;
+    mask: var(--sh-icon-calendar) center / contain no-repeat;
+}
+
+.sh-meta-item.is-progress::before {
+    -webkit-mask-image: var(--sh-icon-progress);
+    mask-image: var(--sh-icon-progress);
+}
+
+.sh-meta-item.is-context::before {
+    -webkit-mask-image: var(--sh-icon-context);
+    mask-image: var(--sh-icon-context);
 }
 
 /* Dates read as a small pill when they mean something today. */
@@ -3328,6 +3375,47 @@
 .sh-card-empty {
     color: var(--sh-surface-faint);
     font-size: 13px;
+}
+
+/* The notes area reads as text until you click into it. */
+.sh-card-notes {
+    margin: -6px -10px;
+    padding: 6px 10px;
+    border-radius: var(--sh-inner-radius);
+    cursor: text;
+    transition: background-color 120ms ease;
+}
+
+.sh-card-notes:not(.is-editing):hover {
+    background-color: var(--sh-inner-hover);
+}
+
+.sh-tasks-view textarea.sh-card-editor,
+.sh-tasks-view textarea.sh-card-editor:focus,
+.sh-tasks-view textarea.sh-card-editor:hover {
+    display: block;
+    width: 100%;
+    min-height: 64px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    color: var(--sh-surface-text);
+    font-family: var(--font-text);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+
+.sh-tasks-view textarea.sh-card-editor::placeholder {
+    color: var(--sh-surface-faint);
+}
+
+.sh-card-notes.is-editing {
+    background-color: var(--sh-inner-well);
+    box-shadow: inset 0 0 0 1px var(--sh-rule);
 }
 
 .sh-card-fields {

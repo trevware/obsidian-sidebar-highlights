@@ -176,3 +176,60 @@ export function taskBlockEnd(lines: string[], index: number): number {
     return end;
 }
 
+/**
+ * The lines of notes under a task: the indented lines straight after it, up
+ * to its first subtask or the first line that isn't indented under it. This
+ * is the same rule the scanner uses for a task's context, so what the card
+ * shows and what it rewrites are the same lines. Returns [start, end).
+ */
+export function contextRange(lines: string[], index: number): [number, number] {
+    const parsed = parseTaskLine(lines[index] ?? '');
+    const start = index + 1;
+    if (!parsed) return [start, start];
+    const prefix = parsed.prefix.trimEnd();
+    const base = indentWidth(parsed.indent);
+
+    let end = start;
+    for (let i = start; i < lines.length; i++) {
+        let line = lines[i];
+        if (prefix && line.startsWith(prefix)) line = line.slice(prefix.length).replace(/^ /, '');
+        if (line.trim() === '') continue;
+        if (parseTaskLine(line)) break;
+        if (indentWidth(line) > base) end = i + 1;
+        else break;
+    }
+    return [start, end];
+}
+
+/** A task's notes as plain Markdown, with the shared indent taken off. */
+export function notesText(context: readonly string[]): string {
+    const filled = context.filter(line => line.trim() !== '');
+    if (filled.length === 0) return '';
+    const indent = Math.min(...filled.map(line => line.match(/^\s*/)?.[0].length ?? 0));
+    return context.map(line => line.slice(Math.min(indent, line.match(/^\s*/)?.[0].length ?? 0))).join('\n');
+}
+
+/**
+ * The note lines to write under a task for some Markdown. Each line is
+ * indented one step deeper than the task (matching notes already there when
+ * there are some), and keeps the callout prefix the task line has.
+ */
+export function notesLines(lines: string[], index: number, markdown: string): string[] {
+    const parsed = parseTaskLine(lines[index] ?? '');
+    if (!parsed) return [];
+    const [start, end] = contextRange(lines, index);
+    const existing = lines.slice(start, end).find(line => line.trim() !== '');
+    const prefix = parsed.prefix;
+    let indent: string;
+    if (existing) {
+        const body = prefix && existing.startsWith(prefix.trimEnd()) ? existing.slice(prefix.trimEnd().length).replace(/^ /, '') : existing;
+        indent = body.match(/^\s*/)?.[0] ?? '';
+    } else {
+        indent = parsed.indent + (parsed.indent.includes('\t') ? '\t' : '    ');
+    }
+
+    const text = markdown.replace(/\s+$/, '');
+    if (text.trim() === '') return [];
+    return text.split('\n').map(line => (line.trim() === '' ? (prefix ? prefix.trimEnd() : '') : `${prefix}${indent}${line}`));
+}
+

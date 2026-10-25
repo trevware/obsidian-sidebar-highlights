@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
-import { insertionLine, locateTaskLine, taskBlockEnd } from './task-line';
+import { contextRange, insertionLine, locateTaskLine, notesLines, taskBlockEnd } from './task-line';
 
 /** One line the Tasks tab changed, kept so the change can be undone. */
 export interface LineChange {
@@ -8,6 +8,14 @@ export interface LineChange {
     line: number;
     before: string;
     after: string;
+}
+
+/** A run of lines replaced in a note, kept so it can be put back. */
+export interface RangeChange {
+    path: string;
+    start: number;
+    before: string[];
+    after: string[];
 }
 
 /** A task's lines taken out of a note, kept so they can be put back. */
@@ -217,5 +225,44 @@ export class TaskWriter {
                 return lines.join('\n');
             });
         }
+    }
+
+    /**
+     * Replaces the notes under a task with some Markdown, indented under the
+     * task line. Returns the change for undo, or null when the task is gone
+     * or nothing changed.
+     */
+    async setNotes(task: Task, markdown: string): Promise<RangeChange | null> {
+        const file = this.file(task.filePath);
+        if (!file) return null;
+        let change: RangeChange | null = null;
+        await this.app.vault.process(file, (data) => {
+            const lines = data.split('\n');
+            const index = locateTaskLine(lines, task.lineNumber, task.text);
+            if (index === -1) return data;
+            const [start, end] = contextRange(lines, index);
+            const before = lines.slice(start, end);
+            const after = notesLines(lines, index, markdown);
+            if (before.join('\n') === after.join('\n')) return data;
+            lines.splice(start, end - start, ...after);
+            change = { path: task.filePath, start, before, after };
+            return lines.join('\n');
+        });
+        return change;
+    }
+
+    /** Puts a replaced run of lines back, finding it by what it was changed to. */
+    async undoRange(change: RangeChange): Promise<void> {
+        const file = this.file(change.path);
+        if (!file) return;
+        await this.app.vault.process(file, (data) => {
+            const lines = data.split('\n');
+            const matchesAt = (start: number) => change.after.every((line, i) => lines[start + i] === line);
+            let start = matchesAt(change.start) ? change.start : -1;
+            if (start === -1 && change.after.length > 0) start = lines.findIndex((_line, i) => matchesAt(i));
+            if (start === -1) start = Math.min(change.start, lines.length);
+            lines.splice(start, change.after.length, ...change.before);
+            return lines.join('\n');
+        });
     }
 }

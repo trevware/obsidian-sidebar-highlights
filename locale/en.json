@@ -587,7 +587,9 @@
     },
     "showMore": "Show {{count}} more",
     "card": {
-      "noContext": "No notes under this task."
+      "noContext": "No notes under this task.",
+      "addNotes": "Add notes",
+      "notesPlaceholder": "Notes in Markdown. ⌘↵ or Esc to save."
     },
     "actions": {
       "search": "Search",
@@ -683,7 +685,8 @@
       "nothingToUndo": "Nothing to undo",
       "undone": "Undid: {{label}}",
       "deletedOne": "Deleted “{{task}}”",
-      "deletedMany": "Deleted {{count}} tasks"
+      "deletedMany": "Deleted {{count}} tasks",
+      "notesSaved": "Edited the notes on “{{task}}”"
     },
     "shortcuts": {
       "moveHighlight": "Move up and down",
