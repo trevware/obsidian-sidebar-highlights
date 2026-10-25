@@ -1,0 +1,447 @@
+/**
+ * What the Tasks tab shows: which tasks belong to each list in the rail, and
+ * how a list breaks into groups and sections.
+ *
+ * The lists follow Things (Today, Upcoming, Anytime, Logbook) plus the two
+ * statuses this plugin adds, and every note with open tasks can be opened as
+ * its own list, the way a Things project is. Notes play the part of projects
+ * and their headings the part of sections. Kept free of Obsidian imports so it
+ * can be unit tested directly.
+ */
+
+import type { Task } from '../../main';
+import { addDays, daysBetween, monthName, shortDate, startOfWeek, weekdayName } from './dates';
+import { isResolvedStatus, normalizeVisibleNesting } from '../utils/task-status';
+
+export type SmartListId = 'today' | 'upcoming' | 'anytime' | 'in-progress' | 'questions' | 'logbook';
+
+export type ListRef =
+    | { kind: 'smart'; id: SmartListId }
+    | { kind: 'note'; path: string };
+
+export type GroupMode = 'auto' | 'note' | 'date' | 'priority' | 'none';
+export type SortMode = 'file' | 'priority' | 'date' | 'alpha';
+
+export interface DisplayOptions {
+    group: GroupMode;
+    sort: SortMode;
+    showCompleted: boolean;
+    showContext: boolean;
+}
+
+export const DEFAULT_DISPLAY: DisplayOptions = {
+    group: 'auto',
+    sort: 'file',
+    showCompleted: false,
+    showContext: true
+};
+
+export const SMART_LISTS: SmartListId[] = ['today', 'upcoming', 'anytime', 'in-progress', 'questions', 'logbook'];
+
+export function sameList(a: ListRef, b: ListRef): boolean {
+    if (a.kind !== b.kind) return false;
+    return a.kind === 'smart' ? a.id === (b as typeof a).id : a.path === (b as typeof a).path;
+}
+
+export function listKey(ref: ListRef): string {
+    return ref.kind === 'smart' ? `smart:${ref.id}` : `note:${ref.path}`;
+}
+
+export function statusOf(task: Task): Task['status'] {
+    return task.status ?? (task.completed ? 'done' : 'todo');
+}
+
+export function isOpenTask(task: Task): boolean {
+    return !isResolvedStatus(statusOf(task));
+}
+
+/** A key that survives the task's text changing, as long as it stays on its line. */
+export function taskKey(task: Pick<Task, 'filePath' | 'lineNumber'>): string {
+    return `${task.filePath}:${task.lineNumber}`;
+}
+
+/**
+ * The tasks a list holds. `lingering` keeps just-completed tasks in place for
+ * a moment, so a tick is seen landing before the row leaves.
+ */
+export function tasksForList(
+    all: readonly Task[],
+    ref: ListRef,
+    today: string,
+    display: DisplayOptions,
+    lingering: ReadonlySet<string> = new Set()
+): Task[] {
+    const keep = (task: Task, test: boolean) => test || lingering.has(taskKey(task));
+
+    if (ref.kind === 'note') {
+        return all.filter(task => task.filePath === ref.path && keep(task, display.showCompleted || isOpenTask(task)));
+    }
+
+    switch (ref.id) {
+        case 'today':
+            return all.filter(task => keep(task, isOpenTask(task) && !!task.date && task.date <= today));
+        case 'upcoming':
+            return all.filter(task => keep(task, isOpenTask(task) && !!task.date && task.date > today));
+        case 'anytime':
+            return all.filter(task => keep(task, isOpenTask(task)));
+        case 'in-progress':
+            return all.filter(task => keep(task, statusOf(task) === 'in-progress'));
+        case 'questions':
+            return all.filter(task => keep(task, statusOf(task) === 'question'));
+        case 'logbook':
+            return all.filter(task => !isOpenTask(task));
+    }
+}
+
+export interface ListCounts {
+    today: number;
+    overdue: number;
+    upcoming: number;
+    anytime: number;
+    inProgress: number;
+    questions: number;
+}
+
+export function listCounts(all: readonly Task[], today: string): ListCounts {
+    const counts: ListCounts = { today: 0, overdue: 0, upcoming: 0, anytime: 0, inProgress: 0, questions: 0 };
+    for (const task of all) {
+        if (!isOpenTask(task)) continue;
+        counts.anytime++;
+        const status = statusOf(task);
+        if (status === 'in-progress') counts.inProgress++;
+        if (status === 'question') counts.questions++;
+        if (task.date) {
+            if (task.date < today) counts.overdue++;
+            if (task.date <= today) counts.today++;
+            else counts.upcoming++;
+        }
+    }
+    return counts;
+}
+
+export interface TaskSection {
+    key: string;
+    /** A heading in the note, or '' for tasks above the first heading. */
+    title: string;
+    tasks: Task[];
+}
+
+export type GroupKind = 'overdue' | 'date' | 'note' | 'heading' | 'priority' | 'flat';
+
+/** Where a task added from a group's + button goes, and what it starts with. */
+export interface AddTarget {
+    path?: string;
+    heading?: string;
+    date?: string;
+    priority?: 1 | 2 | 3;
+}
+
+export interface TaskGroup {
+    key: string;
+    kind: GroupKind;
+    title: string;
+    subtitle?: string;
+    sections: TaskSection[];
+    count: number;
+    add?: AddTarget;
+}
+
+export interface GroupLabels {
+    overdue: string;
+    today: string;
+    tomorrow: string;
+    noDate: string;
+    noPriority: string;
+    priority: (level: 1 | 2 | 3) => string;
+    weekOf: (date: string) => string;
+}
+
+export interface NoteInfo {
+    basename: (path: string) => string;
+    folder: (path: string) => string;
+    /** Last modified time, used to list the notes you've been working in first. */
+    mtime: (path: string) => number;
+}
+
+function compareFileOrder(a: Task, b: Task): number {
+    return a.filePath.localeCompare(b.filePath) || a.lineNumber - b.lineNumber;
+}
+
+function sortTasks(tasks: Task[], sort: SortMode): Task[] {
+    const sorted = [...tasks];
+    switch (sort) {
+        case 'priority':
+            return sorted.sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9) || compareFileOrder(a, b));
+        case 'date':
+            return sorted.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || compareFileOrder(a, b));
+        case 'alpha':
+            return sorted.sort((a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: 'base' }) || compareFileOrder(a, b));
+        default:
+            return sorted.sort(compareFileOrder);
+    }
+}
+
+/**
+ * Sorted and nested for display. Sub-tasks stay under their parent only in
+ * file order: any other sort scatters a family, so it lays them out flat.
+ */
+function arrange(tasks: Task[], sort: SortMode): Task[] {
+    const sorted = sortTasks(tasks, sort);
+    if (sort === 'file') return normalizeVisibleNesting(sorted);
+    return sorted.map(task => (task.indentLevel === 0 ? task : { ...task, indentLevel: 0 }));
+}
+
+function single(key: string, tasks: Task[], sort: SortMode): TaskSection[] {
+    return [{ key, title: '', tasks: arrange(tasks, sort) }];
+}
+
+/** Splits a note's tasks by heading, in the order the headings appear. */
+function byHeading(path: string, tasks: Task[], sort: SortMode): TaskSection[] {
+    const sections = new Map<string, Task[]>();
+    for (const task of [...tasks].sort(compareFileOrder)) {
+        const title = task.section ?? '';
+        const list = sections.get(title);
+        if (list) list.push(task);
+        else sections.set(title, [task]);
+    }
+    return [...sections.entries()].map(([title, list]) => ({
+        key: `${path}#${title}`,
+        title,
+        tasks: arrange(list, sort)
+    }));
+}
+
+function countOf(sections: TaskSection[]): number {
+    return sections.reduce((sum, section) => sum + section.tasks.length, 0);
+}
+
+interface DateBucket {
+    key: string;
+    title: string;
+    subtitle?: string;
+    start: string;
+}
+
+/**
+ * The group a future date falls in: each of the next six days on its own,
+ * then weeks for the rest of the month ahead, then months, then years.
+ */
+export function upcomingBucket(iso: string, today: string, labels: GroupLabels, locale?: string): DateBucket {
+    const diff = daysBetween(today, iso);
+    if (diff <= 0) return { key: 'today', title: labels.today, start: today };
+    if (diff < 7) {
+        return {
+            key: `day:${iso}`,
+            title: diff === 1 ? labels.tomorrow : weekdayName(iso, 'long', locale),
+            subtitle: shortDate(iso, today, locale),
+            start: iso
+        };
+    }
+    if (diff < 35) {
+        const monday = startOfWeek(iso);
+        return { key: `week:${monday}`, title: labels.weekOf(shortDate(monday, today, locale)), start: monday };
+    }
+    const sameYear = iso.slice(0, 4) === today.slice(0, 4);
+    const monthsAhead = (Number(iso.slice(0, 4)) - Number(today.slice(0, 4))) * 12 + Number(iso.slice(5, 7)) - Number(today.slice(5, 7));
+    if (monthsAhead < 12) {
+        const first = `${iso.slice(0, 7)}-01`;
+        const title = monthName(first, locale) + (sameYear ? '' : ` ${iso.slice(0, 4)}`);
+        return { key: `month:${iso.slice(0, 7)}`, title, start: first };
+    }
+    return { key: `year:${iso.slice(0, 4)}`, title: iso.slice(0, 4), start: `${iso.slice(0, 4)}-01-01` };
+}
+
+/** The grouping a list uses when Display is left on its default. */
+export function resolveGroupMode(ref: ListRef, mode: GroupMode): Exclude<GroupMode, 'auto'> | 'heading' {
+    if (mode !== 'auto') return mode;
+    if (ref.kind === 'note') return 'heading';
+    switch (ref.id) {
+        case 'today':
+        case 'upcoming':
+            return 'date';
+        default:
+            return 'note';
+    }
+}
+
+export function buildGroups(
+    tasks: readonly Task[],
+    ref: ListRef,
+    today: string,
+    display: DisplayOptions,
+    labels: GroupLabels,
+    notes: NoteInfo,
+    locale?: string
+): TaskGroup[] {
+    const mode = resolveGroupMode(ref, display.group);
+    const notePath = ref.kind === 'note' ? ref.path : undefined;
+
+    if (mode === 'heading' && notePath) {
+        return byHeading(notePath, [...tasks], display.sort).map(section => ({
+            key: section.key,
+            kind: 'heading',
+            title: section.title,
+            sections: [{ ...section, title: '' }],
+            count: section.tasks.length,
+            add: { path: notePath, heading: section.title || undefined }
+        }));
+    }
+
+    if (mode === 'note' || mode === 'heading') {
+        const byNote = new Map<string, Task[]>();
+        for (const task of tasks) {
+            const list = byNote.get(task.filePath);
+            if (list) list.push(task);
+            else byNote.set(task.filePath, [task]);
+        }
+        return [...byNote.entries()]
+            .sort(([a], [b]) => notes.mtime(b) - notes.mtime(a) || a.localeCompare(b))
+            .map(([path, list]) => {
+                const sections = byHeading(path, list, display.sort);
+                return {
+                    key: `note:${path}`,
+                    kind: 'note' as const,
+                    title: notes.basename(path),
+                    subtitle: notes.folder(path) || undefined,
+                    sections,
+                    count: countOf(sections),
+                    add: { path }
+                };
+            });
+    }
+
+    if (mode === 'priority') {
+        const levels: Array<1 | 2 | 3 | undefined> = [1, 2, 3, undefined];
+        return levels
+            .map(level => {
+                const list = tasks.filter(task => task.priority === level);
+                const key = `priority:${level ?? 'none'}`;
+                return {
+                    key,
+                    kind: 'priority' as const,
+                    title: level ? labels.priority(level) : labels.noPriority,
+                    sections: single(key, list, display.sort),
+                    count: list.length,
+                    add: { path: notePath, priority: level }
+                };
+            })
+            .filter(group => group.count > 0);
+    }
+
+    if (mode === 'date') {
+        const overdue = tasks.filter(task => task.date && task.date < today);
+        const dueToday = tasks.filter(task => task.date === today);
+        const future = tasks.filter(task => task.date && task.date > today);
+        const undated = tasks.filter(task => !task.date);
+
+        const groups: TaskGroup[] = [];
+        if (overdue.length > 0) {
+            groups.push({
+                key: 'overdue', kind: 'overdue', title: labels.overdue,
+                sections: single('overdue', overdue, display.sort === 'file' ? 'date' : display.sort),
+                count: overdue.length
+            });
+        }
+        if (dueToday.length > 0 || (ref.kind === 'smart' && ref.id === 'today')) {
+            groups.push({
+                key: 'today', kind: 'date', title: labels.today, subtitle: shortDate(today, today, locale),
+                sections: single('today', dueToday, display.sort), count: dueToday.length,
+                add: { path: notePath, date: today }
+            });
+        }
+
+        const buckets = new Map<string, { bucket: DateBucket; tasks: Task[] }>();
+        for (const task of [...future].sort((a, b) => (a.date as string).localeCompare(b.date as string))) {
+            const bucket = upcomingBucket(task.date as string, today, labels, locale);
+            const entry = buckets.get(bucket.key);
+            if (entry) entry.tasks.push(task);
+            else buckets.set(bucket.key, { bucket, tasks: [task] });
+        }
+        for (const { bucket, tasks: list } of buckets.values()) {
+            // Days keep file order inside them; wider buckets read better by date.
+            const sort = display.sort === 'file' && !bucket.key.startsWith('day:') ? 'date' : display.sort;
+            groups.push({
+                key: bucket.key, kind: 'date', title: bucket.title, subtitle: bucket.subtitle,
+                sections: single(bucket.key, list, sort), count: list.length,
+                add: { path: notePath, date: bucket.start }
+            });
+        }
+
+        if (undated.length > 0) {
+            groups.push({
+                key: 'no-date', kind: 'date', title: labels.noDate,
+                sections: single('no-date', undated, display.sort), count: undated.length,
+                add: { path: notePath }
+            });
+        }
+        return groups;
+    }
+
+    return [{ key: 'all', kind: 'flat', title: '', sections: single('all', [...tasks], display.sort), count: tasks.length, add: { path: notePath } }];
+}
+
+export interface RailNote {
+    path: string;
+    name: string;
+    open: number;
+}
+
+export interface RailArea {
+    folder: string;
+    notes: RailNote[];
+}
+
+/**
+ * Notes with open tasks for the rail, collected under their folders the way
+ * Things collects projects under areas. Folders sort by name and notes by
+ * name inside them, so a note stays where you last saw it.
+ */
+export function railAreas(all: readonly Task[], notes: NoteInfo): RailArea[] {
+    const open = new Map<string, number>();
+    for (const task of all) {
+        if (!isOpenTask(task)) continue;
+        open.set(task.filePath, (open.get(task.filePath) ?? 0) + 1);
+    }
+
+    const areas = new Map<string, RailNote[]>();
+    for (const [path, count] of open) {
+        const folder = notes.folder(path);
+        const list = areas.get(folder);
+        const note = { path, name: notes.basename(path), open: count };
+        if (list) list.push(note);
+        else areas.set(folder, [note]);
+    }
+
+    return [...areas.entries()]
+        .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)))
+        .map(([folder, list]) => ({
+            folder,
+            notes: list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+        }));
+}
+
+/** "Note › Heading", shown on a row whenever its group isn't already that note. */
+export function breadcrumbFor(task: Task, groupKind: GroupKind, notes: NoteInfo): string | undefined {
+    if (groupKind === 'note' || groupKind === 'heading') return undefined;
+    const name = notes.basename(task.filePath);
+    return task.section ? `${name} › ${task.section}` : name;
+}
+
+/** Sub-task progress for a row: how many of a task's direct children are done. */
+export function childProgress(all: readonly Task[]): Map<string, { done: number; total: number }> {
+    const progress = new Map<string, { done: number; total: number }>();
+    for (const task of all) {
+        if (task.parentLine === undefined) continue;
+        const key = `${task.filePath}:${task.parentLine}`;
+        const entry = progress.get(key) ?? { done: 0, total: 0 };
+        entry.total++;
+        if (!isOpenTask(task)) entry.done++;
+        progress.set(key, entry);
+    }
+    return progress;
+}
+
+/** The day after a date, used by the "nudge a day" keys. */
+export function nudge(iso: string | undefined, today: string, days: number): string {
+    return addDays(iso ?? today, days);
+}
