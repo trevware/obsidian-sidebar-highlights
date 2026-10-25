@@ -63,14 +63,34 @@ describe('planDrag', () => {
         expect(beforeFour?.y).toBe(140);
     });
 
-    it('drops completed tasks shown last to the end of their heading', () => {
-        const items = layout(['# A', 'A/one', 'A/[x]done', 'A/[x]done too', '# B', 'B/two']);
-        const plan = planDrag(items, 5, { skipDone: true });
-        expect(plan.gaps.map(gap => describeGap(items, gap))).toEqual([
-            JSON.stringify({ kind: 'before', line: 0, text: 'one' }),
-            JSON.stringify({ kind: 'heading', heading: 'A' }),
-            JSON.stringify({ kind: 'heading', heading: 'B' })
-        ]);
+    describe('with completed tasks shown last', () => {
+        const targets = (items: DragItem[], grabbed: number) => planDrag(items, grabbed, { skipDone: true }).gaps.map(gap => describeGap(items, gap));
+        const before = (text: string) => JSON.stringify({ kind: 'before', line: 0, text });
+        const after = (text: string) => JSON.stringify({ kind: 'after', line: 0, text });
+        const end = (heading: string) => JSON.stringify({ kind: 'heading', heading });
+
+        it('keeps an open task among the open ones, ending after the last of them', () => {
+            const items = layout(['# A', 'A/one', 'A/[x]done', 'A/[x]done too', '# B', 'B/two']);
+            expect(targets(items, 5)).toEqual([before('one'), after('one'), end('B')]);
+        });
+
+        it('reorders completed tasks among themselves', () => {
+            const items = layout(['# A', 'A/one', 'A/two', 'A/[x] d1', 'A/[x] d2', 'A/[x] d3']);
+            expect(targets(items, 5)).toEqual([before('d1'), before('d2'), end('A')]);
+        });
+
+        it('never drops a completed task among the open ones', () => {
+            const items = layout(['# A', 'A/one', 'A/[x]d1', '# B', 'B/two']);
+            expect(targets(items, 2)).toEqual([end('A'), end('B')]);
+        });
+
+        it('takes an open task into a heading that only has completed ones, above them', () => {
+            const items = layout(['# A', 'A/one', '# B', 'B/[x]d1']);
+            const plan = planDrag(items, 1, { skipDone: true });
+            expect(plan.gaps.map(gap => describeGap(items, gap))).toEqual([end('A'), end('B')]);
+            // The gap in B sits between its heading and the completed task.
+            expect(plan.gaps[1].y).toBe(items[3].top - 30);
+        });
     });
     it('says which heading each gap is under', () => {
         const plan = planDrag(list, 1, { skipDone: false });

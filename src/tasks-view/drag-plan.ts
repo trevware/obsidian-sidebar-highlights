@@ -54,10 +54,31 @@ export function planDrag(items: readonly DragItem[], grabbed: number, options: {
     const last = items[blockEnd - 1];
     const span = (blockEnd < items.length ? items[blockEnd].top : last.top + last.height) - items[grabbed].top;
     const collapsed = (index: number) => items[index].top - (index >= blockEnd ? span : 0);
-    const shownLast = (item: DragItem | undefined) => options.skipDone && item?.kind === 'row' && item.done === true;
+
+    // With completed tasks shown last, each heading shows two runs, the open
+    // tasks and then the completed ones, and a task only drops into its own
+    // run: anywhere else it would land in the note somewhere other than
+    // where it shows.
+    const lane = options.skipDone ? items[grabbed].done === true : null;
+    const inLane = (item: DragItem) => lane === null || (item.done === true) === lane;
+
+    // What the scan has passed in the current heading, leaving out the
+    // dragged rows.
+    let lastOpen: DragItem | undefined;
+    let doneSeen = false;
 
     const gaps: DragGap[] = [];
     for (let at = 0; at <= items.length; at++) {
+        const passed = items[at - 1];
+        if (passed && (at - 1 < grabbed || at - 1 >= blockEnd)) {
+            if (passed.kind !== 'row') {
+                lastOpen = undefined;
+                doneSeen = false;
+            } else if (isTopRow(passed)) {
+                if (passed.done) doneSeen = true;
+                else lastOpen = passed;
+            }
+        }
         // Inside the dragged rows there is no gap, and their far edge is the
         // same gap as their near one.
         if (at > grabbed && at <= blockEnd) continue;
@@ -68,17 +89,21 @@ export function planDrag(items: readonly DragItem[], grabbed: number, options: {
 
         let target: MoveTarget | null = null;
         let heading = '';
-        if (next && isTopRow(next) && !shownLast(next)) {
-            target = { kind: 'before', line: next.line ?? 0, text: next.text ?? '' };
+        if (next && isTopRow(next)) {
             heading = next.heading ?? '';
-        } else if (next && isTopRow(next) && shownLast(next)) {
-            // Completed tasks are drawn last, so the end of the open ones is
-            // the end of the heading.
-            heading = next.heading ?? '';
-            if (!shownLast(before)) target = { kind: 'heading', heading, line: next.headingLine };
+            if (inLane(next)) {
+                target = { kind: 'before', line: next.line ?? 0, text: next.text ?? '' };
+            } else if (lane === false && !doneSeen) {
+                // The end of the open run, where the completed ones begin.
+                target = lastOpen
+                    ? { kind: 'after', line: lastOpen.line ?? 0, text: lastOpen.text ?? '' }
+                    : { kind: 'heading', heading, line: next.headingLine };
+            }
         } else if (!next || next.kind !== 'row') {
             heading = before?.heading ?? '';
-            if ((before?.kind === 'row' && !shownLast(before)) || before?.kind === 'heading') target = { kind: 'heading', heading, line: before.headingLine };
+            const after = before?.kind === 'row' || before?.kind === 'heading';
+            // The open run already ended above the completed tasks.
+            if (after && !(lane === false && doneSeen)) target = { kind: 'heading', heading, line: before.headingLine };
         }
         if (!target) continue;
 
