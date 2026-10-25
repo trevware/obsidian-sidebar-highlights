@@ -2834,7 +2834,7 @@
 /* ── Group headers ──────────────────────────────────────────────────────── */
 
 .sh-group {
-    margin-top: 36px;
+    margin-top: 32px;
 }
 
 /* Plain, like a heading in a note, over a full-width rule so each group
@@ -2844,8 +2844,8 @@
     align-items: center;
     gap: 8px;
     min-height: 30px;
-    margin: 0 0 6px;
-    padding: 0 6px 6px 14px;
+    margin: 0 0 4px 14px;
+    padding: 0 0 6px;
     border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -2930,7 +2930,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 8px 14px;
+    padding: 4px 14px;
     border-radius: var(--sh-inner-radius);
     color: var(--text-faint);
     font-size: 14px;
@@ -2981,7 +2981,7 @@
 
 /* A heading inside a note: a quiet label, the way Oriko labels a section. */
 .sh-section-title {
-    margin: 18px 0 4px 14px;
+    margin: 14px 0 2px 14px;
     padding: 0 0 5px;
     border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
     color: var(--text-muted);
@@ -2993,7 +2993,7 @@
 
 .sh-task-row {
     position: relative;
-    padding: 8px 12px 8px calc(14px + var(--sh-indent, 0) * 26px);
+    padding: 4px 12px 4px calc(14px + var(--sh-indent, 0) * 26px);
     border-radius: var(--sh-inner-radius);
     transition: background-color 80ms ease, opacity 140ms ease;
 }
@@ -3049,7 +3049,7 @@
 
 .sh-task-title {
     font-size: 14.5px;
-    line-height: 1.45;
+    line-height: 1.4;
     color: var(--text-normal);
 }
 
@@ -3067,8 +3067,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 12px;
-    margin-top: 3px;
+    gap: 2px 12px;
+    margin-top: 1px;
     color: var(--text-muted);
     font-size: 12px;
 }
@@ -3139,7 +3139,7 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
-    margin: 3px 0 0 32px;
+    margin: 1px 0 0 32px;
     color: var(--text-faint);
     font-size: 12.5px;
     line-height: 1.4;
