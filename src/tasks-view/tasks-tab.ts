@@ -542,7 +542,7 @@ export class TasksTabView extends ItemView {
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
         const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
 
-        this.renderHeader(column, tasks, today);
+        this.renderHeader(column, today);
 
         if (!this.loaded) {
             column.createDiv({ cls: 'sh-tasks-empty', text: t('tasksTab.empty.loading') });
@@ -603,104 +603,45 @@ export class TasksTabView extends ItemView {
         this.scroller.scrollTop = scrollTop;
     }
 
-    private renderHeader(column: HTMLElement, tasks: Task[], today: string): void {
+    private renderHeader(column: HTMLElement, today: string): void {
         const header = column.createDiv({ cls: 'sh-tasks-header' });
 
-        // A line above the title that says where you are: the date on Today,
-        // the folder on a note.
-        let eyebrow = '';
-        if (this.list.kind === 'note') eyebrow = this.noteInfo.folder(this.list.path) || t('tasksTab.rail.vaultRoot');
-        else if (this.list.id === 'today') eyebrow = moment(today, 'YYYY-MM-DD').format('dddd, D MMMM');
-        if (eyebrow) header.createDiv({ cls: 'sh-tasks-eyebrow', text: eyebrow });
-        header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
-
-        if (!this.loaded) return;
-        const stats = header.createDiv({ cls: 'sh-tasks-stats' });
-        const pill = (text: string, tone?: string) => {
-            const el = stats.createDiv({ cls: 'sh-stat', text });
-            if (tone) el.addClass(`is-${tone}`);
-            return el;
-        };
-
-        if (this.list.kind === 'smart' && this.list.id === 'logbook') {
-            pill(t('tasksTab.header.resolved', { count: tasks.length }));
-        } else {
-            const open = tasks.filter(isOpenTask).length;
-            pill(t(open === 1 ? 'tasksTab.header.openOne' : 'tasksTab.header.open', { count: open }));
-            const overdue = tasks.filter(task => isOpenTask(task) && task.date && task.date < today).length;
-            if (overdue > 0) pill(t('tasksTab.header.overdue', { count: overdue }), 'overdue');
-        }
-
-        if (this.list.kind === 'smart' && this.list.id === 'today') {
-            const doneToday = this.allTasks.filter(task => task.date === today && statusOf(task) === 'done').length;
-            if (doneToday > 0) pill(t('tasksTab.header.doneToday', { count: doneToday }), 'done');
-        }
-
+        // One quiet line above the title that says where you are: the date on
+        // Today, the folder (and a way into the note) on a note.
+        const eyebrow = header.createDiv({ cls: 'sh-tasks-eyebrow' });
         if (this.list.kind === 'note') {
             const path = this.list.path;
-            const total = this.allTasks.filter(task => task.filePath === path);
-            const done = total.filter(task => !isOpenTask(task)).length;
-            if (total.length > 0) {
-                const meter = stats.createDiv({ cls: 'sh-stat is-meter' });
-                const bar = meter.createDiv({ cls: 'sh-meter' });
-                bar.setCssProps({ '--sh-done': `${Math.round((done / total.length) * 100)}%` });
-                meter.createSpan({ text: t('tasksTab.header.progress', { done, total: total.length }) });
-            }
-            const openNote = stats.createEl('button', { cls: 'sh-stat is-button' });
-            setIcon(openNote.createSpan({ cls: 'sh-stat-icon' }), 'arrow-up-right');
-            openNote.createSpan({ text: t('tasksTab.actions.openNote') });
-            openNote.addEventListener('click', () => void this.openPath(path));
+            eyebrow.createSpan({ text: this.noteInfo.folder(path) || t('tasksTab.rail.vaultRoot') });
+            const open = eyebrow.createEl('button', { cls: 'sh-link-button', text: t('tasksTab.actions.openNote') });
+            open.addEventListener('click', () => void this.openPath(path));
+        } else if (this.list.id === 'today') {
+            eyebrow.setText(moment(today, 'YYYY-MM-DD').format('dddd, D MMMM'));
         }
+        if (eyebrow.childElementCount === 0 && eyebrow.textContent === '') eyebrow.remove();
+
+        header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
     }
 
     /**
-     * A group's header: a compact glass pill that hugs its label and sticks as
-     * the list scrolls under it, with the group's actions as separate small
-     * glass buttons to its right.
+     * A group's header, as plain as a heading: the name, a quiet subtitle and
+     * count, and the group's actions at the far end. Clicking the name folds
+     * the group.
      */
     private renderGroupHeader(groupEl: HTMLElement, group: TaskGroup, collapseKey: string, collapsed: boolean): void {
         const header = groupEl.createDiv({ cls: 'sh-group-header' });
         header.toggleClass('is-collapsed', collapsed);
-
-        const pill = header.createDiv({ cls: 'sh-glass sh-group-pill' });
-        const badge = pill.createDiv({ cls: 'sh-group-badge' });
-
-        const today = isoToday();
-        const day = group.key === 'today' ? today : group.key.startsWith('day:') ? group.key.slice(4) : null;
-        if (day) {
-            // The day of the month, round, filled on today, the way a calendar strip marks it.
-            badge.addClass('is-day');
-            badge.toggleClass('is-today', day === today);
-            badge.setText(moment(day, 'YYYY-MM-DD').format('D'));
-        } else if (group.kind === 'priority') {
+        if (group.kind === 'priority') {
             const level = group.key.split(':')[1];
-            const flag = badge.createDiv({ cls: 'sh-flag' });
-            if (level !== 'none') flag.dataset.priority = level;
-            setIcon(flag, level === 'none' ? 'flag-off' : 'flag');
-        } else {
-            const icons: Record<string, string> = { overdue: 'alarm-clock', note: 'file-text', heading: 'hash', date: 'calendar' };
-            setIcon(badge, group.key === 'no-date' ? 'calendar-off' : icons[group.kind] ?? 'circle');
+            if (level !== 'none') header.dataset.priority = level;
         }
 
-        pill.createDiv({ cls: 'sh-group-title', text: group.title });
+        const label = header.createDiv({ cls: 'sh-group-label' });
+        label.createDiv({ cls: 'sh-group-title', text: group.title });
+        if (group.subtitle) label.createDiv({ cls: 'sh-group-subtitle', text: group.subtitle });
+        if (group.count > 0) label.createDiv({ cls: 'sh-group-count', text: String(group.count) });
+        setIcon(label.createDiv({ cls: 'sh-group-chevron' }), 'chevron-right');
 
-        // A day already shows its number, so it only names the month when that
-        // has turned over; other groups keep their subtitle (a folder, a date).
-        let subtitle = group.subtitle;
-        if (day) {
-            const date = moment(day, 'YYYY-MM-DD');
-            subtitle = group.title === t('tasksTab.dates.tomorrow') ? date.format('dddd')
-                : date.format('MM') !== moment(today, 'YYYY-MM-DD').format('MM') ? date.format('MMMM')
-                : undefined;
-            if (day === today) subtitle = undefined;
-        }
-        if (subtitle) pill.createDiv({ cls: 'sh-group-subtitle', text: subtitle });
-        if (group.count > 0) pill.createDiv({ cls: 'sh-group-count', text: String(group.count) });
-
-        const chevron = pill.createDiv({ cls: 'sh-group-chevron' });
-        setIcon(chevron, 'chevron-down');
-
-        pill.addEventListener('click', () => {
+        label.addEventListener('click', () => {
             if (collapsed) this.collapsed.delete(collapseKey);
             else this.collapsed.add(collapseKey);
             this.writeJson(STORAGE.collapsed, [...this.collapsed]);
@@ -709,9 +650,7 @@ export class TasksTabView extends ItemView {
 
         const actions = header.createDiv({ cls: 'sh-group-actions' });
         if (group.kind === 'overdue') {
-            const reschedule = actions.createEl('button', { cls: 'sh-glass sh-pill-button is-alert' });
-            setIcon(reschedule.createSpan({ cls: 'sh-pill-icon' }), 'calendar-clock');
-            reschedule.createSpan({ text: t('tasksTab.actions.reschedule') });
+            const reschedule = actions.createEl('button', { cls: 'sh-link-button is-alert', text: t('tasksTab.actions.reschedule') });
             reschedule.addEventListener('click', (event) => {
                 event.stopPropagation();
                 const tasks = group.sections.flatMap(section => section.tasks);
@@ -719,7 +658,7 @@ export class TasksTabView extends ItemView {
             });
         }
         if (group.kind === 'note') {
-            const open = actions.createEl('button', { cls: 'sh-glass sh-round-button is-hover' });
+            const open = actions.createEl('button', { cls: 'sh-task-action is-hover' });
             setIcon(open, 'arrow-right');
             setTooltip(open, t('tasksTab.actions.showNote'));
             open.addEventListener('click', (event) => {
@@ -728,7 +667,7 @@ export class TasksTabView extends ItemView {
             });
         }
         if (group.add) {
-            const add = actions.createEl('button', { cls: 'sh-glass sh-round-button is-hover' });
+            const add = actions.createEl('button', { cls: 'sh-task-action is-hover' });
             setIcon(add, 'plus');
             setTooltip(add, t('tasksTab.actions.addHere'));
             const target = group.add;

@@ -2681,9 +2681,8 @@
     gap: 6px;
     padding: 10px 12px 4px;
     color: var(--sh-surface-faint);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
     user-select: none;
 }
@@ -2788,15 +2787,20 @@
 /* ── Header ─────────────────────────────────────────────────────────────── */
 
 .sh-tasks-header {
-    margin: 0 4px 22px;
+    margin: 0 14px 8px;
 }
 
 .sh-tasks-eyebrow {
-    margin-bottom: 4px;
-    color: var(--text-faint);
-    font-size: 11.5px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.sh-tasks-eyebrow button.sh-link-button {
+    font-weight: 500;
 }
 
 .sh-tasks-view h1.sh-tasks-title {
@@ -2805,65 +2809,6 @@
     font-weight: 650;
     line-height: 1.15;
     letter-spacing: -0.02em;
-}
-
-.sh-tasks-stats {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-top: 12px;
-}
-
-.sh-tasks-view .sh-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 26px;
-    padding: 0 11px;
-    border: 0;
-    border-radius: 999px;
-    background-color: var(--sh-row-active);
-    box-shadow: none;
-    color: var(--text-muted);
-    font-size: 12.5px;
-    font-variant-numeric: tabular-nums;
-}
-
-.sh-tasks-view .sh-stat.is-overdue {
-    background-color: color-mix(in oklch, var(--sh-overdue) 16%, transparent);
-    color: var(--sh-overdue);
-}
-
-.sh-tasks-view .sh-stat.is-done {
-    background-color: color-mix(in oklch, var(--sh-today) 14%, transparent);
-    color: var(--sh-today);
-}
-
-.sh-tasks-view button.sh-stat.is-button {
-    cursor: pointer;
-}
-
-.sh-tasks-view button.sh-stat.is-button:hover {
-    color: var(--text-normal);
-    background-color: var(--sh-row-hover);
-    box-shadow: inset 0 0 0 1px var(--background-modifier-border);
-}
-
-.sh-stat-icon {
-    display: inline-flex;
-}
-
-.sh-stat-icon .svg-icon {
-    width: 13px;
-    height: 13px;
-}
-
-.sh-meter {
-    width: 56px;
-    height: 5px;
-    border-radius: 999px;
-    background: linear-gradient(to right, var(--sh-accent) var(--sh-done, 0%), var(--sh-row-active) var(--sh-done, 0%));
 }
 
 .sh-tasks-view button.sh-link-button {
@@ -2889,190 +2834,93 @@
 /* ── Group headers ──────────────────────────────────────────────────────── */
 
 .sh-group {
-    margin-top: 26px;
+    margin-top: 30px;
 }
 
-/* The header row itself is transparent and sticks under the top bar; only
-   its pill and buttons are glass, so the list scrolls visibly around them. */
+/* Plain, like a heading in a note. */
 .sh-group-header {
-    position: sticky;
-    top: 54px;
-    z-index: 5;
     display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0 0 8px;
-    pointer-events: none;
-}
-
-.sh-tasks-view .sh-group-pill {
-    display: inline-flex;
     align-items: center;
     gap: 8px;
-    max-width: 100%;
-    height: 34px;
-    padding: 0 12px 0 5px;
-    border-radius: 999px;
-    cursor: pointer;
-    pointer-events: auto;
-    user-select: none;
-    transition: box-shadow 120ms ease;
+    min-height: 30px;
+    margin: 0 0 4px;
+    padding: 0 6px 0 14px;
 }
 
-.sh-tasks-view .sh-group-pill:hover {
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
-}
-
-.sh-group-badge {
+.sh-group-label {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background-color: var(--sh-inner-chip);
-    color: var(--sh-surface-mid);
-    font-size: 12px;
-    font-weight: 650;
-    font-variant-numeric: tabular-nums;
-}
-
-.sh-group-badge .svg-icon {
-    width: 13px;
-    height: 13px;
-}
-
-.sh-group-badge.is-today {
-    background-color: var(--sh-accent);
-    color: var(--sh-on-accent);
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    cursor: pointer;
+    user-select: none;
 }
 
 .sh-group-title {
     overflow: hidden;
-    font-size: 13.5px;
-    font-weight: 600;
+    color: var(--text-normal);
+    font-size: 15px;
+    font-weight: 650;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
+.sh-group.is-overdue .sh-group-title { color: var(--sh-overdue); }
+.sh-group-header[data-priority="1"] .sh-group-title { color: var(--sh-p1); }
+.sh-group-header[data-priority="2"] .sh-group-title { color: var(--sh-p2); }
+.sh-group-header[data-priority="3"] .sh-group-title { color: var(--sh-p3); }
+
 .sh-group-subtitle {
     overflow: hidden;
-    color: var(--sh-surface-dim);
-    font-size: 12.5px;
+    color: var(--text-muted);
+    font-size: 13px;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 .sh-group-count {
-    color: var(--sh-surface-faint);
-    font-size: 12.5px;
+    color: var(--text-faint);
+    font-size: 13px;
     font-variant-numeric: tabular-nums;
 }
 
 .sh-group-chevron {
     display: none;
-    margin-right: -4px;
-    color: var(--sh-surface-faint);
+    align-self: center;
+    color: var(--text-faint);
 }
 
 .sh-group-chevron .svg-icon {
-    width: 13px;
-    height: 13px;
+    width: 14px;
+    height: 14px;
 }
 
-/* Only a folded group shows its chevron, turned, as the sign it can open. */
 .sh-group-header.is-collapsed .sh-group-chevron {
     display: flex;
-    transform: rotate(-90deg);
-}
-
-/* Overdue: the glass itself takes a red tint, nothing bolted on. */
-.sh-tasks-view .sh-group.is-overdue .sh-group-pill {
-    background-color: color-mix(in srgb, var(--sh-overdue) 16%, var(--sh-surface));
-}
-
-.sh-group.is-overdue .sh-group-badge {
-    background-color: color-mix(in srgb, var(--sh-overdue) 24%, transparent);
-    color: var(--sh-overdue);
-}
-
-.sh-group.is-overdue .sh-group-title {
-    color: var(--sh-overdue);
 }
 
 .sh-group-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 2px;
     margin-left: auto;
 }
 
-.sh-tasks-view button.sh-round-button,
-.sh-tasks-view button.sh-pill-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    height: 34px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    color: var(--sh-surface-mid);
-    cursor: pointer;
-    pointer-events: auto;
-    transition: box-shadow 120ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1), opacity 120ms ease;
+.sh-group-actions button.sh-link-button {
+    font-size: 13px;
 }
 
-.sh-tasks-view button.sh-round-button {
-    width: 34px;
-}
-
-.sh-tasks-view button.sh-pill-button {
-    padding: 0 14px 0 11px;
-    font-size: 12.5px;
-    font-weight: 600;
-}
-
-.sh-tasks-view button.sh-round-button:hover,
-.sh-tasks-view button.sh-pill-button:hover {
-    color: var(--sh-surface-text);
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
-}
-
-.sh-tasks-view button.sh-round-button:active,
-.sh-tasks-view button.sh-pill-button:active {
-    transform: scale(0.95);
-}
-
-.sh-tasks-view button.sh-pill-button.is-alert {
-    color: var(--sh-overdue);
-}
-
-.sh-round-button .svg-icon,
-.sh-pill-icon .svg-icon {
-    width: 15px;
-    height: 15px;
-}
-
-.sh-pill-icon {
-    display: inline-flex;
-}
-
-/* Hover-only buttons wait until the group is being looked at. */
-.sh-tasks-view button.sh-round-button.is-hover {
+.sh-tasks-view button.sh-task-action.is-hover {
     opacity: 0;
-    pointer-events: none;
+    transition: opacity 100ms ease;
 }
 
-.sh-group:hover button.sh-round-button.is-hover {
+.sh-group-header:hover button.sh-task-action.is-hover {
     opacity: 1;
-    pointer-events: auto;
 }
 
-.is-mobile .sh-tasks-view button.sh-round-button.is-hover {
+.is-mobile .sh-tasks-view button.sh-task-action.is-hover {
     opacity: 1;
-    pointer-events: auto;
 }
 
 /* An empty group's invitation: a dashed ring where a task would be. */
@@ -3133,10 +2981,9 @@
 .sh-section-title {
     margin: 16px 0 4px;
     padding: 0 14px;
-    color: var(--text-faint);
-    font-size: 11px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 600;
 }
 
 /* ── Rows ───────────────────────────────────────────────────────────────── */
@@ -3646,9 +3493,8 @@
 .sh-palette-section {
     padding: 8px 13px 4px;
     color: var(--sh-surface-faint);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .sh-palette-divider {
@@ -3940,9 +3786,8 @@
 .sh-menu-section {
     padding: 8px 13px 4px;
     color: var(--sh-surface-faint);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 500;
 }
 
 .sh-menu-divider {
