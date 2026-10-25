@@ -3638,11 +3638,22 @@
 
 /* ── Palette ────────────────────────────────────────────────────────────── */
 
+/* The dim covers the whole tab, rail included, and fades in the way Oriko's
+   does. The panel itself still appears at once. */
 .sh-palette-backdrop {
     position: absolute;
     inset: 0;
     z-index: 44;
     background-color: var(--sh-scrim);
+    animation: sh-scrim-in 140ms ease both;
+}
+
+@keyframes sh-scrim-in {
+    from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sh-palette-backdrop { animation: none; }
 }
 
 .sh-tasks-view .sh-palette {

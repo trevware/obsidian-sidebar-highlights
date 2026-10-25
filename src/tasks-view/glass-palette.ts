@@ -84,7 +84,12 @@ export class GlassPalette {
     private onKey: ((event: KeyboardEvent) => void) | null = null;
     private source: PaletteSource | null = null;
 
-    constructor(private container: HTMLElement) {}
+    /**
+     * The panel sits in `container`; the dim goes in `backdropHost`, which
+     * can be wider (the whole tab, rail included), so it never stops at an
+     * edge in the middle of the view.
+     */
+    constructor(private container: HTMLElement, private backdropHost: HTMLElement = container) {}
 
     get isOpen(): boolean {
         return this.panel !== null;
@@ -94,7 +99,7 @@ export class GlassPalette {
         if (this.isOpen) this.close();
         this.source = source;
 
-        this.backdrop = this.container.createDiv({ cls: 'sh-palette-backdrop' });
+        this.backdrop = this.backdropHost.createDiv({ cls: 'sh-palette-backdrop' });
         this.backdrop.addEventListener('mousedown', (event) => {
             event.preventDefault();
             this.close();

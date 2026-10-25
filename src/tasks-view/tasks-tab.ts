@@ -213,7 +213,7 @@ export class TasksTabView extends ItemView {
         this.topbar = this.main.createDiv({ cls: 'sh-tasks-controls' });
         this.bulkbar = this.main.createDiv({ cls: 'sh-glass sh-bulkbar' });
 
-        this.palette = new GlassPalette(this.main);
+        this.palette = new GlassPalette(this.main, this.shell);
         this.glassMenu = new GlassMenu(this.main);
         this.quickAdd = new QuickAdd(this.main, {
             today: () => isoToday(),
