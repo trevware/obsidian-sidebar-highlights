@@ -606,6 +606,7 @@
       "removeDate": "Remove date",
       "setPriority": "Set priority",
       "setStatus": "Set status",
+      "moveToHeading": "Move to heading",
       "copy": "Copy as Markdown",
       "openInNote": "Open in note",
       "openToSide": "Open to the side",
@@ -632,6 +633,10 @@
       "datePlaceholder": "Type a date: fri, in 3 days, nov 3…",
       "priorityPlaceholder": "Pick a priority",
       "statusPlaceholder": "Pick a status",
+      "headingPlaceholder": "Find a heading, or type a new one…",
+      "noHeading": "No heading",
+      "createHeadingTop": "Create “{{heading}}” at the top",
+      "createHeadingBottom": "Create “{{heading}}” at the bottom",
       "shortcutsPlaceholder": "Filter shortcuts"
     },
     "display": {
@@ -688,7 +693,13 @@
       "undone": "Undid: {{label}}",
       "deletedOne": "Deleted “{{task}}”",
       "deletedMany": "Deleted {{count}} tasks",
-      "notesSaved": "Edited the notes on “{{task}}”"
+      "notesSaved": "Edited the notes on “{{task}}”",
+      "movedOne": "Moved “{{task}}”",
+      "movedMany": "Moved {{count}} tasks",
+      "movedToOne": "Moved “{{task}}” to {{heading}}",
+      "movedToMany": "Moved {{count}} tasks to {{heading}}",
+      "moveOneNote": "Tasks can only move within their own note. Pick tasks from one note.",
+      "notMoved": "Nothing moved. The task may already be there, or the note changed."
     },
     "shortcuts": {
       "moveHighlight": "Move up and down",
@@ -704,6 +715,7 @@
       "nudgeDate": "Move the date a day (⇧ for a week)",
       "setPriority": "Set or clear priority",
       "setStatus": "Set status",
+      "moveToHeading": "Move to heading",
       "addTask": "Add task",
       "search": "Search and commands",
       "goTo": "Go to a list",

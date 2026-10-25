@@ -38,8 +38,11 @@ import {
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
 import { notesText, parseTaskLine, setDateInText, withState } from './task-line';
 import { parseDateQuery } from './quick-parse';
+import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
 import type { LineChange } from './task-writer';
+import { newHeadingLevel } from './task-move';
+import type { MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
@@ -56,7 +59,8 @@ const STORAGE = {
     display: 'sidebar-highlights-tasks-display',
     collapsed: 'sidebar-highlights-tasks-collapsed',
     rail: 'sidebar-highlights-tasks-rail',
-    destination: 'sidebar-highlights-tasks-destination'
+    destination: 'sidebar-highlights-tasks-destination',
+    newHeading: 'sidebar-highlights-tasks-new-heading'
 };
 
 /** How long a just-completed task stays in place before it leaves its list. */
@@ -145,6 +149,8 @@ export class TasksTabView extends ItemView {
     private planPending = false;
     /** Tasks just added that are waiting for their rows to be drawn. */
     private pendingReveal: string[] | null = null;
+    /** Row ids that changed with a move, old to new, so rows slide to their new places. */
+    private flipRemap: Map<string, string> | null = null;
     private paintedHighlight: string | null = null;
     private paintedSelection = new Set<string>();
     /** A change arrived while the tab was in the background. */
@@ -546,7 +552,10 @@ export class TasksTabView extends ItemView {
         }
         this.dirty = false;
         const today = isoToday();
-        const before = animate && this.rowEls.size <= FLIP_LIMIT && motionAllowed() ? capture(this.column) : null;
+        let before = animate && this.rowEls.size <= FLIP_LIMIT && motionAllowed() ? capture(this.column) : null;
+        const remap = this.flipRemap;
+        this.flipRemap = null;
+        if (before && remap) before = new Map([...before].map(([id, top]) => [remap.get(id) ?? id, top]));
         this.renderRail(today);
         this.renderMain(today);
         this.paintSelection(true);
@@ -1572,6 +1581,11 @@ export class TasksTabView extends ItemView {
                 consume();
                 this.openPalette(this.statusStage(this.targets()));
                 return;
+            case lower === 'm':
+                if (!this.hasTargets()) return;
+                consume();
+                this.openMoveStage(this.targets());
+                return;
             case lower === 'q' || lower === 'n':
                 consume();
                 this.openQuickAdd();
@@ -2052,6 +2066,10 @@ export class TasksTabView extends ItemView {
             if (targets.some(task => task.date)) {
                 items.push({ id: 'remove-date', section: sections.selection, icon: 'calendar-x', label: t('tasksTab.actions.removeDate') + scope, detail: '⇧T', run: () => void this.setDates(targets, null) });
             }
+            const moveStage = this.moveStage(targets);
+            if (moveStage) {
+                items.push({ id: 'move', section: sections.selection, icon: 'heading', label: t('tasksTab.actions.moveToHeading') + scope, detail: 'M', stage: moveStage, keywords: 'section header heading reorder new' });
+            }
             if (targets.length === 1) {
                 const task = targets[0];
                 items.push(
@@ -2222,6 +2240,136 @@ export class TasksTabView extends ItemView {
         };
     }
 
+    /** The note's headings, as Obsidian has read them. */
+    private headingsOf(path: string): NoteHeading[] {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        const headings = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.headings ?? [] : [];
+        return headings.map(heading => ({ line: heading.position.start.line, level: heading.level, title: heading.heading.trim() }));
+    }
+
+    /** The one note some tasks share, or null when they come from several. */
+    private sharedNote(tasks: Task[]): string | null {
+        const path = tasks[0]?.filePath;
+        return path && tasks.every(task => task.filePath === path) ? path : null;
+    }
+
+    /** Opens the heading page, or says why it can't when the tasks span notes. */
+    private openMoveStage(tasks: Task[]): void {
+        const stage = this.moveStage(tasks);
+        if (stage) this.openPalette(stage);
+        else this.toast(t('tasksTab.notices.moveOneNote'), false);
+    }
+
+    /**
+     * A page of the note's headings to move tasks under. Typing a name no
+     * heading has offers to create it, at the top of the note or the bottom,
+     * the one picked last time first.
+     */
+    private moveStage(tasks: Task[]): PaletteStage | null {
+        const path = this.sharedNote(tasks);
+        if (!path) return null;
+        const headings = this.headingsOf(path);
+        const sections = new Set(tasks.map(task => task.section ?? ''));
+        const here = sections.size === 1 ? [...sections][0] : null;
+        const level = newHeadingLevel(headings, tasks[0].section);
+        const loose = this.allTasks.some(task => task.filePath === path && !task.section);
+        const scope = tasks.length > 1 ? ` · ${tasks.length}` : '';
+        return {
+            title: t('tasksTab.actions.moveToHeading') + scope,
+            placeholder: t('tasksTab.palette.headingPlaceholder'),
+            readsQuery: true,
+            items: (query) => {
+                const choices = headings
+                    .filter(heading => heading.title !== here)
+                    .map(heading => ({ heading: heading.title, line: heading.line, level: heading.level }));
+                if (loose && here !== '') choices.unshift({ heading: '', line: -1, level: 0 });
+                const name = query.trim();
+                const shown = name
+                    ? rank(name, choices, choice => ({ primary: choice.heading || t('tasksTab.palette.noHeading') })).map(hit => hit.item)
+                    : choices;
+                const rows: PaletteItem[] = shown.map(choice => ({
+                    id: `heading:${choice.line}`,
+                    section: '',
+                    icon: choice.heading ? 'heading' : 'list',
+                    label: choice.heading || t('tasksTab.palette.noHeading'),
+                    detail: choice.level ? '#'.repeat(choice.level) : undefined,
+                    run: () => void this.moveTasksTo(tasks, { kind: 'heading', heading: choice.heading }, choice.heading || t('tasksTab.palette.noHeading'))
+                }));
+                if (name && !headings.some(heading => heading.title.toLowerCase() === name.toLowerCase())) {
+                    const last = this.readJson<'top' | 'bottom'>(STORAGE.newHeading, 'bottom');
+                    const order: Array<'top' | 'bottom'> = last === 'top' ? ['top', 'bottom'] : ['bottom', 'top'];
+                    order.forEach((where, index) => rows.push({
+                        id: `new-heading:${where}`,
+                        section: '',
+                        icon: where === 'top' ? 'arrow-up-to-line' : 'arrow-down-to-line',
+                        label: t(where === 'top' ? 'tasksTab.palette.createHeadingTop' : 'tasksTab.palette.createHeadingBottom', { heading: name }),
+                        divider: index === 0 && rows.length > 0,
+                        run: () => {
+                            this.writeJson(STORAGE.newHeading, where);
+                            void this.moveTasksTo(tasks, { kind: 'new-heading', heading: name, level, where }, name);
+                        }
+                    }));
+                }
+                return rows;
+            }
+        };
+    }
+
+    /**
+     * Moves tasks within their note, then slides every row that moved to its
+     * new place and keeps the selection on the same tasks. `reveal` scrolls
+     * the moved tasks into view with a glow, for a move made from the palette
+     * that may send them far down the list.
+     */
+    private async moveTasksTo(tasks: Task[], target: MoveTarget, heading: string | null, reveal = true): Promise<void> {
+        const path = this.sharedNote(tasks);
+        if (!path) {
+            this.toast(t('tasksTab.notices.moveOneNote'), false);
+            return;
+        }
+        const result = await this.writer.moveTasks(path, tasks, target);
+        if (!result) {
+            this.toast(t('tasksTab.notices.notMoved'), false);
+            return;
+        }
+        await this.refreshFile(path);
+
+        // Line numbers are the tasks' identity, so carry everything that
+        // refers to a task in this note over to its new line.
+        const rekey = (key: string) => {
+            if (!key.startsWith(`${path}:`)) return key;
+            const line = result.lineMap.get(Number(key.slice(path.length + 1)));
+            return line === undefined ? key : `${path}:${line}`;
+        };
+        this.selected = new Set([...this.selected].map(rekey));
+        if (this.highlightKey) this.highlightKey = rekey(this.highlightKey);
+        if (this.expandedKey) this.expandedKey = rekey(this.expandedKey);
+        const remap = new Map<string, string>();
+        for (const [from, to] of result.lineMap) {
+            if (from !== to) remap.set(`task:${path}:${from}`, `task:${path}:${to}`);
+        }
+        this.flipRemap = remap;
+        this.render(true);
+        if (reveal) this.revealAdded(result.landed.map(line => `${path}:${line}`));
+
+        const label = heading === null
+            ? this.countLabel('moved', tasks)
+            : tasks.length === 1
+                ? t('tasksTab.notices.movedToOne', { task: truncate(this.plainText(tasks[0]), 40), heading })
+                : t('tasksTab.notices.movedToMany', { count: tasks.length, heading });
+        const change = result.change;
+        this.undoStack.push({
+            label,
+            undo: async () => {
+                await this.writer.undoRange(change);
+                await this.refreshFile(change.path);
+                this.render(true);
+            }
+        });
+        if (this.undoStack.length > 50) this.undoStack.shift();
+        this.toast(label, true);
+    }
+
     /** What a task's status reads as, naming its alternate marker when it has one. */
     private statusLabel(task: Task): string {
         const marker = statusOf(task) === 'todo' && !task.priority ? markerDef(task.marker) : undefined;
@@ -2244,6 +2392,7 @@ export class TasksTabView extends ItemView {
             ['⌃] / ⌃[', 'nudgeDate'],
             ['1 2 3 / 0', 'setPriority'],
             ['S', 'setStatus'],
+            ['M', 'moveToHeading'],
             ['Q', 'addTask'],
             ['⌘K  /', 'search'],
             ['G then T U A I Q D', 'goTo'],
@@ -2276,6 +2425,9 @@ export class TasksTabView extends ItemView {
             { label: t('tasksTab.actions.setPriority'), icon: 'flag', detail: '1–3', run: () => this.openPalette(this.priorityStage(tasks)) },
             { label: t('tasksTab.actions.setStatus'), icon: 'circle-dot', detail: 'S', run: () => this.openPalette(this.statusStage(tasks)) }
         ];
+        if (this.sharedNote(tasks)) {
+            items.push({ label: t('tasksTab.actions.moveToHeading'), icon: 'heading', detail: 'M', run: () => this.openMoveStage(tasks) });
+        }
         if (tasks.length === 1) {
             items.push(
                 { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', detail: '↵', divider: true, run: () => void this.openTask(task) },
@@ -2425,6 +2577,7 @@ export class TasksTabView extends ItemView {
         this.bulkButton(bar, 'calendar', t('tasksTab.actions.setDate'), 'T', () => this.openPalette(this.dateStage(targets())));
         this.bulkButton(bar, 'flag', t('tasksTab.actions.setPriority'), '1–3', () => this.openPalette(this.priorityStage(targets())));
         this.bulkButton(bar, 'circle-dot', t('tasksTab.actions.setStatus'), 'S', () => this.openPalette(this.statusStage(targets())));
+        if (this.sharedNote(targets())) this.bulkButton(bar, 'heading', t('tasksTab.actions.moveToHeading'), 'M', () => this.openMoveStage(targets()));
         this.bulkButton(bar, 'copy', t('tasksTab.actions.copy'), '', () => void this.copyTasks(targets()));
         bar.createDiv({ cls: 'sh-bar-divider' });
         this.bulkButton(bar, 'trash-2', t('tasksTab.actions.delete'), '⌘⌫', () => this.deleteTasks(targets())).addClass('is-destructive');

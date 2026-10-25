@@ -1,6 +1,8 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
 import { contextRange, insertionLine, locateTaskLine, notesLines, taskBlockEnd } from './task-line';
+import { moveTasks } from './task-move';
+import type { MoveTarget } from './task-move';
 
 /** One line the Tasks tab changed, kept so the change can be undone. */
 export interface LineChange {
@@ -8,6 +10,15 @@ export interface LineChange {
     line: number;
     before: string;
     after: string;
+}
+
+/** What a move did: the change to undo it, and where the tasks went. */
+export interface MoveResult {
+    change: RangeChange;
+    /** Where each line of the note went, by its old line number. */
+    lineMap: Map<number, number>;
+    /** The new line of each moved task. */
+    landed: number[];
 }
 
 /** A run of lines replaced in a note, kept so it can be put back. */
@@ -249,6 +260,23 @@ export class TaskWriter {
             return lines.join('\n');
         });
         return change;
+    }
+
+    /**
+     * Moves tasks, with their notes and subtasks, within the one note they
+     * share. Returns null when the note is gone or nothing moved.
+     */
+    async moveTasks(path: string, tasks: readonly Task[], target: MoveTarget): Promise<MoveResult | null> {
+        const file = this.file(path);
+        if (!file) return null;
+        let result: MoveResult | null = null;
+        await this.app.vault.process(file, (data) => {
+            const plan = moveTasks(data.split('\n'), tasks.map(task => ({ line: task.lineNumber, text: task.text })), target);
+            if (!plan) return data;
+            result = { change: { path, ...plan.change }, lineMap: plan.lineMap, landed: plan.landed };
+            return plan.lines.join('\n');
+        });
+        return result;
     }
 
     /** Puts a replaced run of lines back, finding it by what it was changed to. */
