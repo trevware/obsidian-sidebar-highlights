@@ -3266,62 +3266,6 @@
     text-decoration: underline;
 }
 
-/* The row's buttons float over its right end as a small glass pill. They sit
-   in the list, above the rows, positioned over whichever row is hovered, so
-   the pill takes no room in any row and nothing re-wraps as the pointer
-   moves. */
-.sh-tasks-view .sh-task-actions {
-    position: absolute;
-    right: calc(var(--sh-column-pad) + 8px);
-    z-index: 3;
-    display: flex;
-    gap: 1px;
-    padding: 2px;
-    border-radius: 999px;
-    background-color: var(--sh-surface);
-    -webkit-backdrop-filter: var(--sh-surface-blur);
-    backdrop-filter: var(--sh-surface-blur);
-    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 100ms ease;
-}
-
-.sh-tasks-view .sh-task-actions.is-visible {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-/* The row keeps its hover wash while the pointer is on its buttons. */
-.sh-task-row.is-hovered {
-    background-color: var(--sh-row-hover);
-}
-
-.sh-task-row.is-highlighted.is-hovered {
-    background-color: var(--sh-row-active);
-}
-
-.sh-tasks-view .sh-task-actions button.sh-task-action {
-    width: 24px;
-    height: 24px;
-    border-radius: 999px;
-    color: var(--sh-surface-mid);
-}
-
-.sh-tasks-view .sh-task-actions button.sh-task-action:hover {
-    background-color: var(--sh-inner-active);
-    color: var(--sh-surface-text);
-}
-
-.sh-tasks-view .sh-task-actions button.sh-task-action .svg-icon {
-    width: 15px;
-    height: 15px;
-}
-
-.sh-task-row.is-expanded .sh-task-actions {
-    display: none;
-}
-
 .sh-task-context {
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -4158,10 +4102,6 @@
 .is-phone .sh-tasks-column {
     --sh-column-pad: 12px;
     padding: 24px var(--sh-column-pad) 140px;
-}
-
-.is-phone .sh-task-actions {
-    display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

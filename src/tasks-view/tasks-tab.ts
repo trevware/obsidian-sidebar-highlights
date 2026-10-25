@@ -143,8 +143,6 @@ export class TasksTabView extends ItemView {
     private renderGeneration = 0;
     /** Rows are still being drawn in slices, so the list isn't complete yet. */
     private planPending = false;
-    /** Where the pointer last was over the list, to put the hover pill back after a rebuild. */
-    private pointer: { x: number; y: number } | null = null;
     private paintedHighlight: string | null = null;
     private paintedSelection = new Set<string>();
     /** A change arrived while the tab was in the background. */
@@ -154,9 +152,6 @@ export class TasksTabView extends ItemView {
     private railSignature = '';
     private progressCache: { version: number; map: Map<string, { done: number; total: number }> } | null = null;
     private titleCache = new Map<string, DocumentFragment>();
-    private actionsEl!: HTMLElement;
-    private actionsKey: string | null = null;
-    private hoveredRow: HTMLElement | null = null;
     private undoStack: UndoEntry[] = [];
     private railHidden = false;
     private narrow = false;
@@ -231,25 +226,9 @@ export class TasksTabView extends ItemView {
 
         // Every click in the list goes through one handler, so rows carry no
         // listeners of their own.
-        this.actionsEl = this.buildActions();
         this.scroller.addEventListener('click', (event) => this.onListClick(event));
         this.column.addEventListener('dblclick', (event) => this.onListDoubleClick(event));
         this.column.addEventListener('contextmenu', (event) => this.onListContextMenu(event));
-        this.column.addEventListener('mousemove', (event) => {
-            this.pointer = { x: event.clientX, y: event.clientY };
-        });
-        this.column.addEventListener('mouseover', (event) => {
-            const row = (event.target as HTMLElement).closest<HTMLElement>('.sh-task-row');
-            if (row) this.moveActions(row);
-        });
-        // Off the list, the buttons go back to the highlighted row, or away.
-        this.column.addEventListener('mouseleave', () => {
-            this.pointer = null;
-            const highlighted = this.highlightKey ? this.rowEls.get(this.highlightKey) : undefined;
-            if (highlighted) this.moveActions(highlighted);
-            else this.hideActions();
-        });
-
         // Clicking anywhere outside an open card closes it. Surfaces the card
         // opens (the palette, menus, quick add) don't count as outside.
         root.addEventListener('mousedown', (event) => {
@@ -572,10 +551,6 @@ export class TasksTabView extends ItemView {
         this.topbar.querySelector('.sh-display-button')?.toggleClass('has-changes', this.isDisplayChanged());
         if (before && this.rowEls.size <= FLIP_LIMIT) flip(this.column, before);
         this.justChanged.clear();
-        if (this.pointer) {
-            const row = document.elementFromPoint(this.pointer.x, this.pointer.y)?.closest<HTMLElement>('.sh-task-row');
-            if (row && this.column.contains(row)) this.moveActions(row);
-        }
     }
 
     private renderRail(today: string): void {
@@ -685,9 +660,6 @@ export class TasksTabView extends ItemView {
         this.rowGroups = new Map();
         this.rowSigs = new Map();
         this.groupSignature = '';
-        this.hoveredRow = null;
-        this.actionsKey = null;
-        this.actionsEl.removeClass('is-visible');
 
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
@@ -901,8 +873,7 @@ export class TasksTabView extends ItemView {
      * One row. Kept as light as a row can be: no listeners (the list handles
      * every click in one place), no tooltips, icons drawn by CSS, a glyph
      * cloned from a template, and a title cloned from the last time that
-     * text was drawn. The hover buttons are one shared set that moves to
-     * whichever row is under the pointer.
+     * text was drawn. Its actions live in the right-click menu.
      */
     private renderRow(parent: HTMLElement, task: Task, group: TaskGroup, progress: Map<string, { done: number; total: number }>, display: DisplayOptions): void {
         const key = taskKey(task);
@@ -1029,7 +1000,6 @@ export class TasksTabView extends ItemView {
             this.fillRow(row, task, group, progress, display);
             if (this.justChanged.has(key)) row.querySelector('.sh-task-glyph')?.addClass('is-just-changed');
             if (key === this.expandedKey) this.expandRow(row, task, false);
-            if (key === this.actionsKey) this.moveActions(row);
         });
 
         this.renderRail(today);
@@ -1063,54 +1033,6 @@ export class TasksTabView extends ItemView {
     }
 
     /** The one set of hover buttons, moved onto whichever row wants them. */
-    /**
-     * Puts the shared hover buttons over a row. They live in the list itself,
-     * above the rows, because a row clips whatever overflows it (that clipping
-     * is what lets rows off screen skip drawing), and the pill is taller than
-     * a one-line row.
-     */
-    private moveActions(row: HTMLElement): void {
-        const key = row.dataset.key ?? null;
-        if (row.hasClass('is-expanded')) {
-            this.hideActions();
-            return;
-        }
-        if (this.actionsEl.parentElement !== this.column) this.column.appendChild(this.actionsEl);
-        if (this.actionsKey !== key) {
-            this.hoveredRow?.removeClass('is-hovered');
-            this.hoveredRow = row;
-            row.addClass('is-hovered');
-            this.actionsKey = key;
-        }
-        this.actionsEl.setCssProps({ top: `${row.offsetTop}px` });
-        this.actionsEl.addClass('is-visible');
-    }
-
-    private hideActions(): void {
-        this.actionsEl.removeClass('is-visible');
-        this.hoveredRow?.removeClass('is-hovered');
-        this.hoveredRow = null;
-        this.actionsKey = null;
-    }
-
-    private buildActions(): HTMLElement {
-        const actions = createDiv({ cls: 'sh-task-actions' });
-        const button = (icon: string, label: string, run: (task: Task, event: MouseEvent) => void) => {
-            const el = actions.createEl('button', { cls: 'sh-task-action' });
-            setIcon(el, icon);
-            setTooltip(el, label);
-            el.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const task = this.actionsKey ? this.rowTasks.get(this.actionsKey) : undefined;
-                if (task) run(task, event);
-            });
-        };
-        button('calendar', t('tasksTab.actions.setDate'), (task) => this.openPalette(this.dateStage([task])));
-        button('arrow-up-right', t('tasksTab.actions.openInNote'), (task) => void this.openTask(task));
-        button('more-horizontal', t('tasksTab.actions.more'), (task, event) => this.showRowMenu(task, event));
-        return actions;
-    }
-
     /** Every click in the list, handled in one place. */
     private onListClick(event: MouseEvent): void {
         const target = event.target as HTMLElement;
@@ -1126,7 +1048,7 @@ export class TasksTabView extends ItemView {
             }
             return;
         }
-        if (target.closest('a, .sh-task-card, .sh-task-actions')) return;
+        if (target.closest('a, .sh-task-card')) return;
 
         const row = target.closest<HTMLElement>('.sh-task-row');
         if (!row) {
@@ -1376,10 +1298,7 @@ export class TasksTabView extends ItemView {
         if (this.paintedHighlight !== this.highlightKey) {
             if (this.paintedHighlight) this.rowEls.get(this.paintedHighlight)?.removeClass('is-highlighted');
             const row = this.highlightKey ? this.rowEls.get(this.highlightKey) : undefined;
-            if (row) {
-                row.addClass('is-highlighted');
-                this.moveActions(row);
-            }
+            row?.addClass('is-highlighted');
             this.paintedHighlight = this.highlightKey;
         }
         for (const key of this.paintedSelection) {
@@ -1451,7 +1370,6 @@ export class TasksTabView extends ItemView {
     }
 
     private expandRow(row: HTMLElement, task: Task, animate: boolean): void {
-        if (this.actionsKey === row.dataset.key) this.hideActions();
         row.addClass('is-expanded');
         row.querySelector('.sh-task-context')?.remove();
         const card = this.renderCard(row, task);
@@ -1784,7 +1702,6 @@ export class TasksTabView extends ItemView {
             this.rowSigs.delete(key);
             this.selected.delete(key);
             if (this.highlightKey === key) this.highlightKey = null;
-            if (this.actionsKey === key) this.hideActions();
         }
         this.order = this.order.filter(task => !gone.has(taskKey(task)));
         this.orderIndex = new Map(this.order.map((task, i) => [taskKey(task), i]));
