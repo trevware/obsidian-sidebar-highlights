@@ -4214,9 +4214,8 @@
     color: var(--sh-overdue);
 }
 
-/* A task just added: it drops in and settles, glows in the accent for a
-   moment, and a ring ripples out from its checkbox. Staggered when several
-   arrive at once. */
+/* A task just added: it drops in and settles, and glows in the accent for a
+   moment. Staggered when several arrive at once. */
 @keyframes sh-row-arrive {
     0% { opacity: 0; transform: translateY(-10px) scale(0.97); }
     55% { opacity: 1; transform: translateY(1px) scale(1.012); }
@@ -4224,19 +4223,8 @@
 }
 
 @keyframes sh-row-glow {
-    0% {
-        background-color: color-mix(in srgb, var(--sh-accent) 24%, transparent);
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sh-accent) 65%, transparent);
-    }
-    100% {
-        background-color: color-mix(in srgb, var(--sh-accent) 0%, transparent);
-        box-shadow: inset 0 0 0 1px transparent;
-    }
-}
-
-@keyframes sh-glyph-ripple {
-    0% { opacity: 0.8; transform: scale(1); }
-    100% { opacity: 0; transform: scale(2.3); }
+    0% { background-color: color-mix(in srgb, var(--sh-accent) 24%, transparent); }
+    100% { background-color: color-mix(in srgb, var(--sh-accent) 0%, transparent); }
 }
 
 .sh-tasks-view .sh-task-row.is-new {
@@ -4245,19 +4233,8 @@
         sh-row-glow 1800ms ease-out calc(var(--sh-new-delay, 0ms) + 260ms) backwards;
 }
 
-.sh-tasks-view .sh-task-row.is-new .sh-task-glyph::before {
-    content: "";
-    position: absolute;
-    inset: 1px;
-    border: 2px solid var(--sh-accent);
-    border-radius: 7px;
-    pointer-events: none;
-    animation: sh-glyph-ripple 720ms ease-out calc(var(--sh-new-delay, 0ms) + 300ms) both;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .sh-tasks-view .sh-task-row.is-new,
-    .sh-tasks-view .sh-task-row.is-new .sh-task-glyph::before,
     .sh-tasks-view .sh-palette,
     .sh-tasks-view .sh-quickadd,
     .sh-tasks-view .sh-menu,
