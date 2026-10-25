@@ -3093,11 +3093,15 @@
 }
 
 .sh-add-glyph {
+    display: flex;
     flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    border: 1.5px dashed var(--text-faint);
-    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+}
+
+.sh-add-glyph .sh-glyph-outline {
+    stroke: var(--text-faint);
+    stroke-dasharray: 3 2.6;
 }
 
 .sh-tasks-view button.sh-task-action {
@@ -3285,113 +3289,116 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     overflow: hidden;
-    margin: 3px 0 0 30px;
+    margin: 3px 0 0 32px;
     color: var(--text-faint);
     font-size: 12.5px;
     line-height: 1.4;
 }
 
-/* ── The glyph: status or priority in one mark ──────────────────────────── */
+/* ── The glyph: status or priority in one squircle ─────────────────────── */
 
 .sh-tasks-view button.sh-task-glyph,
 .sh-tasks-view .sh-task-glyph {
     --sh-glyph: var(--text-faint);
     position: relative;
     display: flex;
-    align-items: center;
-    justify-content: center;
     flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
-    margin-top: 2px;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
     padding: 0;
-    border: 1.5px solid var(--sh-glyph);
-    border-radius: 50%;
-    background: transparent;
+    border: 0;
+    background: none;
     box-shadow: none;
     color: var(--sh-glyph);
     cursor: pointer;
-    transition: background-color 120ms ease, border-color 120ms ease, transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1);
-}
-
-.sh-tasks-view button.sh-task-glyph:hover {
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--sh-glyph) 18%, transparent);
+    transition: transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1);
 }
 
 .sh-tasks-view button.sh-task-glyph:active {
     transform: scale(0.86);
 }
 
-.sh-tasks-view .sh-task-glyph[data-priority="1"] { --sh-glyph: var(--sh-p1); border-width: 2px; }
-.sh-tasks-view .sh-task-glyph[data-priority="2"] { --sh-glyph: var(--sh-p2); border-width: 2px; }
-.sh-tasks-view .sh-task-glyph[data-priority="3"] { --sh-glyph: var(--sh-p3); border-width: 2px; }
-
-.sh-tasks-view .sh-task-glyph[data-status="in-progress"] {
-    --sh-glyph: var(--sh-progress);
-    background: conic-gradient(var(--sh-progress) 0 50%, transparent 50% 100%);
-    background-clip: content-box;
-    padding: 2px;
+.sh-glyph-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
 }
 
-.sh-tasks-view .sh-task-glyph[data-status="question"] {
-    --sh-glyph: var(--sh-question);
-    border-style: dotted;
-    border-width: 2px;
+.sh-glyph-fill {
+    fill: var(--sh-glyph);
+    fill-opacity: 0;
+    transition: fill-opacity 120ms ease;
 }
 
-.sh-tasks-view .sh-task-glyph[data-status="done"] {
-    --sh-glyph: var(--sh-accent);
-    background-color: var(--sh-accent);
-    color: var(--sh-on-accent);
+.sh-glyph-outline {
+    fill: none;
+    stroke: var(--sh-glyph);
+    stroke-width: 1.8;
+    stroke-linejoin: round;
 }
 
-.sh-tasks-view .sh-task-glyph[data-status="cancelled"] {
-    --sh-glyph: var(--text-faint);
-    border-style: dashed;
+.sh-glyph-half {
+    fill: var(--sh-glyph);
 }
 
 .sh-glyph-mark {
-    display: flex;
+    fill: none;
+    stroke: var(--sh-glyph);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
-.sh-glyph-mark .svg-icon {
-    width: 11px;
-    height: 11px;
-    stroke-width: 3.2px;
+.sh-task-glyph[data-status="todo"] .sh-glyph-mark {
+    opacity: 0;
+    transition: opacity 120ms ease;
 }
 
-.sh-task-glyph[data-status="question"] .sh-glyph-mark {
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
+.sh-tasks-view button.sh-task-glyph:hover .sh-glyph-fill {
+    fill-opacity: 0.14;
 }
 
-.sh-task-glyph[data-status="question"] .sh-glyph-mark .svg-icon {
-    display: none;
+.sh-tasks-view button.sh-task-glyph[data-status="todo"]:hover .sh-glyph-mark {
+    opacity: 0.6;
 }
 
-.sh-task-glyph[data-status="question"] .sh-glyph-mark::after {
-    content: "?";
+.sh-tasks-view .sh-task-glyph[data-priority="1"] { --sh-glyph: var(--sh-p1); }
+.sh-tasks-view .sh-task-glyph[data-priority="2"] { --sh-glyph: var(--sh-p2); }
+.sh-tasks-view .sh-task-glyph[data-priority="3"] { --sh-glyph: var(--sh-p3); }
+
+.sh-task-glyph[data-priority] .sh-glyph-outline {
+    stroke-width: 2.2;
+}
+
+.sh-task-glyph[data-priority] .sh-glyph-fill {
+    fill-opacity: 0.12;
+}
+
+.sh-tasks-view .sh-task-glyph[data-status="in-progress"] { --sh-glyph: var(--sh-progress); }
+.sh-tasks-view .sh-task-glyph[data-status="question"] { --sh-glyph: var(--sh-question); }
+.sh-tasks-view .sh-task-glyph[data-status="cancelled"] { --sh-glyph: var(--text-faint); }
+.sh-tasks-view .sh-task-glyph[data-status="done"] { --sh-glyph: var(--sh-accent); }
+
+.sh-task-glyph[data-status="cancelled"] .sh-glyph-outline {
+    stroke-dasharray: 3 2.6;
+}
+
+.sh-task-glyph[data-status="done"] .sh-glyph-fill {
+    fill-opacity: 1;
+}
+
+.sh-task-glyph[data-status="done"] .sh-glyph-mark {
+    stroke: var(--sh-on-accent);
 }
 
 /* Smaller glyphs: palette rows, and the rail's status lists. */
 .sh-tasks-view .sh-task-glyph.is-small,
 .sh-tasks-view .sh-task-glyph.is-icon {
-    width: 15px;
-    height: 15px;
+    width: 17px;
+    height: 17px;
     margin: 0;
     cursor: inherit;
-}
-
-.sh-task-glyph.is-small .sh-glyph-mark .svg-icon,
-.sh-task-glyph.is-icon .sh-glyph-mark .svg-icon {
-    width: 9px;
-    height: 9px;
-}
-
-.sh-task-glyph.is-small .sh-glyph-mark,
-.sh-task-glyph.is-icon .sh-glyph-mark {
-    font-size: 9px;
 }
 
 .sh-flag { display: flex; color: var(--sh-surface-dim); }
@@ -3402,7 +3409,7 @@
 /* ── The card ───────────────────────────────────────────────────────────── */
 
 .sh-task-card {
-    margin: 12px 0 0 30px;
+    margin: 12px 0 0 32px;
 }
 
 .sh-card-context {
@@ -3533,9 +3540,9 @@
     height: 28px;
 }
 
-.sh-tasks-empty-icon .sh-task-glyph.is-icon {
-    width: 26px;
-    height: 26px;
+.sh-tasks-view .sh-tasks-empty-icon .sh-task-glyph.is-icon {
+    width: 28px;
+    height: 28px;
 }
 
 .sh-tasks-view button.sh-show-more {

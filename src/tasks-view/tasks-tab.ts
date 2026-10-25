@@ -15,6 +15,7 @@ import type { Task, TaskStatus } from '../../main';
 import { TaskManager } from '../managers/task-manager';
 import { TaskRenderer } from '../renderers/task-renderer';
 import { statusToCheckboxState } from '../utils/task-status';
+import { SQUIRCLE_PATH } from '../utils/squircle-icon';
 import { t } from '../i18n';
 import { addDays, isoToday, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel } from './dates';
@@ -741,7 +742,7 @@ export class TasksTabView extends ItemView {
     /** An empty group invites a task instead of showing a zero. */
     private renderAddRow(groupEl: HTMLElement, target: AddTarget): void {
         const row = groupEl.createDiv({ cls: 'sh-add-row' });
-        row.createDiv({ cls: 'sh-add-glyph' });
+        paintEmptyGlyph(row.createDiv({ cls: 'sh-add-glyph' }));
         row.createDiv({ cls: 'sh-add-label', text: t('tasksTab.actions.addHere') });
         row.addEventListener('click', () => this.openQuickAdd(this.prefillFor(target)));
     }
@@ -1824,21 +1825,60 @@ export class TasksTabView extends ItemView {
     }
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** The right half of the squircle, for the in-progress fill. */
+const SQUIRCLE_RIGHT_HALF = 'M12 3c7.2 0 9 1.8 9 9s-1.8 9-9 9Z';
+
+const GLYPH_MARKS: Partial<Record<TaskStatus, string[]>> = {
+    done: ['M8 12.4l2.8 2.8L16.2 9.6'],
+    cancelled: ['M8.5 12h7'],
+    question: ['M9.6 9.6a2.5 2.5 0 0 1 4.85.85c0 1.65-2.45 2.2-2.45 2.2', 'M12 15.9h.01'],
+    // Drawn faintly on hover over an open task: the check it's about to get.
+    todo: ['M8 12.4l2.8 2.8L16.2 9.6']
+};
+
+function svgPath(parent: Element, d: string, cls: string): SVGPathElement {
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', cls);
+    parent.appendChild(path);
+    return path;
+}
+
 /**
- * The one leading glyph a row carries. Status and priority share the
- * checkbox brackets in Markdown, so a task has one or the other and the glyph
- * shows whichever it has: a ring in the priority colour, or a shape for the
- * status (half-filled for in progress, a question mark, a struck ring for
- * cancelled, a filled check for done).
+ * The one leading glyph a row carries, drawn as a squircle to match the
+ * sidebar's checkboxes. Status and priority share the checkbox brackets in
+ * Markdown, so a task has one or the other and the glyph shows whichever it
+ * has: an outline in the priority colour, or a shape for the status (half
+ * filled for in progress, a question mark, dashed for cancelled, a filled
+ * check for done).
  */
 export function paintGlyph(el: HTMLElement, task: Pick<Task, 'status' | 'priority'> & Partial<Pick<Task, 'completed'>>): void {
     const status = task.status ?? (task.completed ? 'done' : 'todo');
     el.dataset.status = status;
     if (task.priority) el.dataset.priority = String(task.priority);
-    const mark = el.createSpan({ cls: 'sh-glyph-mark' });
-    if (status === 'done') setIcon(mark, 'check');
-    else if (status === 'question') setIcon(mark, 'help-circle');
-    else if (status === 'cancelled') setIcon(mark, 'minus');
+
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', 'sh-glyph-svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svgPath(svg, SQUIRCLE_PATH, 'sh-glyph-fill');
+    if (status === 'in-progress') {
+        svgPath(svg, SQUIRCLE_RIGHT_HALF, 'sh-glyph-half').setAttribute('transform', 'translate(12 12) scale(0.6) translate(-12 -12)');
+    }
+    svgPath(svg, SQUIRCLE_PATH, 'sh-glyph-outline');
+    for (const d of GLYPH_MARKS[status] ?? []) svgPath(svg, d, 'sh-glyph-mark');
+    el.appendChild(svg);
+}
+
+/** A dashed squircle, for the row that invites a new task. */
+function paintEmptyGlyph(el: HTMLElement): void {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('class', 'sh-glyph-svg');
+    svgPath(svg, SQUIRCLE_PATH, 'sh-glyph-outline');
+    el.appendChild(svg);
 }
 
 function truncate(text: string, length: number): string {
