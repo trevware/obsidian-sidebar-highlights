@@ -17,7 +17,8 @@ export type SmartListId = 'today' | 'upcoming' | 'anytime' | 'in-progress' | 'qu
 
 export type ListRef =
     | { kind: 'smart'; id: SmartListId }
-    | { kind: 'note'; path: string };
+    /** `follow` is This note: the note shown is whichever one is open. */
+    | { kind: 'note'; path: string; follow?: boolean };
 
 export type GroupMode = 'auto' | 'note' | 'date' | 'priority' | 'none';
 export type SortMode = 'file' | 'priority' | 'date' | 'alpha';
@@ -43,7 +44,19 @@ export const SMART_LISTS: SmartListId[] = ['today', 'upcoming', 'anytime', 'in-p
 
 export function sameList(a: ListRef, b: ListRef): boolean {
     if (a.kind !== b.kind) return false;
-    return a.kind === 'smart' ? a.id === (b as typeof a).id : a.path === (b as typeof a).path;
+    if (a.kind === 'smart') return a.id === (b as typeof a).id;
+    const note = b as typeof a;
+    // This note is one list whatever note it shows, and never the same list
+    // as that note picked by hand.
+    if (Boolean(a.follow) !== Boolean(note.follow)) return false;
+    return a.follow === true || a.path === note.path;
+}
+
+/** Where This note goes when a file opens, or null when it stays where it is. */
+export function followNote(list: ListRef, path: string | null): ListRef | null {
+    if (list.kind !== 'note' || !list.follow) return null;
+    if (!path || !path.endsWith('.md') || path === list.path) return null;
+    return { kind: 'note', path, follow: true };
 }
 
 export function listKey(ref: ListRef): string {

@@ -535,7 +535,8 @@
       "anytime": "All open",
       "in-progress": "In progress",
       "questions": "Questions",
-      "logbook": "Done"
+      "logbook": "Done",
+      "thisNote": "This note"
     },
     "rail": {
       "vaultRoot": "Vault",
@@ -583,7 +584,8 @@
       "in-progress": "Nothing in progress.",
       "questions": "No open questions.",
       "logbook": "Nothing finished yet.",
-      "note": "No open tasks in this note."
+      "note": "No open tasks in this note.",
+      "thisNote": "Open a note to see its tasks here."
     },
     "showMore": "Show {{count}} more",
     "card": {

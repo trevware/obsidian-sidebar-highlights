@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, listCounts, railAreas, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -282,5 +282,29 @@ describe('task-views', () => {
             { folder: '', notes: [{ path: 'Inbox.md', name: 'Inbox', open: 1 }] },
             { folder: 'Work', notes: [{ path: 'Work/Note.md', name: 'Note', open: 4 }, { path: 'Work/recent.md', name: 'recent', open: 1 }] }
         ]);
+    });
+});
+
+describe('This note', () => {
+    const following = { kind: 'note' as const, path: 'Work/Note.md', follow: true };
+
+    it('follows the note that opens', () => {
+        expect(followNote(following, 'Inbox.md')).toEqual({ kind: 'note', path: 'Inbox.md', follow: true });
+    });
+
+    it('stays put for a file that is not a note, no file, or the same note', () => {
+        expect(followNote(following, 'Board.canvas')).toBeNull();
+        expect(followNote(following, null)).toBeNull();
+        expect(followNote(following, 'Work/Note.md')).toBeNull();
+    });
+
+    it('leaves a note picked from the list where it is', () => {
+        expect(followNote({ kind: 'note', path: 'Work/Note.md' }, 'Inbox.md')).toBeNull();
+        expect(followNote({ kind: 'smart', id: 'today' }, 'Inbox.md')).toBeNull();
+    });
+
+    it('is its own list, apart from the note it shows', () => {
+        expect(sameList(following, { kind: 'note', path: 'Work/Note.md' })).toBe(false);
+        expect(sameList(following, { ...following, path: 'Inbox.md' })).toBe(true);
     });
 });

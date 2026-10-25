@@ -21,16 +21,17 @@ import { t } from '../i18n';
 import { addDays, isoToday, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel } from './dates';
 import {
-    DEFAULT_DISPLAY,
-    SMART_LISTS,
     breadcrumbFor,
     buildGroups,
     childProgress,
+    DEFAULT_DISPLAY,
+    followNote,
     isOpenTask,
     listCounts,
     listKey,
     railAreas,
     sameList,
+    SMART_LISTS,
     statusOf,
     taskKey,
     tasksForList
@@ -292,6 +293,13 @@ export class TasksTabView extends ItemView {
         this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
             if (this.dirty && this.contentEl.isShown()) this.render();
         }));
+        // This note follows whichever note opens, and leaves the focus there.
+        this.registerEvent(this.app.workspace.on('file-open', (file) => {
+            const next = followNote(this.list, file?.path ?? null);
+            if (next) this.showList(next, false);
+            // On another list, This note's count still follows along.
+            else if (this.contentEl.isShown()) this.renderRail(isoToday());
+        }));
 
         this.registerDomEvent(document, 'keydown', (event) => this.handleKey(event), true);
 
@@ -308,7 +316,7 @@ export class TasksTabView extends ItemView {
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
             this.allTasks = this.allTasks.filter(task => task.filePath !== oldPath);
             this.dataVersion++;
-            if (this.list.kind === 'note' && this.list.path === oldPath) this.list = { kind: 'note', path: file.path };
+            if (this.list.kind === 'note' && this.list.path === oldPath) this.list = { ...this.list, path: file.path };
             this.scheduleRefresh(file.path);
         }));
 
@@ -375,6 +383,7 @@ export class TasksTabView extends ItemView {
     private restoreState(): void {
         const list = this.readJson<ListRef | null>(STORAGE.list, null);
         if (list && (list.kind === 'note' || SMART_LISTS.includes(list.id))) this.list = list;
+        this.list = followNote(this.list, this.app.workspace.getActiveFile()?.path ?? null) ?? this.list;
         this.displayByList = this.readJson<Record<string, DisplayOptions>>(STORAGE.display, {});
         this.collapsed = new Set(this.readJson<string[]>(STORAGE.collapsed, []));
         this.railHidden = this.readJson<boolean>(STORAGE.rail, false);
@@ -402,17 +411,29 @@ export class TasksTabView extends ItemView {
             this.scroller.scrollTop = 0;
             return;
         }
+        if (this.narrow) this.railHidden = true;
+        this.showList(ref, true);
+        this.focusList();
+    }
+
+    /** This note, on the note open now, or the one it showed last. */
+    private thisNote(): Extract<ListRef, { kind: 'note' }> {
+        const open = this.app.workspace.getActiveFile()?.path;
+        const last = this.list.kind === 'note' && this.list.follow ? this.list.path : '';
+        return { kind: 'note', path: open?.endsWith('.md') ? open : last, follow: true };
+    }
+
+    /** Puts another list up without moving the focus, so This note can follow notes as they open. */
+    private showList(ref: ListRef, animate: boolean): void {
         this.list = ref;
         this.writeJson(STORAGE.list, ref);
         this.selected.clear();
         this.expandedKey = null;
         this.highlightKey = null;
         this.rowCap = ROW_CAP;
-        if (this.narrow) this.railHidden = true;
         this.render();
         this.scroller.scrollTop = 0;
-        arrive(this.column);
-        this.focusList();
+        if (animate) arrive(this.column);
     }
 
     // ── Data ────────────────────────────────────────────────────────────
@@ -490,7 +511,7 @@ export class TasksTabView extends ItemView {
     }
 
     private listTitle(ref: ListRef): string {
-        if (ref.kind === 'note') return this.noteInfo.basename(ref.path);
+        if (ref.kind === 'note') return ref.path ? this.noteInfo.basename(ref.path) : t('tasksTab.lists.thisNote');
         return t(`tasksTab.lists.${ref.id}`);
     }
 
@@ -598,7 +619,7 @@ export class TasksTabView extends ItemView {
 
     private renderRail(today: string): void {
         // The rail only changes with the data, the list, or a fold.
-        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}`;
+        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.thisNote().path}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}`;
         if (signature === this.railSignature) return;
         this.railSignature = signature;
 
@@ -614,6 +635,18 @@ export class TasksTabView extends ItemView {
             'in-progress': counts.inProgress,
             questions: counts.questions
         };
+
+        // This note sits on its own above the rest, the way Things keeps Inbox.
+        const following = this.list.kind === 'note' && this.list.follow === true;
+        const here = lists.createDiv({ cls: 'sh-rail-item is-this-note' });
+        here.toggleClass('is-active', following);
+        setIcon(here.createDiv({ cls: 'sh-rail-icon' }), 'file-text');
+        here.createDiv({ cls: 'sh-rail-label', text: t('tasksTab.lists.thisNote') });
+        const herePath = this.thisNote().path;
+        const hereCount = this.loaded && herePath ? this.allTasks.filter(task => task.filePath === herePath && isOpenTask(task)).length : 0;
+        if (hereCount) here.createDiv({ cls: 'sh-rail-count', text: String(hereCount) });
+        here.addEventListener('click', () => this.setList(this.thisNote()));
+        lists.createDiv({ cls: 'sh-rail-gap' });
 
         SMART_LISTS.forEach((id, index) => {
             if (index === 3 || index === 5) lists.createDiv({ cls: 'sh-rail-gap' });
@@ -710,9 +743,10 @@ export class TasksTabView extends ItemView {
         if (tasks.length === 0) {
             const empty = column.createDiv({ cls: 'sh-tasks-empty' });
             const icon = empty.createDiv({ cls: 'sh-tasks-empty-icon' });
+            const waiting = this.list.kind === 'note' && !this.list.path;
             if (this.list.kind === 'smart') paintListIcon(icon, this.list.id);
-            else setIcon(icon, 'check');
-            empty.createDiv({ text: t(`tasksTab.empty.${this.list.kind === 'smart' ? this.list.id : 'note'}`) });
+            else setIcon(icon, waiting ? 'file-text' : 'check');
+            empty.createDiv({ text: t(`tasksTab.empty.${this.list.kind === 'smart' ? this.list.id : waiting ? 'thisNote' : 'note'}`) });
             return;
         }
 
@@ -818,16 +852,17 @@ export class TasksTabView extends ItemView {
         // One quiet line above the title that says where you are: the date on
         // Today, the folder (and a way into the note) on a note.
         const eyebrow = header.createDiv({ cls: 'sh-tasks-eyebrow' });
-        if (this.list.kind === 'note') {
-            eyebrow.setText(this.noteInfo.folder(this.list.path) || t('tasksTab.rail.vaultRoot'));
-        } else if (this.list.id === 'today') {
+        if (this.list.kind === 'note' && this.list.path) {
+            const folder = this.noteInfo.folder(this.list.path) || t('tasksTab.rail.vaultRoot');
+            eyebrow.setText(this.list.follow ? `${t('tasksTab.lists.thisNote')} · ${folder}` : folder);
+        } else if (this.list.kind === 'smart' && this.list.id === 'today') {
             eyebrow.setText(moment(today, 'YYYY-MM-DD').format('dddd, D MMMM'));
         }
         if (eyebrow.textContent === '') eyebrow.remove();
 
         const title = header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
         // A note's title opens the note; an arrow shows on hover to say so.
-        if (this.list.kind === 'note') {
+        if (this.list.kind === 'note' && this.list.path) {
             const path = this.list.path;
             title.addClass('is-link');
             setIcon(title.createSpan({ cls: 'sh-title-arrow' }), 'arrow-up-right');
@@ -1464,6 +1499,9 @@ export class TasksTabView extends ItemView {
             if (id) {
                 consume();
                 this.setList({ kind: 'smart', id });
+            } else if (lower === 'n') {
+                consume();
+                this.setList(this.thisNote());
             }
             return;
         }
@@ -2006,7 +2044,7 @@ export class TasksTabView extends ItemView {
     }
 
     private defaultDestination(): Destination | null {
-        if (this.list.kind === 'note') return { path: this.list.path };
+        if (this.list.kind === 'note' && this.list.path) return { path: this.list.path };
         const exists = (path: string) => this.app.vault.getAbstractFileByPath(path) instanceof TFile;
         const remembered = this.readJson<Destination | null>(STORAGE.destination, null);
         if (remembered && exists(remembered.path)) return remembered;
@@ -2112,6 +2150,15 @@ export class TasksTabView extends ItemView {
         const counts = listCounts(this.allTasks, isoToday());
         const hints: Record<SmartListId, string> = { today: 'G T', upcoming: 'G U', anytime: 'G A', 'in-progress': 'G I', questions: 'G Q', logbook: 'G D' };
         const countOf: Partial<Record<SmartListId, number>> = { today: counts.today, upcoming: counts.upcoming, anytime: counts.anytime, 'in-progress': counts.inProgress, questions: counts.questions };
+        items.push({
+            id: 'list:this-note',
+            section: sections.lists,
+            icon: 'file-text',
+            label: t('tasksTab.lists.thisNote'),
+            detail: 'G N',
+            keywords: 'current open active',
+            run: () => this.setList(this.thisNote())
+        });
         for (const id of SMART_LISTS) {
             items.push({
                 id: `list:${id}`,
@@ -2426,7 +2473,7 @@ export class TasksTabView extends ItemView {
             ['M', 'moveToHeading'],
             ['Q', 'addTask'],
             ['⌘K  /', 'search'],
-            ['G then T U A I Q D', 'goTo'],
+            ['G then N T U A I Q D', 'goTo'],
             ['⇧V', 'display'],
             ['[', 'toggleSidebar'],
             ['⌘Z', 'undo'],
