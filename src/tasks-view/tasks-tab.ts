@@ -1722,12 +1722,20 @@ export class TasksTabView extends ItemView {
 
     /** A completed row folds away, then the rows below glide up into its place. */
     private releaseLingering(keys: string[]): void {
-        const leaving = keys
-            .map(key => this.column.querySelector<HTMLElement>(`.sh-task-row[data-key="${CSS.escape(key)}"]`))
-            .filter((row): row is HTMLElement => row !== null);
+        for (const key of keys) this.lingering.delete(key);
+        // Only rows the list no longer holds go. With Show completed on, a
+        // ticked task belongs where it is and simply stays.
+        const staying = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
+        const leavingKeys = keys.filter(key => !staying.has(key));
+        if (leavingKeys.length === 0) {
+            this.update();
+            return;
+        }
+        const leaving = leavingKeys
+            .map(key => this.rowEls.get(key))
+            .filter((row): row is HTMLElement => row !== undefined);
         collapse(leaving, () => {
-            for (const key of keys) this.lingering.delete(key);
-            if (!this.removeRowsInPlace(keys)) this.render(true);
+            if (!this.removeRowsInPlace(leavingKeys)) this.render(true);
         });
     }
 
