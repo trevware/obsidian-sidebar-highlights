@@ -3127,8 +3127,28 @@
     background-color: color-mix(in oklch, var(--sh-accent) 16%, transparent);
 }
 
-.sh-task-row.is-selected.is-highlighted {
+/* Selected rows that touch merge into one block, the way Finder and
+   Reminders draw a multi-selection: only the block's outer corners round.
+   A heading between two rows is a sibling too, so it still splits them. */
+.sh-task-row.is-selected + .sh-task-row.is-selected {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.sh-task-row.is-selected:has(+ .sh-task-row.is-selected) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+/* The keyboard cursor inside a selection: its own rounded outline, inset a
+   little, so it stays a pill even where the block's corners are squared. */
+.sh-task-row.is-selected.is-highlighted::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: calc(var(--sh-inner-radius) - 2px);
     box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sh-accent) 55%, transparent);
+    pointer-events: none;
 }
 
 /* The list behind an open card dims under one flat overlay, with the card
