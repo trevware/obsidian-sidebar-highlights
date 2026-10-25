@@ -1870,8 +1870,8 @@ export class TasksTabView extends ItemView {
     /**
      * Brings newly added tasks into view and makes them easy to spot: the
      * list scrolls them to the middle, they arrive with a small drop and
-     * settle, glow in the accent for a moment, and a ring ripples out from
-     * their checkbox. The first one takes the highlight, so the keys carry
+     * settle, and glow in the accent for a moment. The first one takes the
+     * highlight, so the keys carry
      * on from there. Returns false when none of them is in this list.
      */
     private revealAdded(keys: string[]): boolean {
