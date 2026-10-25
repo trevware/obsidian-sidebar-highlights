@@ -136,6 +136,15 @@ export class TasksTabView extends ItemView {
     /** The row element and task for every drawn row, by task key. */
     private rowEls = new Map<string, HTMLElement>();
     private rowTasks = new Map<string, Task>();
+    private rowGroups = new Map<string, TaskGroup>();
+    private rowSigs = new Map<string, string>();
+    private groupSignature = '';
+    /** Bumped by each rebuild, so a slice still drawing for an older one stops. */
+    private renderGeneration = 0;
+    /** Rows are still being drawn in slices, so the list isn't complete yet. */
+    private planPending = false;
+    /** Where the pointer last was over the list, to put the hover pill back after a rebuild. */
+    private pointer: { x: number; y: number } | null = null;
     private paintedHighlight: string | null = null;
     private paintedSelection = new Set<string>();
     /** A change arrived while the tab was in the background. */
@@ -226,12 +235,16 @@ export class TasksTabView extends ItemView {
         this.scroller.addEventListener('click', (event) => this.onListClick(event));
         this.column.addEventListener('dblclick', (event) => this.onListDoubleClick(event));
         this.column.addEventListener('contextmenu', (event) => this.onListContextMenu(event));
+        this.column.addEventListener('mousemove', (event) => {
+            this.pointer = { x: event.clientX, y: event.clientY };
+        });
         this.column.addEventListener('mouseover', (event) => {
             const row = (event.target as HTMLElement).closest<HTMLElement>('.sh-task-row');
             if (row) this.moveActions(row);
         });
         // Off the list, the buttons go back to the highlighted row, or away.
         this.column.addEventListener('mouseleave', () => {
+            this.pointer = null;
             const highlighted = this.highlightKey ? this.rowEls.get(this.highlightKey) : undefined;
             if (highlighted) this.moveActions(highlighted);
             else this.hideActions();
@@ -393,7 +406,7 @@ export class TasksTabView extends ItemView {
             this.refreshTimers.delete(path);
             // Our own writes were already read back, so their echo changes nothing.
             void this.refreshFile(path).then((changed) => {
-                if (changed) this.render();
+                if (changed) this.update();
             });
         }, 250));
     }
@@ -554,6 +567,10 @@ export class TasksTabView extends ItemView {
         this.topbar.querySelector('.sh-display-button')?.toggleClass('has-changes', this.isDisplayChanged());
         if (before && this.rowEls.size <= FLIP_LIMIT) flip(this.column, before);
         this.justChanged.clear();
+        if (this.pointer) {
+            const row = document.elementFromPoint(this.pointer.x, this.pointer.y)?.closest<HTMLElement>('.sh-task-row');
+            if (row && this.column.contains(row)) this.moveActions(row);
+        }
     }
 
     private renderRail(today: string): void {
@@ -587,10 +604,7 @@ export class TasksTabView extends ItemView {
             const count = this.loaded ? countFor[id] : undefined;
             if (count) {
                 const badge = row.createDiv({ cls: 'sh-rail-count', text: String(count) });
-                if (id === 'today' && counts.overdue > 0) {
-                    badge.addClass('is-alert');
-                    setTooltip(badge, t('tasksTab.rail.overdue', { count: counts.overdue }), { placement: 'right' });
-                }
+                if (id === 'today' && counts.overdue > 0) badge.addClass('is-alert');
             }
             row.addEventListener('click', () => this.setList(ref));
         });
@@ -620,7 +634,6 @@ export class TasksTabView extends ItemView {
                 row.createDiv({ cls: 'sh-rail-icon is-note' });
                 row.createDiv({ cls: 'sh-rail-label', text: note.name });
                 row.createDiv({ cls: 'sh-rail-count is-quiet', text: String(note.open) });
-                row.setAttr('aria-label', note.path);
                 row.addEventListener('click', () => this.setList(ref));
             }
         }
@@ -664,6 +677,9 @@ export class TasksTabView extends ItemView {
         this.orderIndex = new Map();
         this.rowEls = new Map();
         this.rowTasks = new Map();
+        this.rowGroups = new Map();
+        this.rowSigs = new Map();
+        this.groupSignature = '';
         this.hoveredRow = null;
         this.actionsKey = null;
         this.actionsEl.removeClass('is-visible');
@@ -671,6 +687,7 @@ export class TasksTabView extends ItemView {
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
         const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        this.groupSignature = this.groupSignatureOf(groups);
 
         this.renderHeader(column, today);
 
@@ -689,55 +706,94 @@ export class TasksTabView extends ItemView {
         }
 
         const progress = this.progress();
+
+        // The rows go in as a plan drawn in slices: enough to fill the screen
+        // now, the rest over the next frames. A long list on first visit then
+        // shows at once instead of blocking for every row it holds.
+        type Step =
+            | { kind: 'group'; group: TaskGroup; collapseKey: string; collapsed: boolean }
+            | { kind: 'section'; title: string }
+            | { kind: 'task'; task: Task; group: TaskGroup };
+        const steps: Step[] = [];
         let drawn = 0;
         let hidden = 0;
-
         for (const group of groups) {
-            const groupEl = column.createDiv({ cls: `sh-group is-${group.kind}` });
             const collapseKey = `${listKey(this.list)}|${group.key}`;
             const collapsed = this.collapsed.has(collapseKey);
-            if (group.title) this.renderGroupHeader(groupEl, group, collapseKey, collapsed);
+            steps.push({ kind: 'group', group, collapseKey, collapsed });
             if (collapsed) continue;
-            if (group.count === 0 && group.add) this.renderAddRow(groupEl, group.add);
-
             for (const section of group.sections) {
-                if (section.title) {
-                    const heading = groupEl.createDiv({ cls: 'sh-section-title', text: section.title });
-                    heading.setAttr('role', 'heading');
-                }
+                if (section.title) steps.push({ kind: 'section', title: section.title });
                 for (const task of section.tasks) {
                     if (drawn >= this.rowCap) {
                         hidden++;
                         continue;
                     }
-                    this.renderRow(groupEl, task, group, progress, display);
-                    this.orderIndex.set(taskKey(task), this.order.length);
-                    this.order.push(task);
+                    steps.push({ kind: 'task', task, group });
                     drawn++;
                 }
             }
         }
 
-        if (hidden > 0) {
-            const more = column.createEl('button', { cls: 'sh-show-more', text: t('tasksTab.showMore', { count: hidden }) });
-            more.addEventListener('click', () => {
-                this.rowCap += ROW_CAP;
-                this.render();
-            });
-        }
+        const generation = ++this.renderGeneration;
+        let index = 0;
+        let groupEl: HTMLElement = column;
+        const step = (item: Step) => {
+            if (item.kind === 'group') {
+                groupEl = column.createDiv({ cls: `sh-group is-${item.group.kind}` });
+                if (item.group.title) this.renderGroupHeader(groupEl, item.group, item.collapseKey, item.collapsed);
+                if (!item.collapsed && item.group.count === 0 && item.group.add) this.renderAddRow(groupEl, item.group.add);
+            } else if (item.kind === 'section') {
+                const heading = groupEl.createDiv({ cls: 'sh-section-title', text: item.title });
+                heading.setAttr('role', 'heading');
+            } else {
+                const key = taskKey(item.task);
+                this.renderRow(groupEl, item.task, item.group, progress, display);
+                this.orderIndex.set(key, this.order.length);
+                this.order.push(item.task);
+                if (key === this.expandedKey) this.expandRow(this.rowEls.get(key) as HTMLElement, item.task, false);
+            }
+        };
+        const finish = () => {
+            this.planPending = false;
+            if (hidden > 0) {
+                const more = column.createEl('button', { cls: 'sh-show-more', text: t('tasksTab.showMore', { count: hidden }) });
+                more.addEventListener('click', () => {
+                    this.rowCap += ROW_CAP;
+                    this.render();
+                });
+            }
+            if (this.highlightKey && !this.rowEls.has(this.highlightKey)) this.highlightKey = null;
+            for (const key of [...this.selected]) {
+                if (!this.rowEls.has(key)) this.selected.delete(key);
+            }
+            if (this.expandedKey && !this.rowEls.has(this.expandedKey)) this.expandedKey = null;
+            this.paintSelection();
+        };
 
-        if (this.highlightKey && !this.rowEls.has(this.highlightKey)) this.highlightKey = null;
-        for (const key of [...this.selected]) {
-            if (!this.rowEls.has(key)) this.selected.delete(key);
+        // First slice: until the screen (and the old scroll position) is covered.
+        // Layout is measured every 20 rows, since measuring every row would
+        // cost more than it saves.
+        const needed = scrollTop + this.scroller.clientHeight + 400;
+        while (index < steps.length) {
+            step(steps[index++]);
+            if (index % 20 === 0 && column.offsetHeight >= needed) break;
         }
-        if (this.expandedKey) {
-            const row = this.rowEls.get(this.expandedKey);
-            const task = this.rowTasks.get(this.expandedKey);
-            if (row && task) this.expandRow(row, task, false);
-            else this.expandedKey = null;
-        }
-
         this.scroller.scrollTop = scrollTop;
+
+        if (index >= steps.length) {
+            finish();
+            return;
+        }
+        this.planPending = true;
+        const more = () => {
+            if (generation !== this.renderGeneration) return;
+            const sliceStart = performance.now();
+            while (index < steps.length && performance.now() - sliceStart < 8) step(steps[index++]);
+            if (index < steps.length) window.requestAnimationFrame(more);
+            else finish();
+        };
+        window.requestAnimationFrame(more);
     }
 
     private renderHeader(column: HTMLElement, today: string): void {
@@ -844,14 +900,44 @@ export class TasksTabView extends ItemView {
         const row = parent.createDiv({ cls: 'sh-task-row' });
         row.dataset.key = key;
         row.dataset.flip = `task:${key}`;
-        if (task.indentLevel > 0) row.setCssProps({ '--sh-indent': String(task.indentLevel) });
-        if (!isOpenTask(task)) row.addClass('is-resolved');
-        if (this.lingering.has(key)) row.addClass('is-lingering');
+        // Drawn with its state, since a row from a later slice arrives after
+        // the selection was painted.
+        if (key === this.highlightKey) row.addClass('is-highlighted');
+        if (this.selected.has(key)) row.addClass('is-selected');
+        this.fillRow(row, task, group, progress, display);
+        this.rowEls.set(key, row);
+    }
+
+    /** What a row shows, so an update can tell which rows actually changed. */
+    private rowSignature(task: Task, group: TaskGroup, progress: Map<string, { done: number; total: number }>): string {
+        const key = taskKey(task);
+        const kids = progress.get(key);
+        return [task.text, task.status, task.marker, task.priority, task.date, task.indentLevel, task.section,
+            task.context.join('\u0001'), kids ? `${kids.done}/${kids.total}` : '', group.key, this.lingering.has(key)].join('\u0002');
+    }
+
+    /** Draws a row's contents into its element, the first time or again in place. */
+    private fillRow(row: HTMLElement, task: Task, group: TaskGroup, progress: Map<string, { done: number; total: number }>, display: DisplayOptions): void {
+        const key = taskKey(task);
+        // A checkbox already showing the new state keeps its element, so a
+        // pop that started on the click plays out instead of restarting.
+        const oldGlyph = row.querySelector<HTMLElement>('.sh-task-glyph');
+        row.empty();
+        row.setCssProps({ '--sh-indent': String(task.indentLevel) });
+        row.toggleClass('is-resolved', !isOpenTask(task));
+        row.toggleClass('is-lingering', this.lingering.has(key));
+        this.rowTasks.set(key, task);
+        this.rowGroups.set(key, group);
+        this.rowSigs.set(key, this.rowSignature(task, group, progress));
 
         const line = row.createDiv({ cls: 'sh-task-line' });
         const glyph = line.createEl('button', { cls: 'sh-task-glyph' });
         paintGlyph(glyph, task);
-        if (this.justChanged.has(key)) glyph.addClass('is-just-changed');
+        if (oldGlyph && ['status', 'priority', 'marker'].every(field => oldGlyph.dataset[field] === glyph.dataset[field])) {
+            glyph.replaceWith(oldGlyph);
+        } else if (this.justChanged.has(key)) {
+            glyph.addClass('is-just-changed');
+        }
 
         const body = line.createDiv({ cls: 'sh-task-body' });
         this.paintTitle(body.createDiv({ cls: 'sh-task-title task-text-content' }), task);
@@ -872,9 +958,68 @@ export class TasksTabView extends ItemView {
         }
 
         if (display.showContext && task.context.length > 0) this.renderContextPreview(row, task);
+    }
 
-        this.rowEls.set(key, row);
-        this.rowTasks.set(key, task);
+    /**
+     * Brings the list up to date with the data without rebuilding it, when
+     * every row is still where it was: a tick, a priority, a status, a note
+     * edit. Only rows whose content changed are redrawn, in their own
+     * elements, so nothing on screen blinks. Anything that moves rows (a new
+     * date, a task leaving the list) falls back to a full rebuild.
+     */
+    private update(animate = false): void {
+        if (!this.patchInPlace()) this.render(animate);
+        this.justChanged.clear();
+    }
+
+    private patchInPlace(): boolean {
+        if (!this.column || !this.loaded || this.planPending || this.order.length === 0 || !this.contentEl.isShown()) return false;
+        const today = isoToday();
+        const display = this.display();
+        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        if (this.groupSignatureOf(groups) !== this.groupSignature) return false;
+
+        const next: Array<{ task: Task; group: TaskGroup }> = [];
+        for (const group of groups) {
+            if (this.collapsed.has(`${listKey(this.list)}|${group.key}`)) continue;
+            for (const section of group.sections) {
+                for (const task of section.tasks) {
+                    if (next.length >= this.rowCap) break;
+                    next.push({ task, group });
+                }
+            }
+        }
+        if (next.length !== this.order.length) return false;
+        for (let i = 0; i < next.length; i++) {
+            if (taskKey(next[i].task) !== taskKey(this.order[i])) return false;
+        }
+
+        const progress = this.progress();
+        next.forEach(({ task, group }, i) => {
+            const key = taskKey(task);
+            this.order[i] = task;
+            const row = this.rowEls.get(key);
+            if (!row) return;
+            const signature = this.rowSignature(task, group, progress);
+            if (signature === this.rowSigs.get(key) && !this.justChanged.has(key)) {
+                this.rowTasks.set(key, task);
+                return;
+            }
+            this.fillRow(row, task, group, progress, display);
+            if (this.justChanged.has(key)) row.querySelector('.sh-task-glyph')?.addClass('is-just-changed');
+            if (key === this.expandedKey) this.expandRow(row, task, false);
+            if (key === this.actionsKey) this.moveActions(row);
+        });
+
+        this.renderRail(today);
+        this.paintSelection();
+        return true;
+    }
+
+    /** The groups as drawn: their keys, counts and folds. */
+    private groupSignatureOf(groups: TaskGroup[]): string {
+        return groups.map(group => `${group.key}:${group.count}:${this.collapsed.has(`${listKey(this.list)}|${group.key}`) ? 1 : 0}`).join('|');
     }
 
     private renderContextPreview(row: HTMLElement, task: Task): void {
@@ -1091,9 +1236,28 @@ export class TasksTabView extends ItemView {
         };
 
         let done = false;
+        // ⌘↵, Escape, ⌘B and ⌘I are caught at the window, where Obsidian's
+        // own hotkeys listen: some of them (⌘↵ toggles a checkbox) would
+        // otherwise be claimed before the keystroke reaches the editor.
+        const onWindowKey = (event: KeyboardEvent) => {
+            if (document.activeElement !== editor) return;
+            const mod = event.metaKey || event.ctrlKey;
+            if (event.key === 'Escape' || (mod && event.key === 'Enter')) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                void finish().then(() => this.focusList());
+            } else if (mod && !event.shiftKey && !event.altKey && (event.key === 'b' || event.key === 'i')) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                wrapSelection(editor, event.key === 'b' ? '**' : '*');
+            }
+        };
+        window.addEventListener('keydown', onWindowKey, true);
+
         const finish = async () => {
             if (done) return;
             done = true;
+            window.removeEventListener('keydown', onWindowKey, true);
             const markdown = editor.value;
             if (markdown.replace(/\s+$/, '') === original.replace(/\s+$/, '')) {
                 this.paintNotes(notes, task);
@@ -1106,12 +1270,7 @@ export class TasksTabView extends ItemView {
         editor.addEventListener('blur', () => void finish());
         editor.addEventListener('keydown', (event) => {
             const mod = event.metaKey || event.ctrlKey;
-            if (event.key === 'Escape' || (mod && event.key === 'Enter')) {
-                event.preventDefault();
-                event.stopPropagation();
-                void finish().then(() => this.focusList());
-                return;
-            }
+            if (mod) return;
             if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && continueList(editor)) {
                 event.preventDefault();
                 fit();
@@ -1121,11 +1280,6 @@ export class TasksTabView extends ItemView {
                 event.preventDefault();
                 indentSelection(editor, event.shiftKey);
                 fit();
-                return;
-            }
-            if (mod && (event.key === 'b' || event.key === 'i')) {
-                event.preventDefault();
-                wrapSelection(editor, event.key === 'b' ? '**' : '*');
             }
         });
 
@@ -1137,7 +1291,7 @@ export class TasksTabView extends ItemView {
     private async saveNotes(task: Task, markdown: string): Promise<void> {
         const change = await this.writer.setNotes(task, markdown);
         await this.refreshFile(task.filePath);
-        this.render();
+        this.update();
         if (!change) return;
         const label = t('tasksTab.notices.notesSaved', { task: truncate(this.plainText(task), 40) });
         this.undoStack.push({
@@ -1145,7 +1299,7 @@ export class TasksTabView extends ItemView {
             undo: async () => {
                 await this.writer.undoRange(change);
                 await this.refreshFile(change.path);
-                this.render();
+                this.update();
             }
         });
     }
@@ -1512,7 +1666,7 @@ export class TasksTabView extends ItemView {
         }
         if (result.changes.length === 0) {
             await this.refreshFiles(tasks.map(task => task.filePath));
-            this.render(true);
+            this.update(true);
             return;
         }
 
@@ -1528,7 +1682,7 @@ export class TasksTabView extends ItemView {
         }
 
         await this.refreshFiles(result.changes.map(change => change.path));
-        this.render(true);
+        this.update(true);
         this.pushUndo(label, result.changes);
     }
 
@@ -1573,8 +1727,48 @@ export class TasksTabView extends ItemView {
             .filter((row): row is HTMLElement => row !== null);
         collapse(leaving, () => {
             for (const key of keys) this.lingering.delete(key);
-            this.render(true);
+            if (!this.removeRowsInPlace(keys)) this.render(true);
         });
+    }
+
+    /**
+     * Takes rows out of the list without rebuilding it, when every group they
+     * leave is still there afterwards: the rows go, the counts update, and a
+     * short list glides the rows below up into the gap.
+     */
+    private removeRowsInPlace(keys: string[]): boolean {
+        if (!this.column || this.planPending || !this.contentEl.isShown()) return false;
+        const today = isoToday();
+        const display = this.display();
+        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo);
+        const shape = (signature: string) => signature.split('|').map(part => part.replace(/:\d+:/, ':')).join('|');
+        const nextSignature = this.groupSignatureOf(groups);
+        if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;
+
+        const before = this.rowEls.size <= FLIP_LIMIT && motionAllowed() ? capture(this.column) : null;
+        const gone = new Set(keys);
+        for (const key of keys) {
+            this.rowEls.get(key)?.remove();
+            this.rowEls.delete(key);
+            this.rowTasks.delete(key);
+            this.rowGroups.delete(key);
+            this.rowSigs.delete(key);
+            this.selected.delete(key);
+            if (this.highlightKey === key) this.highlightKey = null;
+            if (this.actionsKey === key) this.hideActions();
+        }
+        this.order = this.order.filter(task => !gone.has(taskKey(task)));
+        this.orderIndex = new Map(this.order.map((task, i) => [taskKey(task), i]));
+        for (const group of groups) {
+            const count = this.column.querySelector(`[data-flip="group:${CSS.escape(group.key)}"] .sh-group-count`);
+            if (count) count.setText(String(group.count));
+        }
+        this.groupSignature = nextSignature;
+        if (before) flip(this.column, before);
+        this.renderRail(today);
+        this.paintSelection();
+        return true;
     }
 
     private pushUndo(label: string, changes: LineChange[]): void {
@@ -1584,7 +1778,7 @@ export class TasksTabView extends ItemView {
                 await this.writer.undo(changes);
                 for (const change of changes) this.justChanged.add(`${change.path}:${change.line}`);
                 await this.refreshFiles(changes.map(change => change.path));
-                this.render(true);
+                this.update(true);
             }
         });
         if (this.undoStack.length > 50) this.undoStack.shift();

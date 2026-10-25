@@ -3034,13 +3034,6 @@
     position: relative;
     padding: 4px 12px 4px calc(14px + var(--sh-indent, 0) * 26px);
     border-radius: var(--sh-inner-radius);
-    /* Rows off screen skip layout and paint entirely. */
-    content-visibility: auto;
-    contain-intrinsic-size: auto 30px;
-}
-
-.sh-task-row.is-expanded {
-    content-visibility: visible;
 }
 
 .sh-task-row:hover {
@@ -3059,12 +3052,21 @@
     box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sh-accent) 55%, transparent);
 }
 
-.sh-tasks-column.has-expanded .sh-task-row:not(.is-expanded) {
-    opacity: 0.45;
+/* The list behind an open card dims under one flat overlay, with the card
+   lifted above it: a single solid layer, where dimming every row would
+   repaint hundreds of them. */
+.sh-tasks-column.has-expanded::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background-color: color-mix(in srgb, var(--background-primary) 55%, transparent);
+    pointer-events: none;
 }
 
 /* The open task lifts off the list as a glass card. */
 .sh-task-row.is-expanded {
+    z-index: 4;
     margin: 12px -8px;
     padding: 16px 18px 14px calc(20px + var(--sh-indent, 0) * 26px);
     border-radius: var(--sh-surface-radius);
@@ -3186,9 +3188,9 @@
 }
 
 /* The row's buttons float over its right end as a small glass pill. They sit
-   in the list, above the rows, positioned over whichever row is hovered: a
-   row clips anything that overflows it, and the pill takes no room in any
-   row, so nothing re-wraps as the pointer moves. */
+   in the list, above the rows, positioned over whichever row is hovered, so
+   the pill takes no room in any row and nothing re-wraps as the pointer
+   moves. */
 .sh-tasks-view .sh-task-actions {
     position: absolute;
     right: calc(var(--sh-column-pad) + 8px);
