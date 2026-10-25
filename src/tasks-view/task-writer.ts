@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
-import { insertionLine, locateTaskLine } from './task-line';
+import { insertionLine, locateTaskLine, taskBlockEnd } from './task-line';
 
 /** One line the Tasks tab changed, kept so the change can be undone. */
 export interface LineChange {
@@ -8,6 +8,13 @@ export interface LineChange {
     line: number;
     before: string;
     after: string;
+}
+
+/** A task's lines taken out of a note, kept so they can be put back. */
+export interface RemovedBlock {
+    path: string;
+    start: number;
+    lines: string[];
 }
 
 export interface WriteResult {
@@ -138,5 +145,77 @@ export class TaskWriter {
             lines.splice(start, removeLines.length);
             return lines.join('\n');
         });
+    }
+
+    /**
+     * Deletes tasks from their notes: each task line with its indented notes
+     * and subtasks. One write per note; a task inside another deleted task's
+     * block goes with its parent.
+     */
+    async removeTasks(tasks: readonly Task[]): Promise<{ removed: RemovedBlock[]; missed: Task[] }> {
+        const byFile = new Map<string, Task[]>();
+        for (const task of tasks) {
+            const list = byFile.get(task.filePath);
+            if (list) list.push(task);
+            else byFile.set(task.filePath, [task]);
+        }
+
+        const removed: RemovedBlock[] = [];
+        const missed: Task[] = [];
+        for (const [path, list] of byFile) {
+            const file = this.file(path);
+            if (!file) {
+                missed.push(...list);
+                continue;
+            }
+            await this.app.vault.process(file, (data) => {
+                const lines = data.split('\n');
+                const ranges: Array<[number, number]> = [];
+                for (const task of list) {
+                    const index = locateTaskLine(lines, task.lineNumber, task.text);
+                    if (index === -1) {
+                        missed.push(task);
+                        continue;
+                    }
+                    ranges.push([index, taskBlockEnd(lines, index)]);
+                }
+                // Outermost first, so a child inside its parent's block is skipped.
+                ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+                const kept: Array<[number, number]> = [];
+                for (const range of ranges) {
+                    const last = kept[kept.length - 1];
+                    if (last && range[0] < last[1]) continue;
+                    kept.push(range);
+                }
+                // Bottom up, so earlier line numbers stay true while splicing.
+                for (const [start, end] of [...kept].reverse()) {
+                    removed.push({ path, start, lines: lines.slice(start, end) });
+                    lines.splice(start, end - start);
+                }
+                return lines.join('\n');
+            });
+        }
+        return { removed, missed };
+    }
+
+    /** Puts deleted blocks back where they were, top down. */
+    async restoreBlocks(blocks: readonly RemovedBlock[]): Promise<void> {
+        const byFile = new Map<string, RemovedBlock[]>();
+        for (const block of blocks) {
+            const list = byFile.get(block.path);
+            if (list) list.push(block);
+            else byFile.set(block.path, [block]);
+        }
+        for (const [path, list] of byFile) {
+            const file = this.file(path);
+            if (!file) continue;
+            await this.app.vault.process(file, (data) => {
+                const lines = data.split('\n');
+                for (const block of [...list].sort((a, b) => a.start - b.start)) {
+                    lines.splice(Math.min(block.start, lines.length), 0, ...block.lines);
+                }
+                return lines.join('\n');
+            });
+        }
     }
 }

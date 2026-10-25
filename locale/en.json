@@ -612,7 +612,8 @@
       "more": "More",
       "reschedule": "Reschedule",
       "shortcuts": "Keyboard shortcuts",
-      "undo": "Undo"
+      "undo": "Undo",
+      "delete": "Delete"
     },
     "bulk": {
       "selected": "{{count}} selected",
@@ -680,7 +681,9 @@
       "missed": "{{count}} task(s) moved in the note before the change could land. Try again.",
       "noteMissing": "That note no longer exists.",
       "nothingToUndo": "Nothing to undo",
-      "undone": "Undid: {{label}}"
+      "undone": "Undid: {{label}}",
+      "deletedOne": "Deleted “{{task}}”",
+      "deletedMany": "Deleted {{count}} tasks"
     },
     "shortcuts": {
       "moveHighlight": "Move up and down",
@@ -702,7 +705,8 @@
       "display": "Display options",
       "toggleSidebar": "Show or hide the sidebar",
       "undo": "Undo",
-      "escape": "Close the card, then clear the selection"
+      "escape": "Close the card, then clear the selection",
+      "delete": "Delete the task and what's under it"
     },
     "markers": {
       "forwarded": "Forwarded",

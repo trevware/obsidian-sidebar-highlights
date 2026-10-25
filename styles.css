@@ -2606,8 +2606,27 @@
     background-color: var(--sh-inner-hover);
 }
 
+/* The active list's highlight is one element that slides between rows. */
 .sh-rail-item.is-active {
+    background-color: transparent;
+}
+
+.sh-tasks-rail {
+    isolation: isolate;
+}
+
+.sh-rail-indicator {
+    position: absolute;
+    left: var(--sh-surface-pad);
+    right: var(--sh-surface-pad);
+    z-index: -1;
+    border-radius: var(--sh-inner-radius);
     background-color: var(--sh-inner-active);
+    pointer-events: none;
+}
+
+.sh-rail-indicator.is-hidden {
+    display: none;
 }
 
 .sh-rail-icon {
@@ -3940,3 +3959,78 @@
         transition: none !important;
     }
 }
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+
+/* Anything being grown or folded clips its content while it moves. */
+.sh-tasks-view .is-animating {
+    overflow: hidden;
+}
+
+/* Surfaces open the way Oriko's do: a short scale up from just under size. */
+@keyframes sh-surface-in {
+    from { opacity: 0; transform: translateX(-50%) scale(0.96); }
+    to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+@keyframes sh-menu-in {
+    from { opacity: 0; transform: scale(0.94); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sh-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.sh-tasks-view .sh-palette,
+.sh-tasks-view .sh-quickadd {
+    animation: sh-surface-in 160ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-tasks-view .sh-menu {
+    transform-origin: top left;
+    animation: sh-menu-in 160ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-palette-backdrop {
+    animation: sh-fade-in 140ms ease;
+}
+
+/* A checkbox that just changed: the squircle pops and the check draws in. */
+@keyframes sh-glyph-pop {
+    0% { transform: scale(0.82); }
+    55% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes sh-check-draw {
+    from { stroke-dashoffset: 14; }
+    to { stroke-dashoffset: 0; }
+}
+
+.sh-tasks-view .sh-task-glyph.is-just-changed {
+    animation: sh-glyph-pop 320ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-task-glyph.is-just-changed[data-status="done"] .sh-glyph-mark {
+    stroke-dasharray: 14;
+    animation: sh-check-draw 260ms 60ms cubic-bezier(0.22, 0.9, 0.28, 1) both;
+}
+
+.sh-tasks-view button.sh-bar-button.is-destructive:hover {
+    background-color: rgba(255, 82, 82, 0.18);
+    color: var(--sh-overdue);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sh-tasks-view .sh-palette,
+    .sh-tasks-view .sh-quickadd,
+    .sh-tasks-view .sh-menu,
+    .sh-palette-backdrop,
+    .sh-tasks-view .sh-task-glyph.is-just-changed,
+    .sh-task-glyph.is-just-changed .sh-glyph-mark {
+        animation: none;
+    }
+}
+

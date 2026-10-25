@@ -148,3 +148,31 @@ export function insertionLine(lines: string[], heading?: string): number {
     while (insertAt > floor && lines[insertAt - 1].trim() === '') insertAt--;
     return insertAt;
 }
+
+function indentWidth(text: string): number {
+    return (text.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '    ').length;
+}
+
+/**
+ * The end (exclusive) of a task's block: the task line plus everything
+ * indented beneath it, its notes and its subtasks, the way deleting a task in
+ * Todoist takes its subtasks with it. Blank lines inside the block go with it;
+ * blank lines after it stay.
+ */
+export function taskBlockEnd(lines: string[], index: number): number {
+    const parsed = parseTaskLine(lines[index] ?? '');
+    if (!parsed) return index + 1;
+    const prefix = parsed.prefix;
+    const base = indentWidth(parsed.indent);
+
+    let end = index + 1;
+    for (let i = index + 1; i < lines.length; i++) {
+        let line = lines[i];
+        if (prefix && line.startsWith(prefix.trimEnd())) line = line.slice(prefix.trimEnd().length).replace(/^ /, '');
+        if (line.trim() === '') continue;
+        if (indentWidth(line) > base) end = i + 1;
+        else break;
+    }
+    return end;
+}
+

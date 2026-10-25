@@ -44,6 +44,7 @@ import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
 import { GlassMenu } from './glass-menu';
 import { MARKER_DEFS, markerDef } from './markers';
+import { EASE, arrive, capture, collapse, fade, flip, motionAllowed, reveal } from './motion';
 import type { GlassMenuItem } from './glass-menu';
 import type { Destination, QuickAddPrefill } from './quick-add';
 
@@ -122,6 +123,8 @@ export class TasksTabView extends ItemView {
     private selected = new Set<string>();
     private expandedKey: string | null = null;
     private lingering = new Set<string>();
+    /** Rows whose checkbox just changed, so the new glyph plays its pop once. */
+    private justChanged = new Set<string>();
     private rowCap = ROW_CAP;
     private order: Task[] = [];
     private undoStack: UndoEntry[] = [];
@@ -296,7 +299,7 @@ export class TasksTabView extends ItemView {
         const key = listKey(this.list);
         this.displayByList[key] = { ...this.display(), ...patch };
         this.writeJson(STORAGE.display, this.displayByList);
-        this.render();
+        this.render(true);
     }
 
     private isDisplayChanged(): boolean {
@@ -319,6 +322,7 @@ export class TasksTabView extends ItemView {
         if (this.narrow) this.railHidden = true;
         this.render();
         this.scroller.scrollTop = 0;
+        arrive(this.column);
         this.focusList();
     }
 
@@ -456,19 +460,31 @@ export class TasksTabView extends ItemView {
 
     // ── Rendering ───────────────────────────────────────────────────────
 
-    private render(): void {
+    /**
+     * Rebuilds the rail and the list. With `animate`, rows and group headers
+     * that moved glide from where they were and new ones fade in, which is
+     * how a change made here (a tick, a new date, a fold) reads as motion
+     * instead of a jump.
+     */
+    private render(animate = false): void {
         if (!this.column) return;
         const today = isoToday();
+        const before = animate && motionAllowed() ? capture(this.column) : null;
         this.renderRail(today);
         this.renderMain(today);
         this.paintSelection();
         this.topbar.querySelector('.sh-display-button')?.toggleClass('has-changes', this.isDisplayChanged());
+        if (before) flip(this.column, before);
+        this.justChanged.clear();
     }
 
     private renderRail(today: string): void {
         const rail = this.rail;
         const scrollTop = rail.scrollTop;
+        const oldIndicator = rail.querySelector<HTMLElement>('.sh-rail-indicator');
+        const from = oldIndicator ? { top: oldIndicator.offsetTop, height: oldIndicator.offsetHeight } : null;
         rail.empty();
+        const indicator = rail.createDiv({ cls: 'sh-rail-indicator' });
         const counts = listCounts(this.allTasks, today);
 
         const lists = rail.createDiv({ cls: 'sh-rail-lists' });
@@ -528,6 +544,24 @@ export class TasksTabView extends ItemView {
         }
 
         rail.scrollTop = scrollTop;
+        this.placeIndicator(indicator, from);
+    }
+
+    /** Slides the rail's highlight from the old list to the new one. */
+    private placeIndicator(indicator: HTMLElement, from: { top: number; height: number } | null): void {
+        const active = this.rail.querySelector<HTMLElement>('.sh-rail-item.is-active');
+        if (!active) {
+            indicator.addClass('is-hidden');
+            return;
+        }
+        const to = { top: active.offsetTop, height: active.offsetHeight };
+        indicator.setCssProps({ top: `${to.top}px`, height: `${to.height}px` });
+        if (from && motionAllowed() && (from.top !== to.top || from.height !== to.height)) {
+            indicator.animate(
+                [{ top: `${from.top}px`, height: `${from.height}px` }, { top: `${to.top}px`, height: `${to.height}px` }],
+                { duration: 260, easing: EASE }
+            );
+        }
     }
 
     private renderMain(today: string): void {
@@ -630,6 +664,7 @@ export class TasksTabView extends ItemView {
      */
     private renderGroupHeader(groupEl: HTMLElement, group: TaskGroup, collapseKey: string, collapsed: boolean): void {
         const header = groupEl.createDiv({ cls: 'sh-group-header' });
+        header.dataset.flip = `group:${group.key}`;
         header.toggleClass('is-collapsed', collapsed);
         if (group.kind === 'priority') {
             const level = group.key.split(':')[1];
@@ -646,7 +681,7 @@ export class TasksTabView extends ItemView {
             if (collapsed) this.collapsed.delete(collapseKey);
             else this.collapsed.add(collapseKey);
             this.writeJson(STORAGE.collapsed, [...this.collapsed]);
-            this.render();
+            this.render(true);
         });
 
         const actions = header.createDiv({ cls: 'sh-group-actions' });
@@ -682,6 +717,7 @@ export class TasksTabView extends ItemView {
     /** An empty group invites a task instead of showing a zero. */
     private renderAddRow(groupEl: HTMLElement, target: AddTarget): void {
         const row = groupEl.createDiv({ cls: 'sh-add-row' });
+        row.dataset.flip = `add:${JSON.stringify(target)}`;
         paintEmptyGlyph(row.createDiv({ cls: 'sh-add-glyph' }));
         row.createDiv({ cls: 'sh-add-label', text: t('tasksTab.actions.addHere') });
         row.addEventListener('click', () => this.openQuickAdd(this.prefillFor(target)));
@@ -699,6 +735,7 @@ export class TasksTabView extends ItemView {
         const display = this.display();
         const row = parent.createDiv({ cls: 'sh-task-row' });
         row.dataset.key = key;
+        row.dataset.flip = `task:${key}`;
         row.setCssProps({ '--sh-indent': String(task.indentLevel) });
         row.toggleClass('is-resolved', !isOpenTask(task));
         row.toggleClass('is-lingering', this.lingering.has(key));
@@ -708,6 +745,7 @@ export class TasksTabView extends ItemView {
         const line = row.createDiv({ cls: 'sh-task-line' });
         const glyph = line.createEl('button', { cls: 'sh-task-glyph' });
         paintGlyph(glyph, task);
+        if (this.justChanged.has(key)) glyph.addClass('is-just-changed');
         setTooltip(glyph, t('tasksTab.actions.completeHint'), { delay: 800 });
         glyph.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -896,7 +934,9 @@ export class TasksTabView extends ItemView {
         this.highlightKey = nextKey;
         if (followCard) {
             this.expandedKey = nextKey;
-            this.render();
+            this.render(true);
+            const card = this.column.querySelector<HTMLElement>('.sh-task-row.is-expanded .sh-task-card');
+            if (card) reveal(card, 200);
         } else {
             this.paintSelection();
         }
@@ -917,10 +957,26 @@ export class TasksTabView extends ItemView {
         const target = task ?? this.findTask(this.highlightKey);
         if (!target) return;
         const key = taskKey(target);
+        const wasOpen = this.expandedKey !== null;
         this.highlightKey = key;
         this.expandedKey = this.expandedKey === key ? null : key;
-        this.render();
+        this.render(true);
         this.scrollToRow(key);
+        this.playCard(wasOpen);
+    }
+
+    /** The card growing open, and the rows around it dimming or brightening. */
+    private playCard(wasOpen: boolean): void {
+        const isOpen = this.expandedKey !== null;
+        const others = [...this.column.querySelectorAll<HTMLElement>('.sh-task-row:not(.is-expanded)')];
+        if (isOpen && !wasOpen) fade(others, 1, 0.45);
+        if (!isOpen && wasOpen) fade(others, 0.45, 1);
+        const card = this.column.querySelector<HTMLElement>('.sh-task-row.is-expanded .sh-task-card');
+        if (card) reveal(card);
+        const row = card?.closest<HTMLElement>('.sh-task-row');
+        if (row && motionAllowed()) {
+            row.animate([{ transform: 'scale(0.985)' }, { transform: 'none' }], { duration: 260, easing: EASE });
+        }
     }
 
     // ── Keyboard ────────────────────────────────────────────────────────
@@ -982,6 +1038,13 @@ export class TasksTabView extends ItemView {
             return;
         }
 
+        if (mod && key === 'Backspace') {
+            if (!this.hasTargets()) return;
+            consume();
+            this.deleteTasks(this.targets());
+            return;
+        }
+
         if (mod && key === 'Enter') {
             const task = this.findTask(this.highlightKey);
             if (task) {
@@ -1019,6 +1082,11 @@ export class TasksTabView extends ItemView {
             case key === 'K':
                 consume();
                 this.moveHighlight(-1, true);
+                return;
+            case key === 'Delete':
+                if (!this.hasTargets()) return;
+                consume();
+                this.deleteTasks(this.targets());
                 return;
             case key === 'Escape':
                 if (this.expandedKey) {
@@ -1125,22 +1193,66 @@ export class TasksTabView extends ItemView {
         }
         if (result.changes.length === 0) {
             await this.refreshFiles(tasks.map(task => task.filePath));
-            this.render();
+            this.render(true);
             return;
         }
 
+        const keys = result.changes.map(change => `${change.path}:${change.line}`);
+        for (const key of keys) this.justChanged.add(key);
+
         if (linger) {
-            const keys = result.changes.map(change => `${change.path}:${change.line}`);
             for (const key of keys) this.lingering.add(key);
-            window.setTimeout(() => {
-                for (const key of keys) this.lingering.delete(key);
-                this.render();
-            }, LINGER_MS);
+            window.setTimeout(() => this.releaseLingering(keys), LINGER_MS);
         }
 
         await this.refreshFiles(result.changes.map(change => change.path));
-        this.render();
+        this.render(true);
         this.pushUndo(label, result.changes);
+    }
+
+    /**
+     * Deletes tasks from their notes, each with the notes and subtasks
+     * indented under it. The rows fold away first, and Undo puts the lines
+     * back where they were.
+     */
+    private deleteTasks(tasks: Task[]): void {
+        if (tasks.length === 0) return;
+        const label = this.countLabel('deleted', tasks);
+        const rows = tasks
+            .map(task => this.column.querySelector<HTMLElement>(`.sh-task-row[data-key="${CSS.escape(taskKey(task))}"]`))
+            .filter((row): row is HTMLElement => row !== null);
+        collapse(rows, () => void this.removeAndRecord(tasks, label));
+    }
+
+    private async removeAndRecord(tasks: Task[], label: string): Promise<void> {
+        const { removed, missed } = await this.writer.removeTasks(tasks);
+        if (missed.length > 0) new Notice(t('tasksTab.notices.missed', { count: missed.length }));
+        const paths = [...removed.map(block => block.path), ...missed.map(task => task.filePath)];
+        for (const task of tasks) this.selected.delete(taskKey(task));
+        if (tasks.some(task => taskKey(task) === this.expandedKey)) this.expandedKey = null;
+        await this.refreshFiles(paths);
+        this.render(true);
+        if (removed.length === 0) return;
+        this.undoStack.push({
+            label,
+            undo: async () => {
+                await this.writer.restoreBlocks(removed);
+                await this.refreshFiles(removed.map(block => block.path));
+                this.render(true);
+            }
+        });
+        this.toast(label, true);
+    }
+
+    /** A completed row folds away, then the rows below glide up into its place. */
+    private releaseLingering(keys: string[]): void {
+        const leaving = keys
+            .map(key => this.column.querySelector<HTMLElement>(`.sh-task-row[data-key="${CSS.escape(key)}"]`))
+            .filter((row): row is HTMLElement => row !== null);
+        collapse(leaving, () => {
+            for (const key of keys) this.lingering.delete(key);
+            this.render(true);
+        });
     }
 
     private pushUndo(label: string, changes: LineChange[]): void {
@@ -1148,8 +1260,9 @@ export class TasksTabView extends ItemView {
             label,
             undo: async () => {
                 await this.writer.undo(changes);
+                for (const change of changes) this.justChanged.add(`${change.path}:${change.line}`);
                 await this.refreshFiles(changes.map(change => change.path));
-                this.render();
+                this.render(true);
             }
         });
         if (this.undoStack.length > 50) this.undoStack.shift();
@@ -1240,7 +1353,7 @@ export class TasksTabView extends ItemView {
         this.writeJson(STORAGE.destination, destination);
         await this.refreshFile(destination.path);
         this.highlightKey = `${destination.path}:${at}`;
-        this.render();
+        this.render(true);
         this.scrollToRow(this.highlightKey);
 
         const label = lines.length === 1
@@ -1251,7 +1364,7 @@ export class TasksTabView extends ItemView {
             undo: async () => {
                 await this.writer.remove(destination.path, at, lines);
                 await this.refreshFile(destination.path);
-                this.render();
+                this.render(true);
             }
         });
         this.toast(label, true);
@@ -1383,7 +1496,8 @@ export class TasksTabView extends ItemView {
                 { id: 'priority', section: sections.selection, icon: 'flag', label: t('tasksTab.actions.setPriority') + scope, detail: '1–3', stage: this.priorityStage(targets) },
                 { id: 'status', section: sections.selection, icon: 'circle-dot', label: t('tasksTab.actions.setStatus') + scope, detail: 'S', stage: this.statusStage(targets), keywords: 'in progress question cancel' },
                 { id: 'cancel', section: sections.selection, icon: 'circle-slash', label: t('tasksTab.actions.cancel') + scope, detail: '⌥E', run: () => void this.setStatus(targets, 'cancelled') },
-                { id: 'copy', section: sections.selection, icon: 'copy', label: t('tasksTab.actions.copy') + scope, run: () => void this.copyTasks(targets), keywords: 'markdown clipboard' }
+                { id: 'copy', section: sections.selection, icon: 'copy', label: t('tasksTab.actions.copy') + scope, run: () => void this.copyTasks(targets), keywords: 'markdown clipboard' },
+                { id: 'delete', section: sections.selection, icon: 'trash-2', label: t('tasksTab.actions.delete') + scope, detail: '⌘⌫', destructive: true, keywords: 'remove', run: () => this.deleteTasks(targets) }
             );
             if (targets.some(task => task.date)) {
                 items.push({ id: 'remove-date', section: sections.selection, icon: 'calendar-x', label: t('tasksTab.actions.removeDate') + scope, detail: '⇧T', run: () => void this.setDates(targets, null) });
@@ -1574,6 +1688,7 @@ export class TasksTabView extends ItemView {
             ['⌘↵', 'openToSide'],
             ['E', 'complete'],
             ['⌥E', 'cancel'],
+            ['⌘⌫', 'delete'],
             ['T', 'setDate'],
             ['⇧T', 'removeDate'],
             ['⌃] / ⌃[', 'nudgeDate'],
@@ -1619,7 +1734,8 @@ export class TasksTabView extends ItemView {
         }
         items.push(
             { label: t('tasksTab.actions.copy'), icon: 'copy', divider: tasks.length > 1, run: () => void this.copyTasks(tasks) },
-            { label: t('tasksTab.actions.cancel'), icon: 'circle-slash', detail: '⌥E', divider: true, destructive: true, run: () => void this.setStatus(tasks, 'cancelled') }
+            { label: t('tasksTab.actions.cancel'), icon: 'circle-slash', detail: '⌥E', divider: true, run: () => void this.setStatus(tasks, 'cancelled') },
+            { label: t('tasksTab.actions.delete'), icon: 'trash-2', detail: '⌘⌫', destructive: true, run: () => this.deleteTasks(tasks) }
         );
         this.closeMenu();
         this.glassMenu.showAtEvent(event, items, () => this.focusList());
@@ -1753,6 +1869,8 @@ export class TasksTabView extends ItemView {
         this.bulkButton(bar, 'flag', t('tasksTab.actions.setPriority'), '1–3', () => this.openPalette(this.priorityStage(targets())));
         this.bulkButton(bar, 'circle-dot', t('tasksTab.actions.setStatus'), 'S', () => this.openPalette(this.statusStage(targets())));
         this.bulkButton(bar, 'copy', t('tasksTab.actions.copy'), '', () => void this.copyTasks(targets()));
+        bar.createDiv({ cls: 'sh-bar-divider' });
+        this.bulkButton(bar, 'trash-2', t('tasksTab.actions.delete'), '⌘⌫', () => this.deleteTasks(targets())).addClass('is-destructive');
     }
 
     private bulkButton(bar: HTMLElement, icon: string, label: string, key: string, run: () => void): HTMLElement {

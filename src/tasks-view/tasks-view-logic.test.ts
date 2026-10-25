@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, insertionLine, locateTaskLine, setDateInText, withState } from './task-line';
+import { buildTaskLine, insertionLine, locateTaskLine, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, DEFAULT_DISPLAY, listCounts, railAreas, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
@@ -95,6 +95,14 @@ describe('task-line', () => {
     it('builds the line quick add writes', () => {
         expect(buildTaskLine({ text: 'Call the dentist', priority: 1, date: '2026-10-27' })).toBe('- [!1] Call the dentist 2026-10-27');
         expect(buildTaskLine({ text: ' Plain ' })).toBe('- [ ] Plain');
+    });
+
+    it('takes a task with its notes and subtasks, and leaves what follows', () => {
+        const lines = ['- [ ] Parent', '    - a note', '', '    - [ ] Child', '        - child note', '- [ ] Next', '', 'Text'];
+        expect(taskBlockEnd(lines, 0)).toBe(5);
+        expect(taskBlockEnd(lines, 3)).toBe(5);
+        expect(taskBlockEnd(lines, 5)).toBe(6);
+        expect(taskBlockEnd(['> - [ ] In a callout', '>     - its note', '> - [ ] Next'], 0)).toBe(2);
     });
 
     it('inserts at the end of a heading section, above blank lines', () => {
