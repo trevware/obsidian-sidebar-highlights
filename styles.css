@@ -3128,10 +3128,6 @@
     border-radius: var(--sh-item-radius);
 }
 
-.sh-task-row:hover {
-    background-color: var(--sh-row-hover);
-}
-
 .sh-task-row.is-highlighted {
     background-color: var(--sh-row-active);
 }
