@@ -26,6 +26,7 @@ import {
     childProgress,
     DEFAULT_DISPLAY,
     followNote,
+    outsideSidebar,
     isOpenTask,
     listCounts,
     listKey,
@@ -307,6 +308,13 @@ export class TasksTabView extends ItemView {
             // On another list, This note's count still follows along.
             else if (this.contentEl.isShown()) this.renderRail(isoToday());
         }));
+        // Dragged out of the sidebar, This note goes, and its list with it.
+        this.registerEvent(this.app.workspace.on('layout-change', () => {
+            const placed = this.inSidebar() ? this.list : outsideSidebar(this.list);
+            if (placed !== this.list) this.showList(placed, false);
+            // Unchanged rails return straight away, so this is cheap on every layout change.
+            else this.renderRail(isoToday());
+        }));
 
         this.registerDomEvent(document, 'keydown', (event) => this.handleKey(event), true);
 
@@ -391,6 +399,7 @@ export class TasksTabView extends ItemView {
         const list = this.readJson<ListRef | null>(STORAGE.list, null);
         if (list && (list.kind === 'note' || SMART_LISTS.includes(list.id))) this.list = list;
         this.list = followNote(this.list, this.app.workspace.getActiveFile()?.path ?? null) ?? this.list;
+        if (!this.inSidebar()) this.list = outsideSidebar(this.list);
         this.displayByList = this.readJson<Record<string, DisplayOptions>>(STORAGE.display, {});
         this.collapsed = new Set(this.readJson<string[]>(STORAGE.collapsed, []));
         this.railHidden = this.readJson<boolean>(STORAGE.rail, false);
@@ -421,6 +430,12 @@ export class TasksTabView extends ItemView {
         if (this.narrow && !this.railHidden) this.toggleRail();
         this.showList(ref, true);
         this.focusList();
+    }
+
+    /** In the left or right sidebar, where This note has a note beside it to follow. */
+    private inSidebar(): boolean {
+        const root = this.leaf.getRoot();
+        return root === this.app.workspace.leftSplit || root === this.app.workspace.rightSplit;
     }
 
     /** This note, on the note open now, or the one it showed last. */
@@ -626,7 +641,7 @@ export class TasksTabView extends ItemView {
 
     private renderRail(today: string): void {
         // The rail only changes with the data, the list, or a fold.
-        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.thisNote().path}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}`;
+        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.inSidebar() ? this.thisNote().path : 'away'}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}`;
         if (signature === this.railSignature) return;
         this.railSignature = signature;
 
@@ -644,16 +659,18 @@ export class TasksTabView extends ItemView {
         };
 
         // This note sits on its own above the rest, the way Things keeps Inbox.
-        const following = this.list.kind === 'note' && this.list.follow === true;
-        const here = lists.createDiv({ cls: 'sh-rail-item is-this-note' });
-        here.toggleClass('is-active', following);
-        setIcon(here.createDiv({ cls: 'sh-rail-icon' }), 'file-text');
-        here.createDiv({ cls: 'sh-rail-label', text: t('tasksTab.lists.thisNote') });
-        const herePath = this.thisNote().path;
-        const hereCount = this.loaded && herePath ? this.allTasks.filter(task => task.filePath === herePath && isOpenTask(task)).length : 0;
-        if (hereCount) here.createDiv({ cls: 'sh-rail-count', text: String(hereCount) });
-        here.addEventListener('click', () => this.setList(this.thisNote()));
-        lists.createDiv({ cls: 'sh-rail-gap' });
+        if (this.inSidebar()) {
+            const following = this.list.kind === 'note' && this.list.follow === true;
+            const here = lists.createDiv({ cls: 'sh-rail-item is-this-note' });
+            here.toggleClass('is-active', following);
+            setIcon(here.createDiv({ cls: 'sh-rail-icon' }), 'file-text');
+            here.createDiv({ cls: 'sh-rail-label', text: t('tasksTab.lists.thisNote') });
+            const herePath = this.thisNote().path;
+            const hereCount = this.loaded && herePath ? this.allTasks.filter(task => task.filePath === herePath && isOpenTask(task)).length : 0;
+            if (hereCount) here.createDiv({ cls: 'sh-rail-count', text: String(hereCount) });
+            here.addEventListener('click', () => this.setList(this.thisNote()));
+            lists.createDiv({ cls: 'sh-rail-gap' });
+        }
 
         SMART_LISTS.forEach((id, index) => {
             if (index === 3 || index === 5) lists.createDiv({ cls: 'sh-rail-gap' });
@@ -1507,7 +1524,7 @@ export class TasksTabView extends ItemView {
             if (id) {
                 consume();
                 this.setList({ kind: 'smart', id });
-            } else if (lower === 'n') {
+            } else if (lower === 'n' && this.inSidebar()) {
                 consume();
                 this.setList(this.thisNote());
             }
@@ -2161,7 +2178,7 @@ export class TasksTabView extends ItemView {
         const counts = listCounts(this.allTasks, isoToday());
         const hints: Record<SmartListId, string> = { today: 'G T', upcoming: 'G U', anytime: 'G A', 'in-progress': 'G I', questions: 'G Q', logbook: 'G D' };
         const countOf: Partial<Record<SmartListId, number>> = { today: counts.today, upcoming: counts.upcoming, anytime: counts.anytime, 'in-progress': counts.inProgress, questions: counts.questions };
-        items.push({
+        if (this.inSidebar()) items.push({
             id: 'list:this-note',
             section: sections.lists,
             icon: 'file-text',
@@ -2494,7 +2511,7 @@ export class TasksTabView extends ItemView {
             ['M', 'moveToHeading'],
             ['Q', 'addTask'],
             ['⌘K  /', 'search'],
-            ['G then N T U A I Q D', 'goTo'],
+            [this.inSidebar() ? 'G then N T U A I Q D' : 'G then T U A I Q D', 'goTo'],
             ['⇧V', 'display'],
             ['[', 'toggleSidebar'],
             ['⌘Z', 'undo'],

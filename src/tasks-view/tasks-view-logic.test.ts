@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -301,6 +301,17 @@ describe('This note', () => {
     it('leaves a note picked from the list where it is', () => {
         expect(followNote({ kind: 'note', path: 'Work/Note.md' }, 'Inbox.md')).toBeNull();
         expect(followNote({ kind: 'smart', id: 'today' }, 'Inbox.md')).toBeNull();
+    });
+
+    it('gives way to Today once the tab leaves the sidebar', () => {
+        expect(outsideSidebar(following)).toEqual({ kind: 'smart', id: 'today' });
+    });
+
+    it('leaves every other list alone outside the sidebar', () => {
+        const picked = { kind: 'note' as const, path: 'Work/Note.md' };
+        const upcoming = { kind: 'smart' as const, id: 'upcoming' as const };
+        expect(outsideSidebar(picked)).toBe(picked);
+        expect(outsideSidebar(upcoming)).toBe(upcoming);
     });
 
     it('is its own list, apart from the note it shows', () => {

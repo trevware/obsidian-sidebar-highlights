@@ -59,6 +59,11 @@ export function followNote(list: ListRef, path: string | null): ListRef | null {
     return { kind: 'note', path, follow: true };
 }
 
+/** This note only makes sense beside a note, so away from the sidebar it hands over to Today. */
+export function outsideSidebar(list: ListRef): ListRef {
+    return list.kind === 'note' && list.follow ? { kind: 'smart', id: 'today' } : list;
+}
+
 export function listKey(ref: ListRef): string {
     return ref.kind === 'smart' ? `smart:${ref.id}` : `note:${ref.path}`;
 }
