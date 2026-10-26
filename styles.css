@@ -1997,6 +1997,12 @@
     background-color: var(--sh-inner-hover);
 }
 
+.sh-rail-item:focus-visible,
+.sh-rail-area:focus-visible {
+    outline: 2px solid var(--sh-accent);
+    outline-offset: -2px;
+}
+
 /* The active list's highlight is one element that slides between rows. */
 .sh-rail-item.is-active {
     background-color: transparent;
@@ -2204,14 +2210,14 @@
     background-color: var(--sh-accent);
 }
 
-/* In a narrow pane the selection bar would land on the controls, so they
-   step down out of its way while a selection is up, as Oriko's do. */
-.sh-tasks-shell.is-narrow .sh-tasks-main.has-bulkbar .sh-tasks-controls {
+/* The selection bar would land on the controls, so they step down out of
+   its way while a selection is up, as Oriko's do. */
+.sh-tasks-main.has-bulkbar .sh-tasks-controls {
     opacity: 0;
     transform: translateY(calc(100% + 30px));
 }
 
-.sh-tasks-shell.is-narrow .sh-tasks-main.has-bulkbar .sh-tasks-controls button {
+.sh-tasks-main.has-bulkbar .sh-tasks-controls button {
     pointer-events: none;
 }
 
@@ -2654,6 +2660,12 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+}
+
+/* An open card shows the date and the note in its own chips and link. */
+.sh-task-row.is-expanded .sh-meta-date,
+.sh-task-row.is-expanded .sh-meta-crumb {
+    display: none;
 }
 
 /* Row icons come from CSS masks of Obsidian's own icons, so a row holds no
@@ -3267,9 +3279,11 @@
     text-align: center;
 }
 
+/* In a narrow pane the hints wrap onto a second line, each one whole. */
 .sh-palette-foot {
     display: flex;
-    gap: 16px;
+    flex-wrap: wrap;
+    gap: 6px 16px;
     padding: 10px 13px 4px;
     border-top: 1px solid var(--sh-rule);
     color: var(--sh-surface-dim);
@@ -3280,6 +3294,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
 }
 
 /* ── Quick add ──────────────────────────────────────────────────────────── */
@@ -3435,6 +3450,23 @@
 
 .sh-tasks-main.has-bulkbar .sh-toast {
     bottom: calc(80px + var(--safe-area-inset-bottom, 0px));
+}
+
+/* With room for it, the toast sits in the bottom row between the two sets
+   of controls (one button on the left, three on the right), clear of the
+   list's last rows. */
+.sh-tasks-main.is-roomy:not(.has-bulkbar) .sh-toast {
+    right: 198px;
+    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    left: 82px;
+    width: fit-content;
+    max-width: none;
+    margin-inline: auto;
+    transform: translateY(8px);
+}
+
+.sh-tasks-main.is-roomy:not(.has-bulkbar) .sh-toast.is-visible {
+    transform: translateY(0);
 }
 
 .sh-tasks-view .sh-toast.is-visible {

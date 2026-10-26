@@ -26,7 +26,7 @@ proto.hasClass = function (this: HTMLElement, cls: string) { return this.classLi
 proto.empty = function (this: HTMLElement) { this.replaceChildren(); };
 proto.setCssProps = function (this: HTMLElement, props: Record<string, string>) { for (const [key, value] of Object.entries(props)) this.style.setProperty(key, value); };
 
-function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true)) {
+function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true), overrides: Partial<QuickAddHost> = {}) {
     document.body.replaceChildren();
     const container = document.body.createDiv({ cls: 'sh-tasks-view' });
     const outside = container.createDiv({ cls: 'sh-tasks-scroll' });
@@ -40,7 +40,8 @@ function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true)) {
         defaultDestination: () => ({ path: 'Inbox.md' }),
         chooseDestination: () => undefined,
         submit,
-        onClose: () => { closed++; }
+        onClose: () => { closed++; },
+        ...overrides
     };
     const quickAdd = new QuickAdd(container, host);
     return { quickAdd, container, outside, closes: () => closed };
@@ -54,6 +55,13 @@ const type = (container: HTMLElement, text: string) => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
 };
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+const keydown = (el: Element, key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+    el.dispatchEvent(event);
+    return event;
+};
+const field = (container: HTMLElement) => container.querySelector('.sh-quickadd-input') as HTMLInputElement;
+const chips = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>('button.sh-chip')];
 const press = (el: Element) => el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
 
 describe('closing quick add', () => {
@@ -134,5 +142,90 @@ describe('saving from quick add', () => {
         enter();
         await settle();
         expect(submit).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('where quick add writes', () => {
+    it('takes the note of the list it opens on, after an earlier add went elsewhere', async () => {
+        let place = 'Inbox.md';
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { defaultDestination: () => ({ path: place }) });
+        quickAdd.open();
+        type(container, 'First');
+        enter();
+        await settle();
+        place = 'Projects/Kitchen.md';
+        quickAdd.open();
+        type(container, 'Second');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenLastCalledWith(['- [ ] Second'], { path: 'Projects/Kitchen.md' });
+    });
+
+    it('keeps the note a half-written task was headed for', async () => {
+        let place = 'Inbox.md';
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { defaultDestination: () => ({ path: place }) });
+        quickAdd.open();
+        type(container, 'Half written');
+        escape();
+        place = 'Projects/Kitchen.md';
+        quickAdd.open();
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Half written'], { path: 'Inbox.md' });
+    });
+});
+
+describe('quick add from the keyboard', () => {
+    it('lets Enter on a chip open the chip instead of saving', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        const note = chips(container)[2];
+        note.focus();
+        const event = keydown(note, 'Enter');
+        await settle();
+        expect(submit).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('keeps Tab inside the panel', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        const [date, , note] = chips(container);
+        keydown(field(container), 'Tab');
+        expect(document.activeElement).toBe(date);
+        keydown(date, 'Tab');
+        keydown(document.activeElement as Element, 'Tab');
+        expect(document.activeElement).toBe(note);
+        keydown(note, 'Tab');
+        expect(document.activeElement).toBe(field(container));
+        keydown(field(container), 'Tab', { shiftKey: true });
+        expect(document.activeElement).toBe(note);
+    });
+
+    it('opens the note picker for a slash at the start of a word', () => {
+        const chooseDestination = jest.fn();
+        const { quickAdd, container } = setup(undefined, { chooseDestination });
+        quickAdd.open();
+        type(container, 'Email the contractor ');
+        const input = field(container);
+        input.setSelectionRange(input.value.length, input.value.length);
+        const event = keydown(input, '/');
+        expect(chooseDestination).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('leaves a slash inside a word alone', () => {
+        const chooseDestination = jest.fn();
+        const { quickAdd, container } = setup(undefined, { chooseDestination });
+        quickAdd.open();
+        type(container, 'Due 10');
+        const input = field(container);
+        input.setSelectionRange(input.value.length, input.value.length);
+        keydown(input, '/');
+        expect(chooseDestination).not.toHaveBeenCalled();
     });
 });

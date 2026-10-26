@@ -1,13 +1,16 @@
 import {
+    App,
     Component,
     ItemView,
     MarkdownRenderer,
     MarkdownView,
     Notice,
+    Scope,
     TFile,
     WorkspaceLeaf,
     getIcon,
     moment,
+    normalizePath,
     setIcon,
     setTooltip
 } from 'obsidian';
@@ -24,7 +27,7 @@ import {
     breadcrumbFor,
     buildGroups,
     childProgress,
-    DEFAULT_DISPLAY,
+    listDefaults,
     followNote,
     outsideSidebar,
     isOpenTask,
@@ -59,6 +62,8 @@ export const VIEW_TYPE_TASKS = 'sidebar-highlights-tasks';
 
 const STORAGE = {
     list: 'sidebar-highlights-tasks-list',
+    sidebarList: 'sidebar-highlights-tasks-sidebar-list',
+    cardHint: 'sidebar-highlights-tasks-card-hint',
     display: 'sidebar-highlights-tasks-display',
     collapsed: 'sidebar-highlights-tasks-collapsed',
     rail: 'sidebar-highlights-tasks-rail',
@@ -74,6 +79,8 @@ const ROW_CAP = 300;
 const FLIP_LIMIT = 120;
 /** Below this width the rail tucks away behind a button. */
 const NARROW_PX = 760;
+/** A list this wide fits the toast between the bottom controls. */
+const ROOMY_PX = 620;
 
 const SMART_ICONS: Record<SmartListId, string> = {
     today: 'sun',
@@ -170,6 +177,16 @@ export class TasksTabView extends ItemView {
     private railHidden = false;
     private narrow = false;
     private pendingG = 0;
+    /** What drove the last action, so a completion from the keys can hand the highlight on. */
+    private lastInput: 'keyboard' | 'pointer' = 'pointer';
+    /** The pointer is over the list, where a row it just ticked stays put. */
+    private pointerInList = false;
+    /** Ticked rows waiting for the pointer to leave the list before they go. */
+    private heldKeys: string[] = [];
+    /** When a single click last opened a card, so the double-click it belongs to leaves it open. */
+    private cardByClickAt = 0;
+    /** Whether the tab sat in a sidebar when it last looked, to notice it moving. */
+    private placedInSidebar = false;
 
     private shell!: HTMLElement;
     private rail!: HTMLElement;
@@ -195,6 +212,15 @@ export class TasksTabView extends ItemView {
         this.taskManager = new TaskManager(plugin);
         this.renderer = new TaskRenderer(plugin);
         this.writer = new TaskWriter(plugin.app);
+
+        // ⌘K is Obsidian's Insert link everywhere, and Obsidian claims it before
+        // the tab's own listener sees it, so search takes it in the tab's scope.
+        this.scope = new Scope(this.app.scope);
+        this.scope.register(['Mod'], 'k', () => {
+            if (this.quickAdd.isOpen || this.glassMenu.isOpen || this.menuEl) return true;
+            this.togglePalette();
+            return false;
+        });
     }
 
     getViewType(): string {
@@ -269,6 +295,18 @@ export class TasksTabView extends ItemView {
             }
         });
         this.registerDomEvent(this.column, 'pointerdown', (event) => this.drag.down(event));
+        this.registerDomEvent(this.contentEl, 'pointerdown', () => {
+            this.lastInput = 'pointer';
+        }, { capture: true });
+        // A row ticked with a click stays put while the pointer is over the
+        // list, so the task below never slides under it before the next click.
+        this.registerDomEvent(this.scroller, 'pointerenter', () => {
+            this.pointerInList = true;
+        });
+        this.registerDomEvent(this.scroller, 'pointerleave', () => {
+            this.pointerInList = false;
+            this.releaseHeld();
+        });
         // Capture, so a drag's release never reaches the list as a click.
         this.registerDomEvent(this.scroller, 'click', (event) => this.drag.click(event), true);
 
@@ -310,16 +348,25 @@ export class TasksTabView extends ItemView {
         }));
         // Dragged out of the sidebar, This note goes, and its list with it.
         this.registerEvent(this.app.workspace.on('layout-change', () => {
-            const placed = this.inSidebar() ? this.list : outsideSidebar(this.list);
-            if (placed !== this.list) this.showList(placed, false);
+            const sidebar = this.inSidebar();
+            if (sidebar !== this.placedInSidebar) {
+                // Moved into or out of a sidebar: it takes up the list kept for there.
+                this.placedInSidebar = sidebar;
+                const next = this.storedList(sidebar);
+                if (!sameList(next, this.list) || (next.kind === 'note' && next.follow) !== (this.list.kind === 'note' && this.list.follow)) {
+                    this.showList(next, false);
+                    return;
+                }
+            }
             // Unchanged rails return straight away, so this is cheap on every layout change.
-            else this.renderRail(isoToday());
+            this.renderRail(isoToday());
         }));
 
         this.registerDomEvent(document, 'keydown', (event) => this.handleKey(event), true);
 
         this.resizer = new ResizeObserver(() => this.applyWidth());
         this.resizer.observe(this.shell);
+        this.resizer.observe(this.main);
 
         this.registerEvent(this.app.vault.on('modify', (file) => this.scheduleRefresh(file.path)));
         this.registerEvent(this.app.vault.on('create', (file) => this.scheduleRefresh(file.path)));
@@ -396,17 +443,15 @@ export class TasksTabView extends ItemView {
     }
 
     private restoreState(): void {
-        const list = this.readJson<ListRef | null>(STORAGE.list, null);
-        if (list && (list.kind === 'note' || SMART_LISTS.includes(list.id))) this.list = list;
-        this.list = followNote(this.list, this.app.workspace.getActiveFile()?.path ?? null) ?? this.list;
-        if (!this.inSidebar()) this.list = outsideSidebar(this.list);
+        this.placedInSidebar = this.inSidebar();
+        this.list = this.storedList(this.placedInSidebar);
         this.displayByList = this.readJson<Record<string, DisplayOptions>>(STORAGE.display, {});
         this.collapsed = new Set(this.readJson<string[]>(STORAGE.collapsed, []));
         this.railHidden = this.readJson<boolean>(STORAGE.rail, false);
     }
 
     private display(): DisplayOptions {
-        return { ...DEFAULT_DISPLAY, ...(this.displayByList[listKey(this.list)] ?? {}) };
+        return { ...listDefaults(this.list), ...(this.displayByList[listKey(this.list)] ?? {}) };
     }
 
     private setDisplay(patch: Partial<DisplayOptions>): void {
@@ -418,8 +463,9 @@ export class TasksTabView extends ItemView {
 
     private isDisplayChanged(): boolean {
         const display = this.display();
-        return (Object.keys(DEFAULT_DISPLAY) as Array<keyof DisplayOptions>)
-            .some(key => display[key] !== DEFAULT_DISPLAY[key]);
+        const defaults = listDefaults(this.list);
+        return (Object.keys(defaults) as Array<keyof DisplayOptions>)
+            .some(key => display[key] !== defaults[key]);
     }
 
     private setList(ref: ListRef): void {
@@ -438,6 +484,31 @@ export class TasksTabView extends ItemView {
         return root === this.app.workspace.leftSplit || root === this.app.workspace.rightSplit;
     }
 
+    /**
+     * The list kept for a place. The sidebar remembers its own and starts on
+     * This note; a tab of its own starts on Today and never shows This note.
+     */
+    private storedList(sidebar: boolean): ListRef {
+        const stored = this.readJson<ListRef | null>(sidebar ? STORAGE.sidebarList : STORAGE.list, null);
+        const list = stored && (stored.kind === 'note' || SMART_LISTS.includes(stored.id)) ? stored : null;
+        if (!sidebar) return outsideSidebar(list ?? { kind: 'smart', id: 'today' });
+        return list && !(list.kind === 'note' && list.follow) ? list : this.thisNote();
+    }
+
+    /**
+     * Today's daily note, when there is one: where the Daily notes plugin
+     * puts it, or else a note named for today's date.
+     */
+    private todaysDailyNote(): string | null {
+        const options = dailyNoteOptions(this.app);
+        const format = options?.format ? options.format : 'YYYY-MM-DD';
+        const name = moment().format(format);
+        const path = normalizePath(`${options?.folder ? `${options.folder}/` : ''}${name}.md`);
+        if (this.app.vault.getAbstractFileByPath(path) instanceof TFile) return path;
+        const named = this.app.metadataCache.getFirstLinkpathDest(name.split('/').pop() ?? name, '');
+        return named?.extension === 'md' ? named.path : null;
+    }
+
     /** This note, on the note open now, or the one it showed last. */
     private thisNote(): Extract<ListRef, { kind: 'note' }> {
         const open = this.app.workspace.getActiveFile()?.path;
@@ -447,8 +518,11 @@ export class TasksTabView extends ItemView {
 
     /** Puts another list up without moving the focus, so This note can follow notes as they open. */
     private showList(ref: ListRef, animate: boolean): void {
+        // Rows held for the pointer don't follow it to another list.
+        for (const key of this.heldKeys) this.lingering.delete(key);
+        this.heldKeys = [];
         this.list = ref;
-        this.writeJson(STORAGE.list, ref);
+        this.writeJson(this.inSidebar() ? STORAGE.sidebarList : STORAGE.list, ref);
         this.selected.clear();
         this.expandedKey = null;
         this.highlightKey = null;
@@ -562,6 +636,8 @@ export class TasksTabView extends ItemView {
         }
         this.shell.toggleClass('is-narrow', this.narrow);
         this.shell.toggleClass('is-rail-hidden', this.railHidden);
+        // Room for a toast in the bottom row, between the two sets of controls.
+        this.main.toggleClass('is-roomy', this.main.clientWidth >= ROOMY_PX);
     }
 
     private toggleRail(): void {
@@ -649,7 +725,7 @@ export class TasksTabView extends ItemView {
         const scrollTop = rail.scrollTop;
         rail.empty();
         const indicator = rail.createDiv({ cls: 'sh-rail-indicator' });
-        const counts = listCounts(this.allTasks, today);
+        const counts = listCounts(this.allTasks, today, this.todaysDailyNote());
 
         const lists = rail.createDiv({ cls: 'sh-rail-lists' });
         const countFor: Partial<Record<SmartListId, number>> = {
@@ -716,6 +792,18 @@ export class TasksTabView extends ItemView {
             }
         }
 
+        // Lists and folders answer to Tab, Enter and Space as well as clicks.
+        for (const item of Array.from(rail.querySelectorAll<HTMLElement>('.sh-rail-item, .sh-rail-area'))) {
+            item.tabIndex = 0;
+            item.setAttr('role', 'button');
+            if (item.hasClass('is-active')) item.setAttr('aria-current', 'true');
+            item.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                item.click();
+            });
+        }
+
         rail.scrollTop = scrollTop;
         this.placeIndicator(indicator);
     }
@@ -753,8 +841,8 @@ export class TasksTabView extends ItemView {
         this.groupSignature = '';
 
         const display = this.display();
-        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
+        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
         this.groupSignature = this.groupSignatureOf(groups);
 
         this.renderHeader(column, today);
@@ -1009,6 +1097,7 @@ export class TasksTabView extends ItemView {
         // rest of the row is redrawn around it. Taking it out of the page and
         // putting it back would restart its pop, which read as a second tick.
         const glyph = createEl('button', { cls: 'sh-task-glyph' });
+        glyph.setAttr('aria-label', isOpenTask(task) ? t('tasksTab.actions.completeHint') : t('tasksTab.actions.reopen'));
         paintGlyph(glyph, task);
         const oldLine = row.querySelector<HTMLElement>(':scope > .sh-task-line');
         const oldGlyph = oldLine?.querySelector<HTMLElement>(':scope > .sh-task-glyph');
@@ -1065,8 +1154,8 @@ export class TasksTabView extends ItemView {
         if (!this.column || !this.loaded || this.planPending || this.order.length === 0 || !this.contentEl.isShown()) return false;
         const today = isoToday();
         const display = this.display();
-        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
+        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
         if (this.groupSignatureOf(groups) !== this.groupSignature) return false;
 
         const next: Array<{ task: Task; group: TaskGroup }> = [];
@@ -1179,6 +1268,8 @@ export class TasksTabView extends ItemView {
     }
 
     private onListDoubleClick(event: MouseEvent): void {
+        // The first click of this double-click already opened the card.
+        if (Date.now() - this.cardByClickAt < 600) return;
         const target = event.target as HTMLElement;
         if (target.closest('a, button, .sh-task-card')) return;
         const row = target.closest<HTMLElement>('.sh-task-row');
@@ -1368,12 +1459,32 @@ export class TasksTabView extends ItemView {
         } else if (event.shiftKey && this.anchorKey) {
             this.selectRange(this.anchorKey, key);
         } else {
+            // A second, separate click on the highlighted task opens its card.
+            const again = this.highlightKey === key && this.selected.size === 0 && event.detail === 1;
             this.selected.clear();
             this.anchorKey = key;
+            if (again) {
+                this.cardByClickAt = Date.now();
+                this.toggleExpanded(task);
+                this.focusList();
+                return;
+            }
+            if (event.detail === 1 && this.expandedKey === null) this.hintCard();
         }
         this.highlightKey = key;
         this.paintSelection();
         this.focusList();
+    }
+
+    /** The first click on a task says, once, how to open it and where its actions are. */
+    private hintCard(): void {
+        if (this.readJson<boolean>(STORAGE.cardHint, false)) return;
+        // Held a beat, so the first click of a double-click doesn't explain itself.
+        window.setTimeout(() => {
+            if (this.expandedKey !== null || this.readJson<boolean>(STORAGE.cardHint, false)) return;
+            this.writeJson(STORAGE.cardHint, true);
+            this.toast(t('tasksTab.hints.openCard'), false);
+        }, 450);
     }
 
     private selectRange(fromKey: string, toKey: string): void {
@@ -1464,7 +1575,10 @@ export class TasksTabView extends ItemView {
         this.expandedKey = key;
         const row = key ? this.rowEls.get(key) : undefined;
         const task = key ? this.rowTasks.get(key) : undefined;
-        if (row && task) this.expandRow(row, task, true);
+        if (row && task) {
+            this.expandRow(row, task, true);
+            this.writeJson(STORAGE.cardHint, true);
+        }
         this.column.toggleClass('has-expanded', row !== undefined);
     }
 
@@ -1497,6 +1611,8 @@ export class TasksTabView extends ItemView {
         if (event.isComposing) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        // A focused button or list in the rail takes Enter and Space itself.
+        if ((event.key === 'Enter' || event.key === ' ') && target?.closest('button, [role="button"]')) return;
         // A modal or a native menu is up and owns the keys.
         if (document.body.querySelector('.modal-container, .menu')) return;
 
@@ -1506,6 +1622,7 @@ export class TasksTabView extends ItemView {
         const consume = () => {
             event.preventDefault();
             event.stopPropagation();
+            this.lastInput = 'keyboard';
         };
 
         if (this.menuEl) {
@@ -1613,6 +1730,10 @@ export class TasksTabView extends ItemView {
                     consume();
                     this.selected.clear();
                     this.paintSelection();
+                } else if (!this.inSidebar()) {
+                    // In a tab of its own, Escape stays here. Passed on, Obsidian
+                    // jumps to the last note and the next shortcut types into it.
+                    consume();
                 }
                 return;
             case key === ' ':
@@ -1726,7 +1847,7 @@ export class TasksTabView extends ItemView {
 
         if (linger) {
             for (const key of keys) this.lingering.add(key);
-            window.setTimeout(() => this.releaseLingering(keys), LINGER_MS);
+            window.setTimeout(() => this.settleLingering(keys), LINGER_MS);
         }
 
         await this.refreshFiles(result.changes.map(change => change.path));
@@ -1775,7 +1896,8 @@ export class TasksTabView extends ItemView {
      */
     private releaseLingering(keys: string[]): void {
         for (const key of keys) this.lingering.delete(key);
-        const staying = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
+        this.passHighlightOn(keys);
+        const staying = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering, this.todaysDailyNote()).map(taskKey));
         const leavingKeys = keys.filter(key => !staying.has(key));
         if (leavingKeys.length === 0) {
             this.update(true);
@@ -1789,6 +1911,45 @@ export class TasksTabView extends ItemView {
         });
     }
 
+    /** A row ticked with a click waits for the pointer to leave the list. */
+    private settleLingering(keys: string[]): void {
+        if (this.lastInput === 'pointer' && this.pointerInList) {
+            this.heldKeys.push(...keys);
+            return;
+        }
+        this.releaseLingering(keys);
+    }
+
+    private releaseHeld(): void {
+        if (this.heldKeys.length === 0) return;
+        const keys = this.heldKeys;
+        this.heldKeys = [];
+        this.releaseLingering(keys);
+    }
+
+    /**
+     * Completing the highlighted task from the keyboard hands the highlight
+     * to the next open task, or the one before it at the end, so J and E keep
+     * working down the list.
+     */
+    private passHighlightOn(keys: string[]): void {
+        const key = this.highlightKey;
+        if (this.lastInput !== 'keyboard' || !key || !keys.includes(key)) return;
+        const task = this.findTask(key);
+        const index = this.orderIndex.get(key);
+        if (!task || isOpenTask(task) || index === undefined) return;
+        const open = (candidate: Task) => {
+            const fresh = this.findTask(taskKey(candidate));
+            return fresh !== undefined && isOpenTask(fresh) && !keys.includes(taskKey(candidate));
+        };
+        const after = this.order.slice(index + 1).find(open);
+        const before = after ? undefined : this.order.slice(0, index).reverse().find(open);
+        const next = after ?? before;
+        this.highlightKey = next ? taskKey(next) : null;
+        this.anchorKey = this.highlightKey;
+        this.paintSelection();
+    }
+
     /**
      * Takes rows out of the list without rebuilding it, when every group they
      * leave is still there afterwards: the rows go, the counts update, and a
@@ -1798,8 +1959,8 @@ export class TasksTabView extends ItemView {
         if (!this.column || this.planPending || !this.contentEl.isShown()) return false;
         const today = isoToday();
         const display = this.display();
-        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering);
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering);
+        const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
         const shape = (signature: string) => signature.split('|').map(part => part.replace(/:\d+:/, ':')).join('|');
         const nextSignature = this.groupSignatureOf(groups);
         if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;
@@ -1913,7 +2074,8 @@ export class TasksTabView extends ItemView {
 
     private async setDates(tasks: Task[], iso: string | null): Promise<void> {
         const formatted = iso ? this.formatDate(iso) : null;
-        await this.write(tasks, this.countLabel(iso ? 'dateSet' : 'dateRemoved', tasks), (line, task) => {
+        const key = !iso ? 'dateRemoved' : tasks.every(task => !task.date) ? 'dateAdded' : 'dateSet';
+        await this.write(tasks, this.countLabel(key, tasks), (line, task) => {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
             return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDateInText(parsed.text, task.dateText, formatted)}`;
@@ -1983,7 +2145,7 @@ export class TasksTabView extends ItemView {
     private revealAdded(keys: string[], scroll = false): boolean {
         // Whether the tasks belong to this list is a question for the data;
         // their rows may simply not be drawn yet.
-        const inList = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering).map(taskKey));
+        const inList = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering, this.todaysDailyNote()).map(taskKey));
         const present = keys.filter(key => inList.has(key));
         if (present.length === 0) {
             this.pendingReveal = null;
@@ -2071,28 +2233,54 @@ export class TasksTabView extends ItemView {
         return destination.heading ? `${name} › ${destination.heading}` : name;
     }
 
+    /**
+     * Where a new task goes: the note on screen, else the last place a task
+     * went, else today's daily note, a note called Inbox, or the note opened last.
+     */
     private defaultDestination(): Destination | null {
         if (this.list.kind === 'note' && this.list.path) return { path: this.list.path };
         const exists = (path: string) => this.app.vault.getAbstractFileByPath(path) instanceof TFile;
         const remembered = this.readJson<Destination | null>(STORAGE.destination, null);
         if (remembered && exists(remembered.path)) return remembered;
+        const daily = this.todaysDailyNote();
+        if (daily) return { path: daily };
+        const inbox = this.app.metadataCache.getFirstLinkpathDest('Inbox', '');
+        if (inbox?.extension === 'md') return { path: inbox.path };
         const recent = this.app.workspace.getLastOpenFiles().find(path => path.endsWith('.md') && exists(path));
         return recent ? { path: recent } : null;
     }
 
     /** Notes with tasks first, each followed by its headings, then every other note. */
+    /**
+     * Every note a task can go to, the likely ones first: the current
+     * default, today's daily note, the notes opened lately, then notes with
+     * tasks, most recently edited first. Notes with tasks list their headings,
+     * leaving out a top heading that only repeats the note's name.
+     */
     private destinationChoices(): Destination[] {
-        const withTasks = [...new Set(this.allTasks.map(task => task.filePath))];
+        const withTasks = new Set(this.allTasks.map(task => task.filePath));
+        const recent = this.app.workspace.getLastOpenFiles();
+        const first = [this.defaultDestination()?.path, this.todaysDailyNote()];
+        const rankOf = (file: TFile) => {
+            const pinned = first.indexOf(file.path);
+            if (pinned !== -1) return pinned;
+            const opened = recent.indexOf(file.path);
+            if (opened !== -1) return 2 + opened / recent.length;
+            return withTasks.has(file.path) ? 3 : 4;
+        };
+        const files = this.app.vault.getMarkdownFiles()
+            .filter(file => withTasks.has(file.path) || this.taskManager.shouldProcessFile(file))
+            .map(file => ({ file, rank: rankOf(file) }))
+            .sort((a, b) => a.rank - b.rank || b.file.stat.mtime - a.file.stat.mtime);
         const choices: Destination[] = [];
-        for (const path of withTasks) {
-            choices.push({ path });
-            const file = this.app.vault.getAbstractFileByPath(path);
-            const headings = file instanceof TFile ? this.app.metadataCache.getFileCache(file)?.headings ?? [] : [];
-            for (const heading of headings) choices.push({ path, heading: heading.heading, headingLine: heading.position.start.line });
-        }
-        const seen = new Set(withTasks);
-        for (const file of this.app.vault.getMarkdownFiles()) {
-            if (!seen.has(file.path) && this.taskManager.shouldProcessFile(file)) choices.push({ path: file.path });
+        for (const { file, rank } of files) {
+            choices.push({ path: file.path });
+            if (rank === 4) continue;
+            const headings = this.app.metadataCache.getFileCache(file)?.headings ?? [];
+            for (const heading of headings) {
+                if (heading.level === 1 && heading.heading.trim().toLowerCase() === file.basename.toLowerCase()) continue;
+                choices.push({ path: file.path, heading: heading.heading, headingLine: heading.position.start.line });
+            }
         }
         return choices;
     }
@@ -2175,7 +2363,7 @@ export class TasksTabView extends ItemView {
             }
         }
 
-        const counts = listCounts(this.allTasks, isoToday());
+        const counts = listCounts(this.allTasks, isoToday(), this.todaysDailyNote());
         const hints: Record<SmartListId, string> = { today: 'G T', upcoming: 'G U', anytime: 'G A', 'in-progress': 'G I', questions: 'G Q', logbook: 'G D' };
         const countOf: Partial<Record<SmartListId, number>> = { today: counts.today, upcoming: counts.upcoming, anytime: counts.anytime, 'in-progress': counts.inProgress, questions: counts.questions };
         if (this.inSidebar()) items.push({
@@ -2730,12 +2918,36 @@ export class TasksTabView extends ItemView {
                 void this.undo();
             });
         }
+        toast.setAttr('role', 'status');
+        toast.setAttr('aria-live', 'polite');
         window.requestAnimationFrame(() => toast.addClass('is-visible'));
-        this.toastTimer = window.setTimeout(() => {
-            toast.removeClass('is-visible');
-            window.setTimeout(() => toast.remove(), 200);
-        }, 5000);
+        // It waits while the pointer is on it, so Undo is never snatched away.
+        const hide = (after: number) => {
+            this.toastTimer = window.setTimeout(() => {
+                toast.removeClass('is-visible');
+                window.setTimeout(() => toast.remove(), 200);
+            }, after);
+        };
+        toast.addEventListener('pointerenter', () => {
+            if (this.toastTimer) window.clearTimeout(this.toastTimer);
+            this.toastTimer = null;
+        });
+        toast.addEventListener('pointerleave', () => hide(2500));
+        hide(8000);
     }
+}
+
+interface DailyNoteOptions {
+    folder?: string;
+    format?: string;
+}
+
+/** The core Daily notes plugin's folder and date format, while it's turned on. */
+function dailyNoteOptions(app: App): DailyNoteOptions | null {
+    type Internal = { getPluginById?: (id: string) => { enabled?: boolean; instance?: { options?: DailyNoteOptions } } | null };
+    const internal = (app as unknown as { internalPlugins?: Internal }).internalPlugins;
+    const daily = internal?.getPluginById?.('daily-notes');
+    return daily?.enabled ? daily.instance?.options ?? null : null;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';

@@ -620,6 +620,22 @@ export default class HighlightCommentsPlugin extends Plugin {
         return leaf.view instanceof TasksTabView ? leaf.view : null;
     }
 
+    /** Tasks beside your notes: the one already in a sidebar, or a new one on the right. */
+    async activateTasksInSidebar(): Promise<void> {
+        const { workspace } = this.app;
+        const inSidebar = (leaf: WorkspaceLeaf) => {
+            const root = leaf.getRoot();
+            return root === workspace.leftSplit || root === workspace.rightSplit;
+        };
+        let leaf = workspace.getLeavesOfType(VIEW_TYPE_TASKS).find(inSidebar) ?? null;
+        if (!leaf) {
+            leaf = workspace.getRightLeaf(false);
+            if (!leaf) return;
+            await leaf.setViewState({ type: VIEW_TYPE_TASKS, active: true });
+        }
+        await workspace.revealLeaf(leaf);
+    }
+
     private registerTasksTabCommands() {
         const activeTasksTab = () => this.app.workspace.getActiveViewOfType(TasksTabView);
 
@@ -627,6 +643,12 @@ export default class HighlightCommentsPlugin extends Plugin {
             id: 'open-tasks-tab',
             name: t('commands.openTasksTab'),
             callback: () => void this.activateTasksTab()
+        });
+
+        this.addCommand({
+            id: 'open-tasks-sidebar',
+            name: t('commands.openTasksInSidebar'),
+            callback: () => void this.activateTasksInSidebar()
         });
 
         // From anywhere: opens the Tasks tab if it isn't up, then quick add.

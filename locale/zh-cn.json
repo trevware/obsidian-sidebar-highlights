@@ -1,7 +1,7 @@
 {
   "commands": {
     "createHighlight": "从选中文本创建高亮",
-    "toggle": "切换",
+    "toggle": "显示或隐藏高亮",
     "goToCollection": "转到{{name}}",
     "applyDisplayMode": "应用显示模式：{{name}}"
   },

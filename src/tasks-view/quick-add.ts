@@ -87,7 +87,11 @@ export class QuickAdd {
         if (prefill.destination || prefill.date || prefill.priority) {
             this.draft = { text: '', ignored: new Set(), ...prefill };
         }
-        if (!this.draft.destination) this.draft.destination = this.host.defaultDestination() ?? undefined;
+        // An empty draft goes where it's opened from; one with words in it
+        // keeps the note picked for them.
+        if (!this.draft.destination || (!prefill.destination && this.draft.text.trim() === '')) {
+            this.draft.destination = this.host.defaultDestination() ?? undefined;
+        }
 
         this.panel = this.container.createDiv({ cls: 'sh-glass sh-quickadd' });
         const field = this.panel.createDiv({ cls: 'sh-quickadd-field' });
@@ -108,6 +112,7 @@ export class QuickAdd {
         const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
         hint(foot, '↵', t('tasksTab.quickAdd.add'));
         hint(foot, '⌘↵', t('tasksTab.quickAdd.addAnother'));
+        hint(foot, '/', t('tasksTab.quickAdd.note'));
         hint(foot, 'esc', t('tasksTab.quickAdd.close'));
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
@@ -219,11 +224,15 @@ export class QuickAdd {
 
         const destination = this.draft.destination;
         this.chip(chips, 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
-            () => this.host.chooseDestination((chosen) => {
-                this.draft.destination = chosen;
-                this.refresh();
-                this.input?.focus({ preventScroll: true });
-            }));
+            () => this.chooseNote());
+    }
+
+    private chooseNote(): void {
+        this.host.chooseDestination((chosen) => {
+            this.draft.destination = chosen;
+            this.refresh();
+            this.input?.focus({ preventScroll: true });
+        });
     }
 
     private chip(parent: HTMLElement, icon: string, label: string, set: boolean, onClick: (chip: HTMLElement) => void, onClear?: () => void): HTMLElement {
@@ -327,13 +336,21 @@ export class QuickAdd {
         const inTab = !active || active === document.body || this.container.contains(active);
         const otherField = active !== this.input && active instanceof HTMLElement
             && active.closest('input, textarea, [contenteditable="true"]') !== null;
+        // A chip has focus: Enter and Space press it, as on any button.
+        const onChip = active instanceof HTMLButtonElement && this.panel?.contains(active) === true;
+        if (event.key === 'Tab' && inTab && !otherField) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.cycleFocus(active, event.shiftKey);
+            return;
+        }
         if (event.key === 'Escape' && inTab) {
             event.preventDefault();
             event.stopPropagation();
             this.close(true);
             return;
         }
-        if (event.key === 'Enter' && !event.isComposing && inTab && !otherField) {
+        if (event.key === 'Enter' && !event.isComposing && inTab && !otherField && !onChip) {
             event.preventDefault();
             event.stopPropagation();
             void this.submit(event.metaKey || event.ctrlKey);
@@ -341,8 +358,18 @@ export class QuickAdd {
         }
         if (active !== this.input) {
             const typing = event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
-            if (typing && inTab && !otherField) this.input.focus({ preventScroll: true });
+            if (typing && event.key !== ' ' && inTab && !otherField) this.input.focus({ preventScroll: true });
             return;
+        }
+
+        // A slash starting a word picks the note, the way Todoist's # picks a project.
+        if (event.key === '/' && !event.metaKey && !event.ctrlKey && this.input.selectionStart === this.input.selectionEnd) {
+            const before = this.input.value.slice(0, this.input.selectionStart ?? 0);
+            if (before === '' || /\s$/.test(before)) {
+                event.preventDefault();
+                this.chooseNote();
+                return;
+            }
         }
 
         // Backspace right after a recognised phrase turns it back into text,
@@ -356,6 +383,15 @@ export class QuickAdd {
                 this.refresh();
             }
         }
+    }
+
+    /** Tab and Shift-Tab go round the field and the chips, and stay in the panel. */
+    private cycleFocus(active: Element | null, back: boolean): void {
+        if (!this.input || !this.panel) return;
+        const stops: HTMLElement[] = [this.input, ...Array.from(this.panel.querySelectorAll<HTMLElement>('button.sh-chip'))];
+        const at = stops.findIndex(stop => stop === active);
+        const next = at === -1 ? 0 : (at + (back ? -1 : 1) + stops.length) % stops.length;
+        stops[next].focus({ preventScroll: true });
     }
 
     private async submit(keepOpen: boolean): Promise<void> {

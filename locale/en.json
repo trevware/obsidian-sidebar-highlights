@@ -1,10 +1,11 @@
 {
   "commands": {
     "createHighlight": "Create highlight from selection",
-    "toggle": "Toggle",
+    "toggle": "Show or hide highlights",
     "goToCollection": "Go to {{name}}",
     "applyDisplayMode": "Apply display mode: {{name}}",
     "openTasksTab": "Open tasks",
+    "openTasksInSidebar": "Open tasks in the sidebar",
     "tasksQuickAdd": "Add a task",
     "tasksSearch": "Search tasks"
   },
@@ -496,6 +497,9 @@
       "thisNote": "Open a note to see its tasks here."
     },
     "showMore": "Show {{count}} more",
+    "hints": {
+      "openCard": "Click a task again to open it. Right-click it for everything else."
+    },
     "card": {
       "noContext": "No notes under this task.",
       "addNotes": "Add notes",
@@ -574,6 +578,7 @@
       "previewEmpty": "Your task",
       "add": "add",
       "addAnother": "add and keep going",
+      "note": "note",
       "close": "close",
       "destinationPlaceholder": "Find a note or heading…",
       "addTo": "Add to"
@@ -591,6 +596,8 @@
       "prioritySetMany": "Set priority on {{count}} tasks",
       "dateSetOne": "Rescheduled “{{task}}”",
       "dateSetMany": "Rescheduled {{count}} tasks",
+      "dateAddedOne": "Scheduled “{{task}}”",
+      "dateAddedMany": "Scheduled {{count}} tasks",
       "dateRemovedOne": "Removed the date from “{{task}}”",
       "dateRemovedMany": "Removed the date from {{count}} tasks",
       "copiedOne": "Copied “{{task}}”",
