@@ -82,15 +82,32 @@ export function taskKey(task: Pick<Task, 'filePath' | 'lineNumber'>): string {
 }
 
 /**
+ * A list's own Display defaults. Today and Upcoming put the most important
+ * task of each day first; everything else keeps the note's order.
+ */
+export function listDefaults(ref: ListRef): DisplayOptions {
+    const byDay = ref.kind === 'smart' && (ref.id === 'today' || ref.id === 'upcoming');
+    return byDay ? { ...DEFAULT_DISPLAY, sort: 'priority' } : DEFAULT_DISPLAY;
+}
+
+/** Due by today, or written in today's daily note without a date of its own. */
+function dueToday(task: Task, today: string, dailyNote?: string | null): boolean {
+    if (task.date) return task.date <= today;
+    return !!dailyNote && task.filePath === dailyNote;
+}
+
+/**
  * The tasks a list holds. `lingering` keeps just-completed tasks in place for
- * a moment, so a tick is seen landing before the row leaves.
+ * a moment, so a tick is seen landing before the row leaves. `dailyNote` is
+ * today's daily note, whose undated tasks count as today's.
  */
 export function tasksForList(
     all: readonly Task[],
     ref: ListRef,
     today: string,
     display: DisplayOptions,
-    lingering: ReadonlySet<string> = new Set()
+    lingering: ReadonlySet<string> = new Set(),
+    dailyNote?: string | null
 ): Task[] {
     const keep = (task: Task, test: boolean) => test || lingering.has(taskKey(task));
 
@@ -100,7 +117,7 @@ export function tasksForList(
 
     switch (ref.id) {
         case 'today':
-            return all.filter(task => keep(task, isOpenTask(task) && !!task.date && task.date <= today));
+            return all.filter(task => keep(task, isOpenTask(task) && dueToday(task, today, dailyNote)));
         case 'upcoming':
             return all.filter(task => keep(task, isOpenTask(task) && !!task.date && task.date > today));
         case 'anytime':
@@ -123,7 +140,7 @@ export interface ListCounts {
     questions: number;
 }
 
-export function listCounts(all: readonly Task[], today: string): ListCounts {
+export function listCounts(all: readonly Task[], today: string, dailyNote?: string | null): ListCounts {
     const counts: ListCounts = { today: 0, overdue: 0, upcoming: 0, anytime: 0, inProgress: 0, questions: 0 };
     for (const task of all) {
         if (!isOpenTask(task)) continue;
@@ -135,6 +152,8 @@ export function listCounts(all: readonly Task[], today: string): ListCounts {
             if (task.date < today) counts.overdue++;
             if (task.date <= today) counts.today++;
             else counts.upcoming++;
+        } else if (dueToday(task, today, dailyNote)) {
+            counts.today++;
         }
     }
     return counts;
@@ -192,13 +211,21 @@ function compareFileOrder(a: Task, b: Task): number {
     return a.filePath.localeCompare(b.filePath) || a.lineNumber - b.lineNumber;
 }
 
+function comparePriority(a: Task, b: Task): number {
+    return (a.priority ?? 9) - (b.priority ?? 9);
+}
+
+function compareDate(a: Task, b: Task): number {
+    return (a.date ?? '9999').localeCompare(b.date ?? '9999');
+}
+
 function sortTasks(tasks: Task[], sort: SortMode): Task[] {
     const sorted = [...tasks];
     switch (sort) {
         case 'priority':
-            return sorted.sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9) || compareFileOrder(a, b));
+            return sorted.sort((a, b) => comparePriority(a, b) || compareDate(a, b) || compareFileOrder(a, b));
         case 'date':
-            return sorted.sort((a, b) => (a.date ?? '9999').localeCompare(b.date ?? '9999') || compareFileOrder(a, b));
+            return sorted.sort((a, b) => compareDate(a, b) || comparePriority(a, b) || compareFileOrder(a, b));
         case 'alpha':
             return sorted.sort((a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: 'base' }) || compareFileOrder(a, b));
         default:
@@ -227,14 +254,22 @@ export function completedLast(tasks: readonly Task[], isFinished: Settle): Task[
 }
 
 /**
- * Sorted and nested for display. Sub-tasks stay under their parent only in
- * file order: any other sort scatters a family, so it lays them out flat.
+ * Sorted and nested for display. A family sorts as one, by its top task,
+ * and its subtasks stay under it in the note's order.
  */
 function arrange(tasks: Task[], sort: SortMode, settle?: Settle): Task[] {
-    const sorted = sortTasks(tasks, sort);
-    const laidOut = sort === 'file'
-        ? normalizeVisibleNesting(sorted)
-        : sorted.map(task => (task.indentLevel === 0 ? task : { ...task, indentLevel: 0 }));
+    const nested = normalizeVisibleNesting([...tasks].sort(compareFileOrder));
+    const families = new Map<Task, Task[]>();
+    let family: Task[] | null = null;
+    for (const task of nested) {
+        if (task.indentLevel === 0 || !family) {
+            family = [task];
+            families.set(task, family);
+        } else {
+            family.push(task);
+        }
+    }
+    const laidOut = sortTasks([...families.keys()], sort).flatMap(head => families.get(head) ?? [head]);
     return settle ? completedLast(laidOut, settle) : laidOut;
 }
 
@@ -332,7 +367,8 @@ export function buildGroups(
     labels: GroupLabels,
     notes: NoteInfo,
     locale?: string,
-    lingering: ReadonlySet<string> = new Set()
+    lingering: ReadonlySet<string> = new Set(),
+    dailyNote?: string | null
 ): TaskGroup[] {
     const mode = resolveGroupMode(ref, display.group);
     const notePath = ref.kind === 'note' ? ref.path : undefined;
@@ -394,10 +430,11 @@ export function buildGroups(
     }
 
     if (mode === 'date') {
+        const fromDaily = (task: Task) => !task.date && !!dailyNote && task.filePath === dailyNote;
         const overdue = tasks.filter(task => task.date && task.date < today);
-        const dueToday = tasks.filter(task => task.date === today);
+        const dueToday = tasks.filter(task => task.date === today || fromDaily(task));
         const future = tasks.filter(task => task.date && task.date > today);
-        const undated = tasks.filter(task => !task.date);
+        const undated = tasks.filter(task => !task.date && !fromDaily(task));
 
         const groups: TaskGroup[] = [];
         if (overdue.length > 0) {
@@ -423,8 +460,10 @@ export function buildGroups(
             else buckets.set(bucket.key, { bucket, tasks: [task] });
         }
         for (const { bucket, tasks: list } of buckets.values()) {
-            // Days keep file order inside them; wider buckets read better by date.
-            const sort = display.sort === 'file' && !bucket.key.startsWith('day:') ? 'date' : display.sort;
+            // Days keep the chosen order inside them; wider buckets read better
+            // by date, with priority breaking ties.
+            const wide = !bucket.key.startsWith('day:');
+            const sort = wide && (display.sort === 'file' || display.sort === 'priority') ? 'date' : display.sort;
             groups.push({
                 key: bucket.key, kind: 'date', title: bucket.title, subtitle: bucket.subtitle,
                 sections: single(bucket.key, list, sort, settle), count: list.length,

@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -282,6 +282,73 @@ describe('task-views', () => {
             { folder: '', notes: [{ path: 'Inbox.md', name: 'Inbox', open: 1 }] },
             { folder: 'Work', notes: [{ path: 'Work/Note.md', name: 'Note', open: 4 }, { path: 'Work/recent.md', name: 'recent', open: 1 }] }
         ]);
+    });
+});
+
+describe('today\'s daily note', () => {
+    const daily = `Daily/${TODAY}.md`;
+    const tasks = [
+        task({ text: 'Water the plants', filePath: daily, lineNumber: 1 }),
+        task({ text: 'Dated in daily', filePath: daily, lineNumber: 2, date: '2026-10-30' }),
+        task({ text: 'Undated elsewhere', lineNumber: 3 }),
+        task({ text: 'Old daily', filePath: 'Daily/2026-10-20.md', lineNumber: 1 })
+    ];
+    const today = { kind: 'smart' as const, id: 'today' as const };
+
+    it('puts its undated tasks in Today', () => {
+        expect(tasksForList(tasks, today, TODAY, DEFAULT_DISPLAY, new Set(), daily).map(t => t.text)).toEqual(['Water the plants']);
+        expect(tasksForList(tasks, today, TODAY, DEFAULT_DISPLAY).map(t => t.text)).toEqual([]);
+    });
+
+    it('counts them in Today', () => {
+        expect(listCounts(tasks, TODAY, daily).today).toBe(1);
+        expect(listCounts(tasks, TODAY).today).toBe(0);
+    });
+
+    it('shows them under Today, not No date', () => {
+        const list = tasksForList(tasks, today, TODAY, DEFAULT_DISPLAY, new Set(), daily);
+        const groups = buildGroups(list, today, TODAY, DEFAULT_DISPLAY, labels, notes, 'en-GB', new Set(), daily);
+        expect(groups.map(g => [g.title, g.count])).toEqual([['Today', 1]]);
+    });
+});
+
+describe('sorting', () => {
+    const texts = (groups: ReturnType<typeof buildGroups>) => groups.flatMap(g => g.sections.flatMap(s => s.tasks.map(t => `${'  '.repeat(t.indentLevel)}${t.text}`)));
+
+    it('keeps subtasks under their parent when sorted by priority', () => {
+        const ref = { kind: 'note' as const, path: 'Work/Note.md' };
+        const list = [
+            task({ text: 'Quotes', lineNumber: 1 }),
+            task({ text: 'Quote A', lineNumber: 2, indentLevel: 1, parentLine: 1 }),
+            task({ text: 'Quote B', lineNumber: 3, indentLevel: 1, parentLine: 1, priority: 1 }),
+            task({ text: 'Urgent', lineNumber: 4, priority: 1 })
+        ];
+        const display = { ...DEFAULT_DISPLAY, sort: 'priority' as const };
+        expect(texts(buildGroups(list, ref, TODAY, display, labels, notes))).toEqual(['Urgent', 'Quotes', '  Quote A', '  Quote B']);
+    });
+
+    it('orders Today and Upcoming by priority within each day', () => {
+        const ref = { kind: 'smart' as const, id: 'today' as const };
+        const list = [
+            task({ text: 'Plain', date: TODAY, lineNumber: 1 }),
+            task({ text: 'Second', date: TODAY, lineNumber: 2, priority: 2 }),
+            task({ text: 'First', date: TODAY, lineNumber: 3, filePath: 'Inbox.md', priority: 1 })
+        ];
+        const display = { ...DEFAULT_DISPLAY, ...listDefaults(ref) };
+        expect(texts(buildGroups(list, ref, TODAY, display, labels, notes))).toEqual(['First', 'Second', 'Plain']);
+        expect(listDefaults({ kind: 'smart', id: 'upcoming' }).sort).toBe('priority');
+        expect(listDefaults({ kind: 'note', path: 'Work/Note.md' }).sort).toBe('file');
+    });
+
+    it('keeps weeks ahead in date order, priority breaking ties', () => {
+        const ref = { kind: 'smart' as const, id: 'upcoming' as const };
+        const list = [
+            task({ text: 'Later plain', date: '2026-11-12', lineNumber: 1 }),
+            task({ text: 'Sooner', date: '2026-11-10', lineNumber: 2 }),
+            task({ text: 'Later urgent', date: '2026-11-12', lineNumber: 3, priority: 1 })
+        ];
+        const display = { ...DEFAULT_DISPLAY, ...listDefaults(ref) };
+        expect(texts(buildGroups(list, ref, TODAY, display, labels, notes))).toEqual(['Sooner', 'Later urgent', 'Later plain']);
     });
 });
 
