@@ -5,6 +5,29 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-27
+
+### Added
+- **A new Tasks tab gathers every checkbox in your vault.** Open it with **Open tasks** from the ribbon or the command palette. Today, Upcoming, All Open, In Progress, Questions and Done sit down the left, along with every note that has open tasks, grouped by folder and listed under the note's own headings. Each task stays in the note where you wrote it, so ticking, dating or moving one changes that line and nothing else.
+- **Quick add reads dates and priorities as you type.** Press **Q** or **+** and type it the way you'd say it: `Call the dentist fri p1` is due Friday with priority 1. Typing `/` picks another note or a heading. Otherwise the task goes to the note you're looking at, or to wherever you added the last one.
+- **You can move tasks under another heading, or drag them where you want them.** **Move to heading** (press **M**, or find it in the right-click menu) lists the note's headings and can make a new one at the top or bottom of the note. Dragging reorders tasks within their note, and the heading a task will land under lights up as you go.
+- **Click a task, then click it again, to open its card.** The notes written under the task are right there to edit, with its date, priority and status.
+- **⌘K searches tasks, notes and commands, and ? lists every shortcut.** Any change can be undone from the message at the bottom, or with ⌘Z.
+- **This Note follows whichever note you're reading.** **Open tasks in the sidebar** puts the Tasks tab in the right sidebar, where it starts on This Note.
+- **Today counts the undated tasks in today's daily note**, and puts each day's most important task first.
+- **Alternate checkboxes from themes like Minimal count as tasks**, each with its own icon. `- [>]`, `- [!]` and the rest show up in the Tasks tab under their own names.
+- **The Tasks tab and the highlight cards work on your phone.** Press and hold a task or a highlight for the menu a right-click opens on a computer, which is also where you recolour a highlight on a phone.
+- **Every setting turns up in Obsidian's settings search.** Type "status bar" or "backups" into the search box at the top of Settings and jump straight to it.
+
+### Changed
+- **Sidebar Highlights is now Sidebar Highlights and Tasks.** It's the same plugin with the same highlights and collections, and its settings now live under Settings → Sidebar Highlights and Tasks.
+- **The new Tasks tab replaces the old one in the highlights sidebar.** The settings only the old tab used went with it, along with the task count in the status bar. **Due date format** and hiding Tasks plugin metadata stay, under Settings → Sidebar Highlights and Tasks → Tasks.
+- **You'll need Obsidian 1.13 or later.** On an older Obsidian you stay on 1.43.0, and the update arrives once you update Obsidian.
+- **The settings page is grouped the way Obsidian's own pages are.** Colors and Color names are now sections of their own, and a number outside its range shows a message under the field and isn't saved.
+- **Deleting a collection and restoring a backup ask first, in an Obsidian dialog.** That includes **Restore latest**.
+- **The Toggle command is now called Show or hide highlights.**
+- **Group headings in the highlights sidebar show as written**, without the capitals.
+
 ## [1.43.0] - 2026-10-19
 
 ### Added
