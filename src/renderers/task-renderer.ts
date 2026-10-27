@@ -155,8 +155,8 @@ export class TaskRenderer {
         // Handle backslash escaping
         const escapeMap = new Map<string, string>();
         let escapeCounter = 0;
-        text = text.replace(/\\([*_~`[\]\\=])/g, (match, char) => {
-            const placeholder = `\u0000ESC${escapeCounter}\u0000`;
+        text = text.replace(/\\([*_~`[\]\\=])/g, (_match: string, char: string) => {
+            const placeholder = `\uE000ESC${escapeCounter}\uE000`;
             escapeMap.set(placeholder, char);
             escapeCounter++;
             return placeholder;
@@ -228,8 +228,8 @@ export class TaskRenderer {
         for (const match of nonOverlapping) {
             if (match.start > lastEnd) {
                 let textSegment = text.substring(lastEnd, match.start);
-                textSegment = textSegment.replace(/\u0000ESC(\d+)\u0000/g, (_, num) => {
-                    const placeholder = `\u0000ESC${num}\u0000`;
+                textSegment = textSegment.replace(/\uE000ESC(\d+)\uE000/g, (_: string, num: string) => {
+                    const placeholder = `\uE000ESC${num}\uE000`;
                     return escapeMap.get(placeholder) || placeholder;
                 });
                 segments.push({ type: 'text', content: textSegment });
@@ -237,8 +237,8 @@ export class TaskRenderer {
 
             let content = match.content;
             if (content) {
-                content = content.replace(/\u0000ESC(\d+)\u0000/g, (_, num) => {
-                    const placeholder = `\u0000ESC${num}\u0000`;
+                content = content.replace(/\uE000ESC(\d+)\uE000/g, (_: string, num: string) => {
+                    const placeholder = `\uE000ESC${num}\uE000`;
                     return escapeMap.get(placeholder) || placeholder;
                 });
             }
@@ -255,8 +255,8 @@ export class TaskRenderer {
 
         if (lastEnd < text.length) {
             let textSegment = text.substring(lastEnd);
-            textSegment = textSegment.replace(/\u0000ESC(\d+)\u0000/g, (_, num) => {
-                const placeholder = `\u0000ESC${num}\u0000`;
+            textSegment = textSegment.replace(/\uE000ESC(\d+)\uE000/g, (_: string, num: string) => {
+                const placeholder = `\uE000ESC${num}\uE000`;
                 return escapeMap.get(placeholder) || placeholder;
             });
             segments.push({ type: 'text', content: textSegment });

@@ -489,7 +489,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     }
 
     async loadSettings() {
-        const loadedData = await this.loadData();
+        const loadedData = (await this.loadData()) as StoredPluginData | null;
 
         // For safety, only migrate if we detect a genuine old version
         // If data exists but has no settingsVersion, assume it's 1.14.0 (current) to prevent data loss
@@ -1002,7 +1002,7 @@ export default class HighlightCommentsPlugin extends Plugin {
                 if (file.endsWith('.json') && file.includes('data-backup-')) {
                     try {
                         const content = await this.app.vault.adapter.read(file);
-                        const data = JSON.parse(content);
+                        const data = JSON.parse(content) as StoredPluginData;
                         backups.push({
                             path: file,
                             filename: file.split('/').pop() || file,
@@ -1813,7 +1813,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.deferredSave.cancel();
 
             // Load external settings
-            const externalSettings = await this.loadData();
+            const externalSettings = (await this.loadData()) as StoredPluginData | null;
             
             // Only migrate if we have an explicit older version
             if (externalSettings && 
@@ -3304,7 +3304,7 @@ class CustomPatternModal extends Modal {
             try {
                 new RegExp(pattern, 'g');
             } catch (e) {
-                new Notice(t('modals.customPattern.invalidRegex') + ': ' + e.message);
+                new Notice(t('modals.customPattern.invalidRegex') + ': ' + (e instanceof Error ? e.message : String(e)));
                 return;
             }
 
@@ -3356,7 +3356,7 @@ class CustomPatternModal extends Modal {
                     return;
                 }
             } catch (e) {
-                new Notice('Pattern test failed: ' + e.message);
+                new Notice('Pattern test failed: ' + (e instanceof Error ? e.message : String(e)));
                 return;
             }
 
@@ -4227,7 +4227,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 const modal = new BackupSelectorModal(
                     this.app,
                     backups,
-                    this.plugin.countHighlightsInCollections.bind(this.plugin),
+                    (collections) => this.plugin.countHighlightsInCollections(collections),
                     async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
                         // Show confirmation before restoring
                         const backupToRestore = backups.find(b => b.path === backupPath);

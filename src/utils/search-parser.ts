@@ -95,12 +95,12 @@ export class SearchParser {
             }
 
             // Handle operators (AND, OR) - case sensitive only
-            if (query.substr(i, 3) === 'AND' && (i + 3 >= query.length || /\s/.test(query[i + 3]))) {
+            if (query.slice(i, i + 3) === 'AND' && (i + 3 >= query.length || /\s/.test(query[i + 3]))) {
                 tokens.push({ type: 'AND', value: 'AND' });
                 i += 3;
                 continue;
             }
-            if (query.substr(i, 2) === 'OR' && (i + 2 >= query.length || /\s/.test(query[i + 2]))) {
+            if (query.slice(i, i + 2) === 'OR' && (i + 2 >= query.length || /\s/.test(query[i + 2]))) {
                 tokens.push({ type: 'OR', value: 'OR' });
                 i += 2;
                 continue;
@@ -153,10 +153,10 @@ export class SearchParser {
             // Keep collecting text until we hit an operator, filter, or special character
             while (i < query.length) {
                 // Check if we're at the start of an operator
-                if (query.substr(i, 3) === 'AND' && (i + 3 >= query.length || /\s/.test(query[i + 3]))) {
+                if (query.slice(i, i + 3) === 'AND' && (i + 3 >= query.length || /\s/.test(query[i + 3]))) {
                     break;
                 }
-                if (query.substr(i, 2) === 'OR' && (i + 2 >= query.length || /\s/.test(query[i + 2]))) {
+                if (query.slice(i, i + 2) === 'OR' && (i + 2 >= query.length || /\s/.test(query[i + 2]))) {
                     break;
                 }
                 

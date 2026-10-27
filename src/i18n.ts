@@ -130,7 +130,7 @@ class I18n {
 	 * Supports {{variable}} syntax
 	 */
 	private interpolate(str: string, vars: Record<string, unknown>): string {
-		return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+		return str.replace(/\{\{(\w+)\}\}/g, (match: string, key: string) => {
 			return vars[key] !== undefined ? String(vars[key]) : match;
 		});
 	}

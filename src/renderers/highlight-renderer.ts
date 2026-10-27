@@ -327,20 +327,7 @@ export class HighlightRenderer {
                 await navigator.clipboard.writeText(textToCopy);
                 new Notice('Copied to clipboard');
             } catch {
-                // Fallback for browsers that don't support clipboard API
-                const textArea = createEl('textarea');
-                textArea.value = textToCopy;
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-999999px';
-                document.body.appendChild(textArea);
-                textArea.select();
-                try {
-                    document.execCommand('copy');
-                    new Notice('Copied to clipboard');
-                } catch {
-                    new Notice('Failed to copy to clipboard');
-                }
-                document.body.removeChild(textArea);
+                new Notice('Failed to copy to clipboard');
             }
         })());
 
@@ -520,8 +507,8 @@ export class HighlightRenderer {
         // First, handle backslash escaping by replacing escaped sequences with placeholders
         const escapeMap = new Map<string, string>();
         let escapeCounter = 0;
-        text = text.replace(/\\([*_~`[\]\\])/g, (match, char) => {
-            const placeholder = `\u0000ESC${escapeCounter}\u0000`;
+        text = text.replace(/\\([*_~`[\]\\])/g, (_match: string, char: string) => {
+            const placeholder = `\uE000ESC${escapeCounter}\uE000`;
             escapeMap.set(placeholder, char);
             escapeCounter++;
             return placeholder;

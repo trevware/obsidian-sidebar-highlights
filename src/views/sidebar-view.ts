@@ -40,6 +40,8 @@ interface CodeMirrorEditorView {
 
 const VIEW_TYPE_HIGHLIGHTS = 'highlights-sidebar';
 
+type SidebarGroupingMode = 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc';
+
 /**
  * Group key for the current-note tasks section. A constant rather than the file
  * name, so its collapsed state is a preference about the section itself.
@@ -51,7 +53,7 @@ export class HighlightsSidebarView extends ItemView {
     private listContainerEl!: HTMLElement;
     private contentAreaEl!: HTMLElement;
     private highlightCommentsVisible: Map<string, boolean> = new Map();
-    private groupingMode: 'none' | 'color' | 'comments-asc' | 'comments-desc' | 'tag' | 'parent' | 'collection' | 'filename' | 'heading' | 'date-created-asc' | 'date-created-desc' | 'date-asc' = 'none';
+    private groupingMode: SidebarGroupingMode = 'none';
     private sortMode: SortMode = 'none';
     /** Per-render cache of note creation times; null means the file was not resolvable. */
     private noteCreatedCache: Map<string, number | null> = new Map();
@@ -133,10 +135,11 @@ export class HighlightsSidebarView extends ItemView {
 
         // Load the type filter from vault-specific localStorage, honouring the state
         // stored by versions that only had a native-comments on/off toggle
-        const storedTypeFilter = this.plugin.app.loadLocalStorage('sidebar-highlights-type-filter');
+        const storedTypeFilter: unknown = this.plugin.app.loadLocalStorage('sidebar-highlights-type-filter');
+        const legacyNativeComments: unknown = this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments');
         this.typeFilter = (storedTypeFilter === 'all' || storedTypeFilter === 'highlights' || storedTypeFilter === 'comments')
             ? storedTypeFilter
-            : migrateLegacyTypeFilter(this.plugin.app.loadLocalStorage('sidebar-highlights-show-native-comments'));
+            : migrateLegacyTypeFilter(typeof legacyNativeComments === 'string' ? legacyNativeComments : null);
         // Load follow-editor-scroll state from vault-specific localStorage
         this.followEditorScroll = this.plugin.app.loadLocalStorage('sidebar-highlights-follow-editor-scroll') === 'true';
         // Load the Current folder tab's subfolder depth from vault-specific localStorage
@@ -150,7 +153,7 @@ export class HighlightsSidebarView extends ItemView {
     /**
      * Get default settings for a specific tab
      */
-    private getDefaultTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections'): { groupingMode: typeof this.groupingMode, sortMode: typeof this.sortMode, commentsExpanded: boolean, searchExpanded: boolean } {
+    private getDefaultTabSettings(viewMode: 'current' | 'folder' | 'all' | 'collections'): { groupingMode: SidebarGroupingMode, sortMode: SortMode, commentsExpanded: boolean, searchExpanded: boolean } {
         return {
             groupingMode: 'none',
             sortMode: 'none',
@@ -4957,32 +4960,14 @@ export class HighlightsSidebarView extends ItemView {
         await this.writeToClipboard(text, visible.length);
     }
 
-    /**
-     * Write text to the clipboard, falling back to a hidden textarea when the
-     * async clipboard API is unavailable or blocked.
-     */
+    /** Write text to the clipboard, and say whether it worked. */
     private async writeToClipboard(text: string, count: number) {
         try {
             await navigator.clipboard.writeText(text);
             new Notice(t('notices.copiedHighlights', { count }));
-            return;
-        } catch {
-            // Fall through to the textarea approach below.
-        }
-
-        const textArea = createEl('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-            document.execCommand('copy');
-            new Notice(t('notices.copiedHighlights', { count }));
         } catch {
             new Notice(t('notices.copyFailed'));
         }
-        document.body.removeChild(textArea);
     }
 
     /**
