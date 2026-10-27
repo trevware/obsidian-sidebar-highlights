@@ -1595,7 +1595,6 @@
 .task-text-content {
     flex: 1;
     min-width: 0;
-    word-wrap: break-word;
     overflow-wrap: break-word;
     overflow: visible;
     font-weight: inherit;
