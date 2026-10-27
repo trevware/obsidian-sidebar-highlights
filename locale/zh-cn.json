@@ -189,7 +189,7 @@
       "heading": "备份和恢复",
       "restoreLatest": {
         "name": "从备份恢复",
-        "desc": "从备份恢复包含高亮的收藏。Sidebar Highlights 会自动创建定期备份。收藏中不再存在于您笔记库中的高亮将不会被恢复。",
+        "desc": "从备份恢复包含高亮的收藏。Sidebar Highlights and Tasks 会自动创建定期备份。收藏中不再存在于您笔记库中的高亮将不会被恢复。",
         "button": "恢复最新"
       },
       "choose": {

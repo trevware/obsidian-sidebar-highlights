@@ -204,7 +204,7 @@
       "heading": "Backup and restore",
       "restoreLatest": {
         "name": "Restore from backup",
-        "desc": "Restore collections that contain highlights from a backup. Sidebar Highlights automatically creates periodic backups. Highlights in Collections that no longer exist in your vault will not be restored.",
+        "desc": "Restore collections that contain highlights from a backup. Sidebar Highlights and Tasks automatically creates periodic backups. Highlights in Collections that no longer exist in your vault will not be restored.",
         "button": "Restore latest"
       },
       "choose": {

@@ -1,4 +1,4 @@
-# Sidebar Highlights
+# Sidebar Highlights and Tasks
 
 Collect every highlight, comment and task in your vault into one sidebar, then find your way back to them. It works with Obsidian's own markdown: highlights are `==text==`, comments are footnotes, and nothing is stored in a format only this plugin can read.
 
@@ -9,7 +9,7 @@ Collect every highlight, comment and task in your vault into one sidebar, then f
 </p>
 
 <p align="center">
-  <b>Sidebar Highlights is free, and built in my spare time.</b><br>
+  <b>Sidebar Highlights and Tasks is free, and built in my spare time.</b><br>
   If it earns a place in your vault, sponsoring it on GitHub keeps it going.
 </p>
 
@@ -121,7 +121,7 @@ The Tasks tab collects every checkbox in the vault: `- [ ]`, `- [x]`, plus in-pr
 
 ## Settings worth knowing
 
-Everything lives under **Settings → Sidebar Highlights**.
+Everything lives under **Settings → Sidebar Highlights and Tasks**.
 
 - **Views**: which of the five tabs appear, and whether the status bar shows counts
 - **Display modes**: save your Display and Views settings as a named mode, and apply it from the command palette

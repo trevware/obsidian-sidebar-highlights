@@ -314,7 +314,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
         if ('registerHoverLinkSource' in this.app.workspace) {
             (this.app.workspace as unknown as WorkspaceWithHoverLinkSource).registerHoverLinkSource('sidebar-highlights', {
-                display: 'Sidebar Highlights',
+                display: 'Sidebar Highlights and Tasks',
                 defaultMod: true
             });
         }
@@ -1646,7 +1646,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             }
 
             if (recoveredCount > 0) {
-                new Notice(`Recovered ${recoveredCount} Sidebar Highlights backup(s) from your previous config folder.`);
+                new Notice(`Recovered ${recoveredCount} Sidebar Highlights and Tasks backup(s) from your previous config folder.`);
             }
         } catch (error) {
             console.error('Failed to recover backups from legacy config folder:', error);
