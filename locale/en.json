@@ -351,7 +351,10 @@
       "cancel": "Cancel",
       "create": "Create collection",
       "save": "Save changes",
-      "nameRequired": "Collection name is required"
+      "nameRequired": "Collection name is required",
+      "deleteTitle": "Delete collection?",
+      "deleteMessage": "Delete “{{name}}”? The highlights stay in your notes.",
+      "delete": "Delete"
     },
     "excludedFiles": {
       "title": "File filters",

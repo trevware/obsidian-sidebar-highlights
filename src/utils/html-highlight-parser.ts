@@ -301,8 +301,7 @@ export class HtmlHighlightParser {
             // Create temporary element to test the class
             const tempEl = createEl(tagName as keyof HTMLElementTagNameMap);
             tempEl.className = className;
-            tempEl.style.visibility = 'hidden';
-            tempEl.style.position = 'absolute';
+            tempEl.setCssStyles({ visibility: 'hidden', position: 'absolute' });
             document.body.appendChild(tempEl);
 
             // Get computed background color

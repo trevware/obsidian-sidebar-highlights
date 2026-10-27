@@ -16,8 +16,7 @@ export class NewCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: t('modals.collection.createTitle') });
-        titleEl.style.marginBottom = '20px';
+        contentEl.createDiv({ cls: 'modal-title sh-modal-heading', text: t('modals.collection.createTitle') });
 
         new Setting(contentEl)
             .setName(t('modals.collection.nameLabel'))
@@ -103,8 +102,7 @@ export class EditCollectionModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
 
-        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: t('modals.collection.editTitle') });
-        titleEl.style.marginBottom = '20px';
+        contentEl.createDiv({ cls: 'modal-title sh-modal-heading', text: t('modals.collection.editTitle') });
 
         new Setting(contentEl)
             .setName(t('modals.collection.nameLabel'))

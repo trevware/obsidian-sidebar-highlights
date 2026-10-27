@@ -18,6 +18,7 @@ import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from '
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
 import { i18n, t } from './src/i18n';
+import { confirmAction } from './src/modals/confirm-modal';
 
 export interface Highlight {
     id: string;
@@ -3224,8 +3225,7 @@ class CustomPatternModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: this.pattern ? t('modals.customPattern.editTitle') : t('modals.customPattern.addTitle') });
-        titleEl.style.marginBottom = '20px';
+        contentEl.createDiv({ cls: 'modal-title sh-modal-heading', text: this.pattern ? t('modals.customPattern.editTitle') : t('modals.customPattern.addTitle') });
 
         // Name input (Setting component adds divider automatically)
         new Setting(contentEl)
@@ -3258,8 +3258,7 @@ class CustomPatternModal extends Modal {
                 text.setValue(this.pattern?.pattern || '')
                     .setPlaceholder(t('modals.customPattern.patternPlaceholder'))
                     .then(textComponent => {
-                        textComponent.inputEl.style.width = '100%';
-                        textComponent.inputEl.style.fontFamily = 'monospace';
+                        textComponent.inputEl.addClass('sh-pattern-input');
                     });
             });
 
@@ -3275,11 +3274,7 @@ class CustomPatternModal extends Modal {
             });
 
         // Buttons
-        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.gap = '10px';
-        buttonContainer.style.marginTop = '20px';
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container sh-modal-buttons' });
 
         const cancelButton = buttonContainer.createEl('button', { text: t('modals.customPattern.cancel') });
         cancelButton.addEventListener('click', () => this.close());
@@ -3387,8 +3382,7 @@ class DisplayModeNameModal extends Modal {
         contentEl.empty();
 
         // Set the modal title (appears in upper left corner)
-        const titleEl = contentEl.createDiv({ cls: 'modal-title', text: this.currentName ? t('modals.displayMode.renameTitle') : t('modals.displayMode.createTitle') });
-        titleEl.style.marginBottom = '20px';
+        contentEl.createDiv({ cls: 'modal-title sh-modal-heading', text: this.currentName ? t('modals.displayMode.renameTitle') : t('modals.displayMode.createTitle') });
 
         new Setting(contentEl)
             .setName(t('modals.displayMode.nameLabel'))
@@ -3407,11 +3401,7 @@ class DisplayModeNameModal extends Modal {
             });
 
         // Buttons
-        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.gap = '10px';
-        buttonContainer.style.marginTop = '20px';
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container sh-modal-buttons' });
 
         const cancelButton = buttonContainer.createEl('button', { text: t('modals.displayMode.cancel') });
         cancelButton.addEventListener('click', () => this.close());
@@ -3978,16 +3968,7 @@ class HighlightSettingTab extends PluginSettingTab {
         // Create heading with experimental badge
         const customPatternsHeadingName = createFragment();
         customPatternsHeadingName.append(t('settings.detection.customPatterns.heading') + ' ');
-        const headingBadge = createSpan();
-        headingBadge.textContent = t('settings.detection.customPatterns.experimental');
-        headingBadge.style.fontSize = '0.8em';
-        headingBadge.style.padding = '2px 6px';
-        headingBadge.style.borderRadius = '3px';
-        headingBadge.style.backgroundColor = 'var(--interactive-accent)';
-        headingBadge.style.color = 'var(--text-on-accent)';
-        headingBadge.style.fontWeight = '500';
-        headingBadge.style.marginLeft = '6px';
-        customPatternsHeadingName.appendChild(headingBadge);
+        customPatternsHeadingName.appendChild(createSpan({ cls: 'sh-badge', text: t('settings.detection.customPatterns.experimental') }));
 
         new Setting(containerEl).setHeading().setName(customPatternsHeadingName);
 
@@ -4193,11 +4174,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 modal.titleEl.setText(t('settings.backupRestore.confirmTitle'));
                 modal.contentEl.createEl('p', { text: message });
 
-                const buttonContainer = modal.contentEl.createDiv({ cls: 'modal-button-container' });
-                buttonContainer.style.marginTop = '20px';
-                buttonContainer.style.display = 'flex';
-                buttonContainer.style.justifyContent = 'flex-end';
-                buttonContainer.style.gap = '10px';
+                const buttonContainer = modal.contentEl.createDiv({ cls: 'modal-button-container sh-modal-buttons' });
 
                 const cancelBtn = buttonContainer.createEl('button', { text: t('settings.backupRestore.cancel') });
                 cancelBtn.addEventListener('click', () => modal.close());
@@ -4243,30 +4220,13 @@ class HighlightSettingTab extends PluginSettingTab {
                             date
                         });
 
-                        // Create confirmation modal
-                        const confirmModal = new Modal(this.app);
-                        confirmModal.titleEl.setText(t('settings.backupRestore.confirmTitle'));
-                        confirmModal.contentEl.createEl('p', { text: message });
-
-                        const buttonContainer = confirmModal.contentEl.createDiv({ cls: 'modal-button-container' });
-                        buttonContainer.style.marginTop = '20px';
-                        buttonContainer.style.display = 'flex';
-                        buttonContainer.style.justifyContent = 'flex-end';
-                        buttonContainer.style.gap = '10px';
-
-                        const cancelBtn = buttonContainer.createEl('button', { text: t('settings.backupRestore.cancel') });
-                        cancelBtn.addEventListener('click', () => confirmModal.close());
-
-                        const restoreBtn = buttonContainer.createEl('button', {
-                            text: t('settings.backupRestore.restore'),
-                            cls: 'mod-cta'
+                        const confirmed = await confirmAction(this.app, {
+                            title: t('settings.backupRestore.confirmTitle'),
+                            message,
+                            confirm: t('settings.backupRestore.restore'),
+                            cancel: t('settings.backupRestore.cancel')
                         });
-                        restoreBtn.addEventListener('click', () => void (async () => {
-                            confirmModal.close();
-                            await performRestore(backupPath, collectionsCount, highlightsCount);
-                        })());
-
-                        confirmModal.open();
+                        if (confirmed) await performRestore(backupPath, collectionsCount, highlightsCount);
                     }
                 );
 
@@ -4436,7 +4396,13 @@ class CollectionsManager {
         const collection = this.plugin.collections.get(collectionId);
         if (!collection) return false;
 
-        const confirmed = confirm(`Are you sure you want to delete "${collection.name}"?`);
+        const confirmed = await confirmAction(this.plugin.app, {
+            title: t('modals.collection.deleteTitle'),
+            message: t('modals.collection.deleteMessage', { name: collection.name }),
+            confirm: t('modals.collection.delete'),
+            cancel: t('modals.collection.cancel'),
+            destructive: true
+        });
         if (confirmed) {
             this.deleteCollection(collectionId);
             return true;

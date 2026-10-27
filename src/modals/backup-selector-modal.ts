@@ -28,35 +28,26 @@ export class BackupSelectorModal extends Modal {
         contentEl.empty();
 
         // Set the modal title
-        const titleEl = contentEl.createDiv({
-            cls: 'modal-title',
+        contentEl.createDiv({
+            cls: 'modal-title sh-modal-heading',
             text: t('modals.backupSelector.title')
         });
-        titleEl.style.marginBottom = '20px';
 
         // Add divider after title
         if (this.backups.length > 0) {
-            const divider = contentEl.createDiv();
-            divider.style.borderTop = '1px solid var(--background-modifier-border)';
-            divider.style.marginBottom = '20px';
+            contentEl.createDiv({ cls: 'sh-modal-divider' });
         }
 
         // Render backup list
         if (this.backups.length === 0) {
-            const emptyState = contentEl.createDiv({ cls: 'setting-item-description' });
+            const emptyState = contentEl.createDiv({ cls: 'setting-item-description sh-backup-empty' });
             emptyState.setText(t('settings.backupRestore.noBackups'));
-            emptyState.style.textAlign = 'center';
-            emptyState.style.padding = '20px';
         } else {
             this.renderBackupList(contentEl);
         }
 
         // Bottom buttons
-        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container' });
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'flex-end';
-        buttonContainer.style.gap = '10px';
-        buttonContainer.style.marginTop = '20px';
+        const buttonContainer = contentEl.createDiv({ cls: 'modal-button-container sh-modal-buttons' });
 
         const cancelBtn = buttonContainer.createEl('button', {
             text: t('settings.backupRestore.cancel')
@@ -81,23 +72,13 @@ export class BackupSelectorModal extends Modal {
     }
 
     private renderBackupList(containerEl: HTMLElement) {
-        const listContainer = containerEl.createDiv({ cls: 'backup-list' });
-        listContainer.style.maxHeight = '400px';
-        listContainer.style.overflowY = 'auto';
+        const listContainer = containerEl.createDiv({ cls: 'backup-list sh-backup-list' });
 
         this.backups.forEach((backup) => {
             const collectionsCount = Object.keys(backup.data.collections || {}).length;
             const highlightsCount = this.countHighlights(backup.data.collections || {});
 
-            const itemEl = listContainer.createDiv({ cls: 'backup-item' });
-            itemEl.style.padding = '6px 8px';
-            itemEl.style.cursor = 'pointer';
-            itemEl.style.borderRadius = '4px';
-            itemEl.style.marginBottom = '2px';
-            itemEl.style.display = 'flex';
-            itemEl.style.justifyContent = 'space-between';
-            itemEl.style.alignItems = 'center';
-            itemEl.style.transition = 'background-color 0.1s ease';
+            const itemEl = listContainer.createDiv({ cls: 'backup-item sh-backup-item' });
 
             // Format the date
             const dateStr = this.formatBackupDate(backup.data.backupCreatedAt);
@@ -106,67 +87,33 @@ export class BackupSelectorModal extends Modal {
             const typeLabel = this.getBackupTypeLabel(backup.data.backupReason);
 
             // Content container
-            const contentDiv = itemEl.createDiv();
-            contentDiv.style.flex = '1';
+            const contentDiv = itemEl.createDiv({ cls: 'sh-backup-item-body' });
 
             // Row 1: Date
-            const dateLine = contentDiv.createDiv();
-            dateLine.setText(dateStr);
-            dateLine.style.fontWeight = '500';
+            contentDiv.createDiv({ cls: 'sh-backup-date', text: dateStr });
 
             // Row 2: Type (Manual/Automatic)
-            const typeLine = contentDiv.createDiv();
-            typeLine.setText(typeLabel);
-            typeLine.style.fontSize = 'var(--font-ui-small)';
-            typeLine.style.color = 'var(--text-muted)';
-            typeLine.style.marginTop = '2px';
+            contentDiv.createDiv({ cls: 'sh-backup-meta', text: typeLabel });
 
-            // Row 3: Stats
-            const statsLine = contentDiv.createDiv();
-            statsLine.style.fontSize = 'var(--font-ui-small)';
-            statsLine.style.color = 'var(--text-muted)';
-            statsLine.style.marginTop = '2px';
-
-            // Create stats with highlighted numbers
-            const collectionsSpan = statsLine.createSpan();
-            collectionsSpan.style.color = 'var(--text-normal)';
-            collectionsSpan.setText(collectionsCount.toString());
+            // Row 3: Stats, with the numbers in the normal text colour
+            const statsLine = contentDiv.createDiv({ cls: 'sh-backup-meta' });
+            statsLine.createSpan({ cls: 'sh-backup-count', text: collectionsCount.toString() });
 
             statsLine.appendText(' Collections • ');
 
-            const highlightsSpan = statsLine.createSpan();
-            highlightsSpan.style.color = 'var(--text-normal)';
-            highlightsSpan.setText(highlightsCount.toString());
+            statsLine.createSpan({ cls: 'sh-backup-count', text: highlightsCount.toString() });
 
             statsLine.appendText(' Collection Highlights');
 
             // Click handler
             itemEl.addEventListener('click', () => {
-                // Deselect all items
-                listContainer.querySelectorAll('.backup-item').forEach(item => {
-                    (item as HTMLElement).style.backgroundColor = '';
-                });
-
-                // Select this item
-                itemEl.style.backgroundColor = 'var(--background-modifier-hover)';
+                listContainer.querySelectorAll('.backup-item').forEach(item => item.removeClass('is-selected'));
+                itemEl.addClass('is-selected');
                 this.selectedBackup = backup;
 
                 // Enable restore button
                 if (this.restoreButton) {
                     this.restoreButton.disabled = false;
-                }
-            });
-
-            // Hover effect
-            itemEl.addEventListener('mouseenter', () => {
-                if (this.selectedBackup !== backup) {
-                    itemEl.style.backgroundColor = 'var(--background-modifier-hover)';
-                }
-            });
-
-            itemEl.addEventListener('mouseleave', () => {
-                if (this.selectedBackup !== backup) {
-                    itemEl.style.backgroundColor = '';
                 }
             });
         });

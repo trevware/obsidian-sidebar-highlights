@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, P
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
+import { confirmAction } from '../modals/confirm-modal';
 import { DropdownManager, DropdownItem } from '../managers/dropdown-manager';
 import { HighlightRenderer, HighlightRenderOptions } from '../renderers/highlight-renderer';
 import { InlineFootnoteManager } from '../managers/inline-footnote-manager';
@@ -602,7 +603,7 @@ export class HighlightsSidebarView extends ItemView {
             });
             setTooltip(this.actionsButton, t('toolbar.actions'));
             setIcon(this.actionsButton, 'ellipsis');
-            this.actionsButton.style.display = 'none'; // Hidden by default
+            this.actionsButton.hide(); // Shown once highlights are selected
 
             this.actionsButton.addEventListener('click', (event) => {
                 this.showActionsMenu(event);
@@ -1919,11 +1920,7 @@ export class HighlightsSidebarView extends ItemView {
     private updateActionsButtonVisibility() {
         if (!this.actionsButton) return;
 
-        if (this.selectedHighlightIds.size > 0) {
-            this.actionsButton.style.display = '';
-        } else {
-            this.actionsButton.style.display = 'none';
-        }
+        this.actionsButton.toggle(this.selectedHighlightIds.size > 0);
     }
 
     /**
@@ -1940,13 +1937,13 @@ export class HighlightsSidebarView extends ItemView {
             if (highlight) {
                 const highlightColor = highlight.color || this.plugin.settings.highlightColor;
                 if (!highlight.isNativeComment) {
-                    highlightEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                    highlightEl.setCssStyles({ boxShadow: `0 0 0 1.5px ${highlightColor}, var(--shadow-s)` });
                 }
             }
         } else {
             // Remove selection styling
             highlightEl.classList.remove('selected', 'highlight-selected');
-            highlightEl.style.boxShadow = '';
+            highlightEl.setCssStyles({ boxShadow: '' });
         }
     }
 
@@ -1960,7 +1957,7 @@ export class HighlightsSidebarView extends ItemView {
         const selectedEls = this.containerEl.querySelectorAll('.highlight-selected');
         selectedEls.forEach((el: HTMLElement) => {
             el.classList.remove('selected', 'highlight-selected');
-            el.style.boxShadow = '';
+            el.setCssStyles({ boxShadow: '' });
         });
 
         this.updateActionsButtonVisibility();
@@ -4657,7 +4654,13 @@ export class HighlightsSidebarView extends ItemView {
         const collection = this.plugin.collectionsManager.getCollection(collectionId);
         if (!collection) return false;
 
-        const confirmed = confirm(`Are you sure you want to delete "${collection.name}"?`);
+        const confirmed = await confirmAction(this.app, {
+            title: t('modals.collection.deleteTitle'),
+            message: t('modals.collection.deleteMessage', { name: collection.name }),
+            confirm: t('modals.collection.delete'),
+            cancel: t('modals.collection.cancel'),
+            destructive: true
+        });
         if (!confirmed) return false;
 
         // Start deletion animation

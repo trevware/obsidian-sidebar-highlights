@@ -26,3 +26,15 @@ global.createFragment = (callback) => {
   if (callback) callback(f);
   return f;
 };
+
+// Obsidian's style helpers on HTMLElement, as the plugin uses them.
+if (!HTMLElement.prototype.setCssStyles) {
+  HTMLElement.prototype.setCssStyles = function (styles) {
+    Object.assign(this.style, styles);
+  };
+}
+if (!HTMLElement.prototype.setCssProps) {
+  HTMLElement.prototype.setCssProps = function (props) {
+    for (const [key, value] of Object.entries(props)) this.style.setProperty(key, value);
+  };
+}

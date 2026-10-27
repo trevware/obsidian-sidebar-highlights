@@ -336,7 +336,10 @@
       "cancel": "取消",
       "create": "创建合集",
       "save": "保存更改",
-      "nameRequired": "合集名称为必填项"
+      "nameRequired": "合集名称为必填项",
+      "deleteTitle": "删除收藏？",
+      "deleteMessage": "删除“{{name}}”？高亮仍保留在笔记中。",
+      "delete": "删除"
     },
     "excludedFiles": {
       "title": "文件过滤器",
