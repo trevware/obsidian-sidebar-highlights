@@ -1,4 +1,5 @@
-jest.mock('obsidian', () => ({ setIcon: () => undefined, moment: { locale: () => 'en' } }), { virtual: true });
+const mockPlatform = { isMobile: false };
+jest.mock('obsidian', () => ({ setIcon: () => undefined, moment: { locale: () => 'en' }, Platform: mockPlatform }), { virtual: true });
 
 import { QuickAdd } from './quick-add';
 import type { QuickAddHost } from './quick-add';
@@ -227,5 +228,35 @@ describe('quick add from the keyboard', () => {
         input.setSelectionRange(input.value.length, input.value.length);
         keydown(input, '/');
         expect(chooseDestination).not.toHaveBeenCalled();
+    });
+});
+
+describe('quick add on a phone', () => {
+    beforeEach(() => { mockPlatform.isMobile = true; });
+    afterEach(() => { mockPlatform.isMobile = false; });
+
+    it('offers Cancel and Add in place of keyboard hints', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        const buttons = [...container.querySelectorAll('.sh-palette-foot button')].map(b => b.textContent);
+        expect(buttons).toEqual(['tasksTab.quickAdd.cancelButton', 'tasksTab.quickAdd.addButton']);
+        expect(container.querySelector('.sh-palette-foot .sh-key')).toBeNull();
+    });
+
+    it('saves the task when Add is tapped', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        (container.querySelectorAll<HTMLButtonElement>('.sh-palette-foot button')[1]).click();
+        await settle();
+        expect(submit).toHaveBeenCalledTimes(1);
+    });
+
+    it('puts itself away when Cancel is tapped', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        (container.querySelectorAll<HTMLButtonElement>('.sh-palette-foot button')[0]).click();
+        expect(quickAdd.isOpen).toBe(false);
     });
 });

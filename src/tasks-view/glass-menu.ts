@@ -53,7 +53,7 @@ export class GlassMenu {
     close(): void {
         if (!this.el) return;
         if (this.onKey) document.removeEventListener('keydown', this.onKey, true);
-        if (this.onDown) document.removeEventListener('mousedown', this.onDown, true);
+        if (this.onDown) document.removeEventListener('pointerdown', this.onDown, true);
         this.onKey = null;
         this.onDown = null;
         this.el.remove();
@@ -119,8 +119,11 @@ export class GlassMenu {
             if (this.el && !this.el.contains(event.target as Node)) this.close();
         };
         // Next tick, so the click that opened the menu doesn't also close it.
+        // Pointerdown, not mousedown: a phone sends a stray mousedown when the
+        // finger lifts after a press and hold, which would shut the menu that
+        // press just opened.
         window.setTimeout(() => {
-            if (this.onDown) document.addEventListener('mousedown', this.onDown, true);
+            if (this.onDown) document.addEventListener('pointerdown', this.onDown, true);
         });
     }
 

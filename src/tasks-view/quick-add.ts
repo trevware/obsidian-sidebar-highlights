@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { Platform, setIcon } from 'obsidian';
 import { GlassMenu } from './glass-menu';
 import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
@@ -110,10 +110,20 @@ export class QuickAdd {
         this.preview = this.panel.createDiv({ cls: 'sh-quickadd-preview' });
 
         const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
-        hint(foot, '↵', t('tasksTab.quickAdd.add'));
-        hint(foot, '⌘↵', t('tasksTab.quickAdd.addAnother'));
-        hint(foot, '/', t('tasksTab.quickAdd.note'));
-        hint(foot, 'esc', t('tasksTab.quickAdd.close'));
+        if (Platform.isMobile) {
+            // No Escape or ⌘ on a phone's keyboard, so the footer becomes the
+            // two buttons that matter.
+            foot.addClass('is-touch');
+            const cancel = foot.createEl('button', { cls: 'sh-quickadd-button', text: t('tasksTab.quickAdd.cancelButton') });
+            cancel.addEventListener('click', () => this.close(true));
+            const add = foot.createEl('button', { cls: 'sh-quickadd-button mod-cta', text: t('tasksTab.quickAdd.addButton') });
+            add.addEventListener('click', () => void this.submit(false));
+        } else {
+            hint(foot, '↵', t('tasksTab.quickAdd.add'));
+            hint(foot, '⌘↵', t('tasksTab.quickAdd.addAnother'));
+            hint(foot, '/', t('tasksTab.quickAdd.note'));
+            hint(foot, 'esc', t('tasksTab.quickAdd.close'));
+        }
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
         document.addEventListener('keydown', this.onKey, true);

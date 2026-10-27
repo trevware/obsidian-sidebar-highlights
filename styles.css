@@ -1922,7 +1922,7 @@
 /* In a narrow pane the rail floats over the list, and stops above the
    controls so the toggle that closes it stays in reach. */
 .sh-tasks-shell.is-narrow .sh-tasks-rail {
-    bottom: calc(76px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(76px + var(--sh-bottom-inset));
 }
 
 /* Catches a tap on the list while the rail is open over it, so the tap only
@@ -2149,7 +2149,7 @@
 .sh-tasks-controls {
     position: absolute;
     right: 22px;
-    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(22px + var(--sh-bottom-inset));
     left: 22px;
     z-index: 30;
     display: flex;
@@ -3388,7 +3388,7 @@
 
 .sh-tasks-view .sh-bulkbar {
     position: absolute;
-    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(22px + var(--sh-bottom-inset));
     left: 50%;
     z-index: 32;
     display: flex;
@@ -3434,7 +3434,7 @@
 
 .sh-tasks-view .sh-toast {
     position: absolute;
-    bottom: calc(76px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(76px + var(--sh-bottom-inset));
     left: 50%;
     z-index: 33;
     display: flex;
@@ -3449,7 +3449,7 @@
 }
 
 .sh-tasks-main.has-bulkbar .sh-toast {
-    bottom: calc(80px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(80px + var(--sh-bottom-inset));
 }
 
 /* With room for it, the toast sits in the bottom row between the two sets
@@ -3457,7 +3457,7 @@
    list's last rows. */
 .sh-tasks-main.is-roomy:not(.has-bulkbar) .sh-toast {
     right: 198px;
-    bottom: calc(22px + var(--safe-area-inset-bottom, 0px));
+    bottom: calc(22px + var(--sh-bottom-inset));
     left: 82px;
     width: fit-content;
     max-width: none;
@@ -3594,9 +3594,20 @@
 
 /* ── Phones ─────────────────────────────────────────────────────────────── */
 
+/* Everything pinned to the bottom of the Tasks tab measures up from here:
+   the safe area, plus Obsidian's floating nav bar when the tab fills a
+   phone's screen. */
+.sh-tasks-view {
+    --sh-bottom-inset: var(--safe-area-inset-bottom, 0px);
+}
+
+.is-phone.is-floating-nav .mod-root .sh-tasks-view {
+    --sh-bottom-inset: calc(var(--navbar-bottom-offset, 12px) + var(--navbar-height, 52px));
+}
+
 .is-phone .sh-tasks-column {
     --sh-column-pad: 12px;
-    padding: 24px var(--sh-column-pad) 140px;
+    padding: 24px var(--sh-column-pad) calc(118px + var(--sh-bottom-inset));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3697,3 +3708,33 @@
     }
 }
 
+
+/* ── Touch ──────────────────────────────────────────────────────────────── */
+
+/* A press and hold opens a menu, so it mustn't also start selecting text or
+   bring up the system's copy callout. Fields inside still select as usual. */
+.is-mobile .sh-task-row,
+.is-mobile .highlight-item-card {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.is-mobile .sh-task-row :is(textarea, input),
+.is-mobile .highlight-item-card :is(textarea, input, [contenteditable="true"]) {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Quick add's footer on a phone: Cancel and Add, at the far ends. */
+.sh-palette-foot.is-touch {
+    justify-content: space-between;
+}
+
+.sh-tasks-view .sh-quickadd-button {
+    min-height: 36px;
+    padding: 0 16px;
+    border-radius: 18px;
+    font-size: 14px;
+}

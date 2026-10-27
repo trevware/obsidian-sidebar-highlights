@@ -2,6 +2,7 @@ import { setIcon, TFile, Menu, Notice, moment } from 'obsidian';
 import type { Highlight } from '../../main';
 import type HighlightCommentsPlugin from '../../main';
 import { highlightDisplayText, noteColorName } from '../utils/note-colors';
+import { onLongPress } from '../utils/long-press';
 
 export interface HighlightRenderOptions {
     searchTerm?: string;
@@ -74,6 +75,7 @@ export class HighlightRenderer {
                 event.stopPropagation();
                 options.onContextMenu!(highlight, event);
             });
+            onLongPress(item, (event) => options.onContextMenu!(highlight, event));
         }
 
         return item;

@@ -5,6 +5,7 @@ import {
     MarkdownRenderer,
     MarkdownView,
     Notice,
+    Platform,
     Scope,
     TFile,
     WorkspaceLeaf,
@@ -21,6 +22,7 @@ import { TaskRenderer } from '../renderers/task-renderer';
 import { statusToCheckboxState } from '../utils/task-status';
 import { SQUIRCLE_PATH } from '../utils/squircle-icon';
 import { t } from '../i18n';
+import { onLongPress } from '../utils/long-press';
 import { addDays, isoToday, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel } from './dates';
 import {
@@ -59,6 +61,18 @@ import type { GlassMenuItem } from './glass-menu';
 import type { Destination, QuickAddPrefill } from './quick-add';
 
 export const VIEW_TYPE_TASKS = 'sidebar-highlights-tasks';
+
+/**
+ * A keyboard shortcut to show beside an action, or nothing on a phone or
+ * tablet, where there's usually no keyboard to press it on.
+ */
+function shortcut(keys: string | undefined): string | undefined {
+    return Platform.isMobile ? undefined : keys;
+}
+
+function withShortcut(label: string, keys: string): string {
+    return Platform.isMobile ? label : `${label} (${keys})`;
+}
 
 const STORAGE = {
     list: 'sidebar-highlights-tasks-list',
@@ -315,6 +329,7 @@ export class TasksTabView extends ItemView {
         this.scroller.addEventListener('click', (event) => this.onListClick(event));
         this.column.addEventListener('dblclick', (event) => this.onListDoubleClick(event));
         this.column.addEventListener('contextmenu', (event) => this.onListContextMenu(event));
+        onLongPress(this.column, (event) => this.onListContextMenu(event));
         // Clicking anywhere outside an open card closes it. Surfaces the card
         // opens (the palette, menus, quick add) don't count as outside.
         root.addEventListener('mousedown', (event) => {
@@ -664,9 +679,9 @@ export class TasksTabView extends ItemView {
         this.barButton(left, 'panel-left', t('tasksTab.actions.toggleSidebar'), () => this.toggleRail());
 
         const right = bar.createDiv({ cls: 'sh-controls-group' });
-        this.barButton(right, 'search', `${t('tasksTab.actions.search')} (⌘K)`, () => this.openPalette());
-        this.barButton(right, 'plus', `${t('tasksTab.actions.addTask')} (Q)`, () => this.openQuickAdd());
-        const display = this.barButton(right, 'sliders-horizontal', `${t('tasksTab.actions.display')} (⇧V)`, (event) => this.openDisplayMenu(event.currentTarget as HTMLElement));
+        this.barButton(right, 'search', withShortcut(t('tasksTab.actions.search'), '⌘K'), () => this.openPalette());
+        this.barButton(right, 'plus', withShortcut(t('tasksTab.actions.addTask'), 'Q'), () => this.openQuickAdd());
+        const display = this.barButton(right, 'sliders-horizontal', withShortcut(t('tasksTab.actions.display'), '⇧V'), (event) => this.openDisplayMenu(event.currentTarget as HTMLElement));
         display.addClass('sh-display-button');
     }
 
@@ -1097,7 +1112,7 @@ export class TasksTabView extends ItemView {
         // rest of the row is redrawn around it. Taking it out of the page and
         // putting it back would restart its pop, which read as a second tick.
         const glyph = createEl('button', { cls: 'sh-task-glyph' });
-        glyph.setAttr('aria-label', isOpenTask(task) ? t('tasksTab.actions.completeHint') : t('tasksTab.actions.reopen'));
+        glyph.setAttr('aria-label', isOpenTask(task) ? t(Platform.isMobile ? 'tasksTab.actions.complete' : 'tasksTab.actions.completeHint') : t('tasksTab.actions.reopen'));
         paintGlyph(glyph, task);
         const oldLine = row.querySelector<HTMLElement>(':scope > .sh-task-line');
         const oldGlyph = oldLine?.querySelector<HTMLElement>(':scope > .sh-task-glyph');
@@ -1360,7 +1375,7 @@ export class TasksTabView extends ItemView {
         const original = notesText(task.context);
         const editor = notes.createEl('textarea', { cls: 'sh-card-editor' });
         editor.value = original;
-        editor.placeholder = t('tasksTab.card.notesPlaceholder');
+        editor.placeholder = t(Platform.isMobile ? 'tasksTab.card.notesPlaceholderTouch' : 'tasksTab.card.notesPlaceholder');
         editor.spellcheck = true;
         const fit = () => {
             editor.setCssProps({ height: 'auto' });
@@ -1483,7 +1498,7 @@ export class TasksTabView extends ItemView {
         window.setTimeout(() => {
             if (this.expandedKey !== null || this.readJson<boolean>(STORAGE.cardHint, false)) return;
             this.writeJson(STORAGE.cardHint, true);
-            this.toast(t('tasksTab.hints.openCard'), false);
+            this.toast(t(Platform.isMobile ? 'tasksTab.hints.openCardTouch' : 'tasksTab.hints.openCard'), false);
         }, 450);
     }
 
@@ -1548,7 +1563,10 @@ export class TasksTabView extends ItemView {
         if (!row) return;
         const scroller = this.scroller;
         const top = row.offsetTop - 24;
-        const bottom = row.offsetTop + row.offsetHeight + 110;
+        // Room under the row for the floating controls, which sit higher on a
+        // phone, above Obsidian's nav bar.
+        const controls = scroller.getBoundingClientRect().bottom - this.topbar.getBoundingClientRect().top;
+        const bottom = row.offsetTop + row.offsetHeight + Math.max(110, controls + 24);
         if (top < scroller.scrollTop) scroller.scrollTop = top;
         else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight;
     }
@@ -2339,26 +2357,26 @@ export class TasksTabView extends ItemView {
             const allDone = targets.every(task => statusOf(task) === 'done');
             const scope = targets.length > 1 ? ` (${targets.length})` : '';
             items.push(
-                { id: 'complete', section: sections.selection, icon: allDone ? 'rotate-ccw' : 'check', label: (allDone ? t('tasksTab.actions.reopen') : t('tasksTab.actions.complete')) + scope, detail: 'E', run: () => void this.toggleComplete(targets) },
-                { id: 'date', section: sections.selection, icon: 'calendar', label: t('tasksTab.actions.setDate') + scope, detail: 'T', stage: this.dateStage(targets), keywords: 'schedule reschedule due when' },
-                { id: 'priority', section: sections.selection, icon: 'flag', label: t('tasksTab.actions.setPriority') + scope, detail: '1–3', stage: this.priorityStage(targets) },
-                { id: 'status', section: sections.selection, icon: 'circle-dot', label: t('tasksTab.actions.setStatus') + scope, detail: 'S', stage: this.statusStage(targets), keywords: 'in progress question cancel' },
-                { id: 'cancel', section: sections.selection, icon: 'circle-slash', label: t('tasksTab.actions.cancel') + scope, detail: '⌥E', run: () => void this.setStatus(targets, 'cancelled') },
+                { id: 'complete', section: sections.selection, icon: allDone ? 'rotate-ccw' : 'check', label: (allDone ? t('tasksTab.actions.reopen') : t('tasksTab.actions.complete')) + scope, detail: shortcut('E'), run: () => void this.toggleComplete(targets) },
+                { id: 'date', section: sections.selection, icon: 'calendar', label: t('tasksTab.actions.setDate') + scope, detail: shortcut('T'), stage: this.dateStage(targets), keywords: 'schedule reschedule due when' },
+                { id: 'priority', section: sections.selection, icon: 'flag', label: t('tasksTab.actions.setPriority') + scope, detail: shortcut('1–3'), stage: this.priorityStage(targets) },
+                { id: 'status', section: sections.selection, icon: 'circle-dot', label: t('tasksTab.actions.setStatus') + scope, detail: shortcut('S'), stage: this.statusStage(targets), keywords: 'in progress question cancel' },
+                { id: 'cancel', section: sections.selection, icon: 'circle-slash', label: t('tasksTab.actions.cancel') + scope, detail: shortcut('⌥E'), run: () => void this.setStatus(targets, 'cancelled') },
                 { id: 'copy', section: sections.selection, icon: 'copy', label: t('tasksTab.actions.copy') + scope, run: () => void this.copyTasks(targets), keywords: 'markdown clipboard' },
-                { id: 'delete', section: sections.selection, icon: 'trash-2', label: t('tasksTab.actions.delete') + scope, detail: '⌘⌫', destructive: true, keywords: 'remove', run: () => this.deleteTasks(targets) }
+                { id: 'delete', section: sections.selection, icon: 'trash-2', label: t('tasksTab.actions.delete') + scope, detail: shortcut('⌘⌫'), destructive: true, keywords: 'remove', run: () => this.deleteTasks(targets) }
             );
             if (targets.some(task => task.date)) {
-                items.push({ id: 'remove-date', section: sections.selection, icon: 'calendar-x', label: t('tasksTab.actions.removeDate') + scope, detail: '⇧T', run: () => void this.setDates(targets, null) });
+                items.push({ id: 'remove-date', section: sections.selection, icon: 'calendar-x', label: t('tasksTab.actions.removeDate') + scope, detail: shortcut('⇧T'), run: () => void this.setDates(targets, null) });
             }
             const moveStage = this.moveStage(targets);
             if (moveStage) {
-                items.push({ id: 'move', section: sections.selection, icon: 'heading', label: t('tasksTab.actions.moveToHeading') + scope, detail: 'M', stage: moveStage, keywords: 'section header heading reorder new' });
+                items.push({ id: 'move', section: sections.selection, icon: 'heading', label: t('tasksTab.actions.moveToHeading') + scope, detail: shortcut('M'), stage: moveStage, keywords: 'section header heading reorder new' });
             }
             if (targets.length === 1) {
                 const task = targets[0];
                 items.push(
-                    { id: 'open', section: sections.selection, icon: 'arrow-up-right', label: t('tasksTab.actions.openInNote'), detail: '↵', run: () => void this.openTask(task) },
-                    { id: 'open-split', section: sections.selection, icon: 'columns-2', label: t('tasksTab.actions.openToSide'), detail: '⌘↵', run: () => void this.openTask(task, true) }
+                    { id: 'open', section: sections.selection, icon: 'arrow-up-right', label: t('tasksTab.actions.openInNote'), detail: shortcut('↵'), run: () => void this.openTask(task) },
+                    { id: 'open-split', section: sections.selection, icon: 'columns-2', label: t('tasksTab.actions.openToSide'), detail: shortcut('⌘↵'), run: () => void this.openTask(task, true) }
                 );
             }
         }
@@ -2371,7 +2389,7 @@ export class TasksTabView extends ItemView {
             section: sections.lists,
             icon: 'file-text',
             label: t('tasksTab.lists.thisNote'),
-            detail: 'G N',
+            detail: shortcut('G N'),
             keywords: 'current open active',
             run: () => this.setList(this.thisNote())
         });
@@ -2382,20 +2400,23 @@ export class TasksTabView extends ItemView {
                 paintIcon: (el) => paintListIcon(el, id),
                 label: t(`tasksTab.lists.${id}`),
                 sublabel: countOf[id] ? String(countOf[id]) : undefined,
-                detail: hints[id],
+                detail: shortcut(hints[id]),
                 run: () => this.setList({ kind: 'smart', id })
             });
         }
 
         items.push(
-            { id: 'add', section: sections.actions, icon: 'plus', label: t('tasksTab.actions.addTask'), detail: 'Q', keywords: 'new create quick capture', run: () => this.openQuickAdd() },
-            { id: 'display', section: sections.actions, icon: 'sliders-horizontal', label: t('tasksTab.actions.display'), detail: '⇧V', keywords: 'group sort view options', run: () => this.openDisplayMenu(this.topbar.querySelector<HTMLElement>('.sh-display-button') ?? this.topbar) },
-            { id: 'rail', section: sections.actions, icon: 'panel-left', label: t('tasksTab.actions.toggleSidebar'), detail: '[', run: () => this.toggleRail() },
-            { id: 'shortcuts', section: sections.actions, icon: 'keyboard', label: t('tasksTab.actions.shortcuts'), detail: '?', stage: this.shortcutsStage() }
+            { id: 'add', section: sections.actions, icon: 'plus', label: t('tasksTab.actions.addTask'), detail: shortcut('Q'), keywords: 'new create quick capture', run: () => this.openQuickAdd() },
+            { id: 'display', section: sections.actions, icon: 'sliders-horizontal', label: t('tasksTab.actions.display'), detail: shortcut('⇧V'), keywords: 'group sort view options', run: () => this.openDisplayMenu(this.topbar.querySelector<HTMLElement>('.sh-display-button') ?? this.topbar) },
+            { id: 'rail', section: sections.actions, icon: 'panel-left', label: t('tasksTab.actions.toggleSidebar'), detail: shortcut('['), run: () => this.toggleRail() }
         );
+        // A list of keyboard shortcuts is no use without a keyboard.
+        if (!Platform.isMobile) {
+            items.push({ id: 'shortcuts', section: sections.actions, icon: 'keyboard', label: t('tasksTab.actions.shortcuts'), detail: '?', stage: this.shortcutsStage() });
+        }
         if (this.undoStack.length > 0) {
             const last = this.undoStack[this.undoStack.length - 1];
-            items.push({ id: 'undo', section: sections.actions, icon: 'undo-2', label: t('tasksTab.actions.undo'), sublabel: last.label, detail: '⌘Z', run: () => void this.undo() });
+            items.push({ id: 'undo', section: sections.actions, icon: 'undo-2', label: t('tasksTab.actions.undo'), sublabel: last.label, detail: shortcut('⌘Z'), run: () => void this.undo() });
         }
 
         if (query.trim() === '') return items;
@@ -2493,7 +2514,7 @@ export class TasksTabView extends ItemView {
                     id: `p${level}`,
                     section: '',
                     label: t(`tasksTab.priority.p${level}`),
-                    detail: String(level),
+                    detail: shortcut(String(level)),
                     paintIcon: (el: HTMLElement) => {
                         const flag = el.createDiv({ cls: 'sh-flag' });
                         flag.dataset.priority = String(level);
@@ -2501,7 +2522,7 @@ export class TasksTabView extends ItemView {
                     },
                     run: () => void this.setPriority(tasks, level)
                 }));
-                rows.push({ id: 'p0', section: '', icon: 'flag-off', label: t('tasksTab.priority.none'), detail: '0', run: () => void this.setPriority(tasks, null) });
+                rows.push({ id: 'p0', section: '', icon: 'flag-off', label: t('tasksTab.priority.none'), detail: shortcut('0'), run: () => void this.setPriority(tasks, null) });
                 return rows;
             }
         };
@@ -2724,24 +2745,24 @@ export class TasksTabView extends ItemView {
         const tasks = this.selected.has(taskKey(task)) ? this.targets() : [task];
         const allDone = tasks.every(candidate => statusOf(candidate) === 'done');
         const items: GlassMenuItem[] = [
-            { label: allDone ? t('tasksTab.actions.reopen') : t('tasksTab.actions.complete'), icon: allDone ? 'rotate-ccw' : 'check', detail: 'E', run: () => void this.toggleComplete(tasks) },
-            { label: t('tasksTab.actions.setDate'), icon: 'calendar', detail: 'T', run: () => this.openPalette(this.dateStage(tasks)) },
-            { label: t('tasksTab.actions.setPriority'), icon: 'flag', detail: '1–3', run: () => this.openPalette(this.priorityStage(tasks)) },
-            { label: t('tasksTab.actions.setStatus'), icon: 'circle-dot', detail: 'S', run: () => this.openPalette(this.statusStage(tasks)) }
+            { label: allDone ? t('tasksTab.actions.reopen') : t('tasksTab.actions.complete'), icon: allDone ? 'rotate-ccw' : 'check', detail: shortcut('E'), run: () => void this.toggleComplete(tasks) },
+            { label: t('tasksTab.actions.setDate'), icon: 'calendar', detail: shortcut('T'), run: () => this.openPalette(this.dateStage(tasks)) },
+            { label: t('tasksTab.actions.setPriority'), icon: 'flag', detail: shortcut('1–3'), run: () => this.openPalette(this.priorityStage(tasks)) },
+            { label: t('tasksTab.actions.setStatus'), icon: 'circle-dot', detail: shortcut('S'), run: () => this.openPalette(this.statusStage(tasks)) }
         ];
         if (this.sharedNote(tasks)) {
-            items.push({ label: t('tasksTab.actions.moveToHeading'), icon: 'heading', detail: 'M', run: () => this.openMoveStage(tasks) });
+            items.push({ label: t('tasksTab.actions.moveToHeading'), icon: 'heading', detail: shortcut('M'), run: () => this.openMoveStage(tasks) });
         }
         if (tasks.length === 1) {
             items.push(
-                { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', detail: '↵', divider: true, run: () => void this.openTask(task) },
-                { label: t('tasksTab.actions.openToSide'), icon: 'columns-2', detail: '⌘↵', run: () => void this.openTask(task, true) }
+                { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', detail: shortcut('↵'), divider: true, run: () => void this.openTask(task) },
+                { label: t('tasksTab.actions.openToSide'), icon: 'columns-2', detail: shortcut('⌘↵'), run: () => void this.openTask(task, true) }
             );
         }
         items.push(
             { label: t('tasksTab.actions.copy'), icon: 'copy', divider: tasks.length > 1, run: () => void this.copyTasks(tasks) },
-            { label: t('tasksTab.actions.cancel'), icon: 'circle-slash', detail: '⌥E', divider: true, run: () => void this.setStatus(tasks, 'cancelled') },
-            { label: t('tasksTab.actions.delete'), icon: 'trash-2', detail: '⌘⌫', destructive: true, run: () => this.deleteTasks(tasks) }
+            { label: t('tasksTab.actions.cancel'), icon: 'circle-slash', detail: shortcut('⌥E'), divider: true, run: () => void this.setStatus(tasks, 'cancelled') },
+            { label: t('tasksTab.actions.delete'), icon: 'trash-2', detail: shortcut('⌘⌫'), destructive: true, run: () => this.deleteTasks(tasks) }
         );
         this.closeMenu();
         this.glassMenu.showAtEvent(event, items, () => this.focusList());
@@ -2890,7 +2911,7 @@ export class TasksTabView extends ItemView {
     private bulkButton(bar: HTMLElement, icon: string, label: string, key: string, run: () => void): HTMLElement {
         const button = bar.createEl('button', { cls: 'sh-bar-button' });
         setIcon(button, icon);
-        setTooltip(button, key ? `${label} (${key})` : label, { placement: 'top' });
+        setTooltip(button, key ? withShortcut(label, key) : label, { placement: 'top' });
         button.addEventListener('click', (event) => {
             event.stopPropagation();
             run();

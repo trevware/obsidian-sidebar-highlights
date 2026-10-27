@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, setIcon, setTooltip, Keymap, App, moment } from 'obsidian';
+import { ItemView, WorkspaceLeaf, MarkdownView, TFile, Menu, MenuItem, Notice, Platform, addIcon, setIcon, setTooltip, Keymap, App, moment } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { Highlight, Collection } from '../../main';
 import { NewCollectionModal, EditCollectionModal } from '../modals/collection-modals';
@@ -2178,43 +2178,7 @@ export class HighlightsSidebarView extends ItemView {
             onCollectionsMenu: (event, highlight) => {
                 this.showCollectionsMenu(event, highlight);
             },
-            onColorChange: (highlight, color) => {
-                // Store current scroll position and set flag to prevent other scroll restorations
-                this.preservedScrollTop = this.contentAreaEl.scrollTop;
-                this.isColorChanging = true;
-                
-                // Safety timeout to clear flag in case something goes wrong
-                window.setTimeout(() => {
-                    this.isColorChanging = false;
-                }, 2000);
-                
-                this.changeHighlightColor(highlight, color);
-                this.rerenderCurrentView();
-                
-                // Restore scroll position after DOM rebuild and clear flag
-                window.requestAnimationFrame(() => {
-                    if (this.contentAreaEl && this.isColorChanging) {
-                        this.contentAreaEl.scrollTop = this.preservedScrollTop;
-                        this.isColorChanging = false;
-                        
-                        // Ensure the selected highlight styling is correct after color group change
-                        if (this.plugin.selectedHighlightId) {
-                            const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
-                            if (selectedEl) {
-                                // Find the highlight data to get the updated color
-                                const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
-                                if (selectedHighlight) {
-                                    const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
-                                    selectedEl.style.borderLeftColor = highlightColor;
-                                    if (!selectedHighlight.isNativeComment) {
-                                        selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            },
+            onColorChange: (highlight, color) => this.applyColorChange(highlight, color),
             onHighlightClick: (highlight, event) => {
                 // Check if CMD/CTRL key is held for multi-select
                 if (event && (event.metaKey || event.ctrlKey)) {
@@ -2287,8 +2251,63 @@ export class HighlightsSidebarView extends ItemView {
      * Right-click context menu for a highlight item in the sidebar.
      * Offers: remove highlight, remove comments, remove both.
      */
+    private applyColorChange(highlight: Highlight, color: string) {
+        // Store current scroll position and set flag to prevent other scroll restorations
+        this.preservedScrollTop = this.contentAreaEl.scrollTop;
+        this.isColorChanging = true;
+        
+        // Safety timeout to clear flag in case something goes wrong
+        window.setTimeout(() => {
+            this.isColorChanging = false;
+        }, 2000);
+        
+        this.changeHighlightColor(highlight, color);
+        this.rerenderCurrentView();
+        
+        // Restore scroll position after DOM rebuild and clear flag
+        window.requestAnimationFrame(() => {
+            if (this.contentAreaEl && this.isColorChanging) {
+                this.contentAreaEl.scrollTop = this.preservedScrollTop;
+                this.isColorChanging = false;
+                
+                // Ensure the selected highlight styling is correct after color group change
+                if (this.plugin.selectedHighlightId) {
+                    const selectedEl = this.containerEl.querySelector(`[data-highlight-id="${this.plugin.selectedHighlightId}"]`) as HTMLElement;
+                    if (selectedEl) {
+                        // Find the highlight data to get the updated color
+                        const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
+                        if (selectedHighlight) {
+                            const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
+                            selectedEl.style.borderLeftColor = highlightColor;
+                            if (!selectedHighlight.isNativeComment) {
+                                selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     private showHighlightContextMenu(highlight: Highlight, event: MouseEvent) {
         const menu = new Menu();
+
+        // A phone has no hover to reveal the colour picker, so the colours live
+        // in this menu there, reached with a press and hold.
+        if (Platform.isMobile && highlight.type !== 'html' && !noteColorName(highlight.color)) {
+            const current = resolveHighlightColor(highlight.color, this.plugin.settings.highlightColor);
+            for (const [slot, hex] of Object.entries(this.plugin.settings.customColors)) {
+                // A swatch of the colour itself, registered fresh each time so it
+                // follows any change in Settings.
+                addIcon(`sh-swatch-${slot}`, `<circle cx="50" cy="50" r="34" fill="${hex}"/>`);
+                menu.addItem((item) => item
+                    .setTitle(colorLabel(hex, this.plugin.settings))
+                    .setIcon(`sh-swatch-${slot}`)
+                    .setChecked(resolveHighlightColor(hex, hex) === current)
+                    .setSection('color')
+                    .onClick(() => this.applyColorChange(highlight, hex)));
+            }
+        }
 
         const hasComments = !highlight.isNativeComment
             && !!highlight.footnoteContents

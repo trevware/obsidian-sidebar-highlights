@@ -498,12 +498,14 @@
     },
     "showMore": "Show {{count}} more",
     "hints": {
-      "openCard": "Click a task again to open it. Right-click it for everything else."
+      "openCard": "Click a task again to open it. Right-click it for everything else.",
+      "openCardTouch": "Tap a task again to open it. Press and hold it for everything else."
     },
     "card": {
       "noContext": "No notes under this task.",
       "addNotes": "Add notes",
-      "notesPlaceholder": "Notes in Markdown. ⌘↵ or Esc to save."
+      "notesPlaceholder": "Notes in Markdown. ⌘↵ or Esc to save.",
+      "notesPlaceholderTouch": "Notes in Markdown. Tap outside to save."
     },
     "actions": {
       "search": "Search",
@@ -581,7 +583,9 @@
       "note": "note",
       "close": "close",
       "destinationPlaceholder": "Find a note or heading…",
-      "addTo": "Add to"
+      "addTo": "Add to",
+      "cancelButton": "Cancel",
+      "addButton": "Add"
     },
     "notices": {
       "completedOne": "Completed “{{task}}”",

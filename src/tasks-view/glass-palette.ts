@@ -1,4 +1,4 @@
-import { setIcon } from 'obsidian';
+import { Platform, setIcon } from 'obsidian';
 import { rank } from './fuzzy';
 import type { MatchRange } from './fuzzy';
 
@@ -125,10 +125,13 @@ export class GlassPalette {
             if (row) this.hover(row);
         });
 
-        const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
-        hint(foot, '↑↓', 'navigate');
-        hint(foot, '↵', 'select');
-        hint(foot, 'esc', 'close');
+        // Keyboard hints, where there's a keyboard to use them.
+        if (!Platform.isMobile) {
+            const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
+            hint(foot, '↑↓', 'navigate');
+            hint(foot, '↵', 'select');
+            hint(foot, 'esc', 'close');
+        }
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
         document.addEventListener('keydown', this.onKey, true);
