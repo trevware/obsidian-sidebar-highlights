@@ -100,9 +100,6 @@
         "placeholder": "11"
       }
     },
-    "styling": {
-      "heading": "样式"
-    },
     "colors": {
       "heading": "颜色",
       "highlightColor": "高亮颜色：{{color}}",

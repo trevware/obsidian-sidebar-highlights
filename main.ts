@@ -1,5 +1,6 @@
 // main.ts
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf, ColorComponent } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionItem } from 'obsidian';
 import { HighlightsSidebarView } from './src/views/sidebar-view';
 import { InlineFootnoteManager } from './src/managers/inline-footnote-manager';
 import { ExcludedFilesModal } from './src/modals/excluded-files-modal';
@@ -3434,8 +3435,58 @@ class DisplayModeNameModal extends Modal {
     }
 }
 
+/** What a setting redraws once it's saved, past the save itself. */
+type SettingEffect = 'sidebar' | 'styles' | 'statusBar' | 'rescan';
+
+const SETTING_EFFECTS: Partial<Record<keyof CommentPluginSettings, SettingEffect>> = {
+    showFilenames: 'sidebar',
+    showTimestamps: 'sidebar',
+    showHighlightActions: 'sidebar',
+    showToolbar: 'sidebar',
+    dateFormat: 'sidebar',
+    minimumCharacterCount: 'sidebar',
+    showCurrentNoteTab: 'sidebar',
+    showCurrentFolderTab: 'sidebar',
+    showAllNotesTab: 'sidebar',
+    showCollectionsTab: 'sidebar',
+    hideTasksPluginMetadata: 'sidebar',
+    taskDateFormat: 'sidebar',
+    highlightFontSize: 'styles',
+    detailsFontSize: 'styles',
+    commentFontSize: 'styles',
+    highlightFontWeight: 'styles',
+    showStatusBarCounts: 'statusBar',
+    detectHtmlComments: 'rescan',
+    detectAdjacentNativeComments: 'rescan',
+    excludeExcalidraw: 'rescan',
+};
+
+/** Settings typed as whole numbers, so a stray decimal never reaches the sidebar. */
+const WHOLE_NUMBER_SETTINGS = new Set<string>([
+    'minimumCharacterCount',
+    'highlightFontSize',
+    'detailsFontSize',
+    'commentFontSize',
+    'maxAutomaticBackups',
+]);
+
+type ColorSlot = keyof CommentPluginSettings['customColors'];
+
+/** The five highlight colors, in the order the settings list them. */
+const COLOR_SLOTS: { slot: ColorSlot; desc: string; reset: string }[] = [
+    { slot: 'yellow', desc: 'settings.colors.customizeFirst', reset: 'settings.colors.resetToYellow' },
+    { slot: 'red', desc: 'settings.colors.customizeSecond', reset: 'settings.colors.resetToRed' },
+    { slot: 'teal', desc: 'settings.colors.customizeThird', reset: 'settings.colors.resetToTeal' },
+    { slot: 'blue', desc: 'settings.colors.customizeFourth', reset: 'settings.colors.resetToBlue' },
+    { slot: 'green', desc: 'settings.colors.customizeFifth', reset: 'settings.colors.resetToGreen' },
+];
+
 class HighlightSettingTab extends PluginSettingTab {
     plugin: HighlightCommentsPlugin;
+    // A color's row and its name row both show the hex. Changing the color
+    // renames them in place, leaving the open picker where it is.
+    private colorRows: Partial<Record<ColorSlot, Setting>> = {};
+    private colorNameRows: Partial<Record<ColorSlot, Setting>> = {};
 
     constructor(app: App, plugin: HighlightCommentsPlugin) {
         super(app, plugin);
@@ -3450,908 +3501,552 @@ class HighlightSettingTab extends PluginSettingTab {
         void this.plugin.cleanupOldBackups();
     }
 
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
+    /**
+     * The whole tab, declaratively, so every setting turns up in Obsidian's
+     * settings search. Plain values go through getControlValue and
+     * setControlValue below; rows with buttons draw their own controls.
+     */
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [
+            {
+                type: 'group',
+                heading: t('settings.display.heading'),
+                items: [
+                    { ...this.label('settings.display.showTitles'), control: { type: 'toggle', key: 'showFilenames' } },
+                    { ...this.label('settings.display.showTimestamps'), control: { type: 'toggle', key: 'showTimestamps' } },
+                    { ...this.label('settings.display.showActions'), control: { type: 'toggle', key: 'showHighlightActions' } },
+                    { ...this.label('settings.display.showToolbar'), control: { type: 'toggle', key: 'showToolbar' } },
+                    { ...this.label('settings.display.autoUnfold'), control: { type: 'toggle', key: 'autoToggleFold' } },
+                    {
+                        ...this.label('settings.display.dateFormat'),
+                        control: { type: 'text', key: 'dateFormat', placeholder: t('settings.display.dateFormat.placeholder') },
+                    },
+                    {
+                        ...this.label('settings.display.minimumCharCount'),
+                        control: {
+                            type: 'number',
+                            key: 'minimumCharacterCount',
+                            placeholder: t('settings.display.minimumCharCount.placeholder'),
+                            min: 0,
+                            step: 1,
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.views.heading'),
+                items: [
+                    { ...this.label('settings.views.showCurrentNoteTab'), control: { type: 'toggle', key: 'showCurrentNoteTab' } },
+                    { ...this.label('settings.views.showCurrentFolderTab'), control: { type: 'toggle', key: 'showCurrentFolderTab' } },
+                    { ...this.label('settings.views.showAllNotesTab'), control: { type: 'toggle', key: 'showAllNotesTab' } },
+                    { ...this.label('settings.views.showCollectionsTab'), control: { type: 'toggle', key: 'showCollectionsTab' } },
+                    { ...this.label('settings.views.showStatusBarCounts'), control: { type: 'toggle', key: 'showStatusBarCounts' } },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.displayModes.heading'),
+                items: [
+                    {
+                        name: t('settings.displayModes.saveCurrentLabel'),
+                        desc: t('settings.displayModes.saveCurrentDesc'),
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText(t('settings.displayModes.saveButton'))
+                                .setCta()
+                                .onClick(() => this.saveDisplayMode()));
+                        },
+                    },
+                    ...this.displayModeRows(),
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.typography.heading'),
+                items: [
+                    this.fontSizeRow('settings.typography.highlightTextSize', 'highlightFontSize', 32),
+                    this.fontSizeRow('settings.typography.detailsTextSize', 'detailsFontSize', 24),
+                    this.fontSizeRow('settings.typography.commentTextSize', 'commentFontSize', 24),
+                    {
+                        ...this.label('settings.typography.highlightTextWeight'),
+                        control: {
+                            type: 'dropdown',
+                            key: 'highlightFontWeight',
+                            options: {
+                                '300': t('settings.typography.fontWeight.light'),
+                                '400': t('settings.typography.fontWeight.normal'),
+                                '500': t('settings.typography.fontWeight.medium'),
+                                '600': t('settings.typography.fontWeight.semiBold'),
+                                '700': t('settings.typography.fontWeight.bold'),
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.colors.heading'),
+                items: COLOR_SLOTS.map(({ slot, desc, reset }) => ({
+                    name: t('settings.colors.highlightColor', { color: this.plugin.settings.customColors[slot].toUpperCase() }),
+                    desc: t(desc),
+                    render: (setting: Setting) => {
+                        this.colorRows[slot] = setting;
+                        let picker: ColorComponent | undefined;
+                        setting
+                            .addColorPicker(colorPicker => {
+                                picker = colorPicker;
+                                colorPicker
+                                    .setValue(this.plugin.settings.customColors[slot])
+                                    .onChange(value => void this.setColor(slot, value));
+                            })
+                            .addButton(button => button
+                                .setButtonText(t('settings.colors.reset'))
+                                .setTooltip(t(reset))
+                                .onClick(async () => {
+                                    const original = DEFAULT_SETTINGS.customColors[slot];
+                                    await this.setColor(slot, original);
+                                    picker?.setValue(original);
+                                }));
+                    },
+                })),
+            },
+            {
+                type: 'group',
+                heading: t('settings.colorNames.heading'),
+                items: COLOR_SLOTS.map(({ slot }) => ({
+                    name: t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors[slot].toUpperCase() }),
+                    desc: t('settings.colorNames.desc'),
+                    render: (setting: Setting) => {
+                        this.colorNameRows[slot] = setting;
+                        setting.addText(text => text
+                            .setPlaceholder(t('settings.colorNames.placeholder'))
+                            .setValue(this.plugin.settings.customColorNames[slot])
+                            .onChange(async (value) => {
+                                this.plugin.settings.customColorNames[slot] = value;
+                                await this.plugin.saveSettings();
+                                this.plugin.refreshSidebar();
+                            }));
+                    },
+                })),
+            },
+            {
+                type: 'group',
+                heading: t('settings.comments.heading'),
+                items: [
+                    { ...this.label('settings.comments.useInlineFootnotes'), control: { type: 'toggle', key: 'useInlineFootnotes' } },
+                    { ...this.label('settings.comments.removeWithHighlight'), control: { type: 'toggle', key: 'removeCommentsWithHighlight' } },
+                    { ...this.label('settings.comments.selectTextOnClick'), control: { type: 'toggle', key: 'selectTextOnCommentClick' } },
+                    { ...this.label('settings.detection.detectHtmlComments'), control: { type: 'toggle', key: 'detectHtmlComments' } },
+                    { ...this.label('settings.detection.detectAdjacentNativeComments'), control: { type: 'toggle', key: 'detectAdjacentNativeComments' } },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.detection.customPatterns.heading'),
+                items: [
+                    {
+                        // Named for settings search; the heading above already says it
+                        name: t('settings.detection.customPatterns.heading'),
+                        desc: t('settings.detection.customPatterns.desc'),
+                        aliases: ['regex'],
+                        render: (setting, group) => {
+                            // Headings and descriptions in definitions are plain
+                            // text, so the badge and the examples go in here.
+                            group.setHeading(this.customPatternsHeading());
+                            setting.setName('');
+                            setting.setDesc(this.customPatternsDesc());
+                        },
+                    },
+                    ...this.customPatternRows(),
+                    {
+                        name: '',
+                        searchable: false,
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText(t('settings.detection.customPatterns.addButton'))
+                                .setCta()
+                                .onClick(() => {
+                                    new CustomPatternModal(this.app, null, async (newPattern) => {
+                                        this.plugin.settings.customPatterns.push(newPattern);
+                                        await this.saveCustomPatterns();
+                                    }).open();
+                                }));
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.filters.heading'),
+                items: [
+                    { ...this.label('settings.filters.excludeExcalidraw'), control: { type: 'toggle', key: 'excludeExcalidraw' } },
+                    {
+                        ...this.label('settings.filters.excludedFiles'),
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText(t('settings.filters.excludedFiles.manageButton'))
+                                .onClick(() => this.manageExcludedFiles()));
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.tasks.heading'),
+                items: [
+                    { ...this.label('settings.tasks.hideTasksPluginMetadata'), control: { type: 'toggle', key: 'hideTasksPluginMetadata' } },
+                    {
+                        ...this.label('settings.tasks.taskDateFormat'),
+                        control: { type: 'text', key: 'taskDateFormat', placeholder: t('settings.tasks.taskDateFormat.placeholder') },
+                    },
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settings.backupRestore.heading'),
+                items: [
+                    {
+                        ...this.label('settings.backupRestore.restoreLatest'),
+                        render: (setting) => {
+                            setting
+                                .addButton(button => button
+                                    .setButtonText(t('settings.backupRestore.restoreLatest.button'))
+                                    .setCta()
+                                    .onClick(() => void this.restoreLatestBackup()))
+                                .addButton(button => button
+                                    .setButtonText(t('settings.backupRestore.choose.button'))
+                                    .onClick(() => void this.chooseBackup()));
+                        },
+                    },
+                    {
+                        ...this.label('settings.backupRestore.createManual'),
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText(t('settings.backupRestore.createManual.button'))
+                                .onClick(async () => {
+                                    const created = await this.plugin.createBackup('manual');
+                                    new Notice(created
+                                        ? t('settings.backupRestore.manualBackupCreated')
+                                        : t('settings.backupRestore.manualBackupSkipped'));
+                                }));
+                        },
+                    },
+                    {
+                        ...this.label('settings.backupRestore.maxBackups'),
+                        control: {
+                            type: 'number',
+                            key: 'maxAutomaticBackups',
+                            placeholder: DEFAULT_SETTINGS.maxAutomaticBackups.toString(),
+                            min: MIN_AUTOMATIC_BACKUPS,
+                            max: MAX_AUTOMATIC_BACKUPS,
+                            step: 1,
+                        },
+                    },
+                    {
+                        name: 'Activity log',
+                        desc: 'Copy recent restore activity for debugging.',
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText('Copy')
+                                .onClick(async () => {
+                                    const log = await this.plugin.getRestoreLog();
+                                    if (!log) {
+                                        new Notice('No restore log found. Perform a backup restoration first.');
+                                        return;
+                                    }
+                                    await navigator.clipboard.writeText(log);
+                                    new Notice('Restore log copied to clipboard!');
+                                }));
+                        },
+                    },
+                ],
+            },
+        ];
+    }
 
-        // DISPLAY SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.display.heading'));
+    getControlValue(key: string): unknown {
+        // The dropdown offers its weights as text
+        if (key === 'highlightFontWeight') return String(this.plugin.settings.highlightFontWeight);
+        return (this.plugin.settings as unknown as Record<string, unknown>)[key];
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.showTitles.name'))
-            .setDesc(t('settings.display.showTitles.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showFilenames)
-                .onChange(async (value) => {
-                    this.plugin.settings.showFilenames = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    async setControlValue(key: string, value: unknown): Promise<void> {
+        const settings = this.plugin.settings as unknown as Record<string, unknown>;
+        if (key === 'highlightFontWeight') {
+            this.plugin.settings.highlightFontWeight = parseInt(String(value), 10);
+        } else if (key === 'taskDateFormat') {
+            this.plugin.settings.taskDateFormat = String(value) || DEFAULT_SETTINGS.taskDateFormat;
+        } else if (WHOLE_NUMBER_SETTINGS.has(key)) {
+            settings[key] = Math.max(0, Math.round(Number(value) || 0));
+        } else {
+            settings[key] = value;
+        }
+        await this.plugin.saveSettings();
 
-        new Setting(containerEl)
-            .setName(t('settings.display.showTimestamps.name'))
-            .setDesc(t('settings.display.showTimestamps.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showTimestamps)
-                .onChange(async (value) => {
-                    this.plugin.settings.showTimestamps = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        switch (SETTING_EFFECTS[key as keyof CommentPluginSettings]) {
+            case 'styles':
+                this.plugin.updateStyles();
+                this.plugin.refreshSidebar();
+                break;
+            case 'sidebar':
+                this.plugin.refreshSidebar();
+                break;
+            case 'statusBar':
+                this.plugin.requestStatusBarUpdate();
+                break;
+            case 'rescan':
+                void this.plugin.scanAllFilesForHighlights();
+                break;
+        }
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.showActions.name'))
-            .setDesc(t('settings.display.showActions.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showHighlightActions)
-                .onChange(async (value) => {
-                    this.plugin.settings.showHighlightActions = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    /** A setting's name and description, from the locale entry they share. */
+    private label(path: string): { name: string; desc: string } {
+        return { name: t(`${path}.name`), desc: t(`${path}.desc`) };
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.showToolbar.name'))
-            .setDesc(t('settings.display.showToolbar.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showToolbar)
-                .onChange(async (value) => {
-                    this.plugin.settings.showToolbar = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    private fontSizeRow(path: string, key: 'highlightFontSize' | 'detailsFontSize' | 'commentFontSize', max: number): SettingDefinition {
+        return {
+            ...this.label(path),
+            control: {
+                type: 'number',
+                key,
+                placeholder: t(`${path}.placeholder`),
+                min: 8,
+                max,
+                step: 1,
+            },
+        };
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.autoUnfold.name'))
-            .setDesc(t('settings.display.autoUnfold.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.autoToggleFold)
-                .onChange(async (value) => {
-                    this.plugin.settings.autoToggleFold = value;
-                    await this.plugin.saveSettings();
-                }));
+    private async setColor(slot: ColorSlot, value: string): Promise<void> {
+        this.plugin.settings.customColors[slot] = value;
+        await this.plugin.saveSettings();
+        this.plugin.refreshSidebar();
+        this.plugin.updateStyles();
+        const hex = value.toUpperCase();
+        this.colorRows[slot]?.setName(t('settings.colors.highlightColor', { color: hex }));
+        this.colorNameRows[slot]?.setName(t('settings.colorNames.nameFor', { color: hex }));
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.dateFormat.name'))
-            .setDesc(t('settings.display.dateFormat.desc'))
-            .addMomentFormat(format => format
-                .setValue(this.plugin.settings.dateFormat)
-                .setPlaceholder(t('settings.display.dateFormat.placeholder'))
-                .onChange(async (value) => {
-                    this.plugin.settings.dateFormat = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    private displayModeRows(): SettingDefinition[] {
+        const modes = this.plugin.settings.displayModes;
+        if (modes.length === 0) {
+            // A row with nothing to draw is skipped, so this one sets its own text
+            return [{
+                name: '',
+                searchable: false,
+                render: (setting) => { setting.setDesc(t('settings.displayModes.noModes')); },
+            }];
+        }
 
-        new Setting(containerEl)
-            .setName(t('settings.display.minimumCharCount.name'))
-            .setDesc(t('settings.display.minimumCharCount.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.display.minimumCharCount.placeholder'))
-                .setValue(this.plugin.settings.minimumCharacterCount.toString())
-                .onChange(async (value) => {
-                    const numValue = parseInt(value) || 0;
-                    this.plugin.settings.minimumCharacterCount = Math.max(0, numValue);
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+        return modes.map(mode => ({
+            name: mode.name,
+            render: (setting: Setting) => {
+                const isActive = this.plugin.settings.currentDisplayModeId === mode.id;
+                setting
+                    .addButton(button => {
+                        button.setButtonText(isActive ? t('settings.displayModes.appliedButton') : t('settings.displayModes.applyButton'))
+                            .onClick(async () => {
+                                await this.plugin.applyDisplayMode(mode);
+                                new Notice(t('notices.displayModeApplied', { name: mode.name }));
+                                // Redraw, so the toggles and the Applied button follow
+                                this.update();
+                            });
+                        if (isActive) button.setCta();
+                    })
+                    .addButton(button => button
+                        .setButtonText(t('settings.displayModes.updateButton'))
+                        .setTooltip(t('settings.displayModes.updateTooltip'))
+                        .onClick(async () => {
+                            await this.plugin.updateDisplayMode(mode);
+                            new Notice(t('notices.displayModeUpdated', { name: mode.name }));
+                            this.update();
+                        }))
+                    .addButton(button => button
+                        .setButtonText(t('settings.displayModes.renameButton'))
+                        .onClick(() => {
+                            new DisplayModeNameModal(this.app, (newName) => {
+                                mode.name = newName;
+                                this.commitDisplayModes();
+                                new Notice(t('notices.displayModeRenamed', { name: newName }));
+                            }, mode.name).open();
+                        }))
+                    .addButton(button => button
+                        .setButtonText(t('settings.displayModes.deleteButton'))
+                        .setDestructive()
+                        .onClick(() => {
+                            this.plugin.settings.displayModes.remove(mode);
+                            // Clear current mode if we're deleting it
+                            if (this.plugin.settings.currentDisplayModeId === mode.id) {
+                                this.plugin.settings.currentDisplayModeId = null;
+                            }
+                            this.commitDisplayModes();
+                            new Notice(t('notices.displayModeDeleted', { name: mode.name }));
+                        }));
+            },
+        }));
+    }
 
-        // VIEWS SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.views.heading'));
+    private saveDisplayMode(): void {
+        new DisplayModeNameModal(this.app, (name) => {
+            this.plugin.settings.displayModes.push(this.plugin.createDisplayModeFromCurrent(name));
+            this.commitDisplayModes();
+            new Notice(t('notices.displayModeSaved', { name }));
+        }).open();
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showCurrentNoteTab.name'))
-            .setDesc(t('settings.views.showCurrentNoteTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCurrentNoteTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCurrentNoteTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    /** Saves the display modes, keeps their commands in step, and redraws the list. */
+    private commitDisplayModes(): void {
+        void this.plugin.saveSettings();
+        this.plugin.registerDisplayModeCommands();
+        this.update();
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showCurrentFolderTab.name'))
-            .setDesc(t('settings.views.showCurrentFolderTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCurrentFolderTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCurrentFolderTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    /** "Custom patterns", tagged Experimental. */
+    private customPatternsHeading(): DocumentFragment {
+        return createFragment(heading => {
+            heading.appendText(t('settings.detection.customPatterns.heading') + ' ');
+            heading.createSpan({ cls: 'sh-badge', text: t('settings.detection.customPatterns.experimental') });
+        });
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showAllNotesTab.name'))
-            .setDesc(t('settings.views.showAllNotesTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showAllNotesTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showAllNotesTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
+    private customPatternsDesc(): DocumentFragment {
+        return createFragment(desc => {
+            desc.appendText(t('settings.detection.customPatterns.desc'));
+            desc.createEl('br');
+            desc.appendText(t('settings.detection.customPatterns.examples') + ' ');
+            desc.createEl('code', { text: '//(.+)//' });
+            desc.appendText(' ' + t('settings.detection.customPatterns.forRegexMark') + ' ');
+            desc.createEl('code', { text: '\\[\\[(.+?)\\]\\]' });
+            desc.appendText(' ' + t('settings.detection.customPatterns.forWikilinks'));
+        });
+    }
 
-        new Setting(containerEl)
-            .setName(t('settings.views.showCollectionsTab.name'))
-            .setDesc(t('settings.views.showCollectionsTab.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showCollectionsTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.showCollectionsTab = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.views.showStatusBarCounts.name'))
-            .setDesc(t('settings.views.showStatusBarCounts.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showStatusBarCounts)
-                .onChange(async (value) => {
-                    this.plugin.settings.showStatusBarCounts = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.requestStatusBarUpdate();
-                }));
-
-        // DISPLAY MODES SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.displayModes.heading'));
-
-        // Save Current Display Settings button
-        new Setting(containerEl)
-            .setName(t('settings.displayModes.saveCurrentLabel'))
-            .setDesc(t('settings.displayModes.saveCurrentDesc'))
-            .addButton(button => button
-                .setButtonText(t('settings.displayModes.saveButton'))
-                .setCta()
-                .onClick(() => {
-                    const modal = new DisplayModeNameModal(this.app, (name) => {
-                        const displayMode = this.plugin.createDisplayModeFromCurrent(name);
-                        this.plugin.settings.displayModes.push(displayMode);
-                        void this.plugin.saveSettings();
-                        this.plugin.registerDisplayModeCommands();
-                        this.display();  // Refresh settings to show new display mode
-                        new Notice(t('notices.displayModeSaved', { name: name }));
-                    });
-                    modal.open();
-                }));
-
-        // List existing display modes
-        const displayModesContainer = containerEl.createDiv();
-        this.renderDisplayModes(displayModesContainer);
-
-        // TYPOGRAPHY SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.typography.heading'));
-
-        new Setting(containerEl)
-            .setName(t('settings.typography.highlightTextSize.name'))
-            .setDesc(t('settings.typography.highlightTextSize.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.typography.highlightTextSize.placeholder'))
-                .setValue(this.plugin.settings.highlightFontSize.toString())
-                .onChange(async (value) => {
-                    const fontSize = parseInt(value);
-                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 32) {
-                        this.plugin.settings.highlightFontSize = fontSize;
-                        await this.plugin.saveSettings();
-                        this.plugin.updateStyles();
-                        this.plugin.refreshSidebar();
-                    }
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.typography.detailsTextSize.name'))
-            .setDesc(t('settings.typography.detailsTextSize.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.typography.detailsTextSize.placeholder'))
-                .setValue(this.plugin.settings.detailsFontSize.toString())
-                .onChange(async (value) => {
-                    const fontSize = parseInt(value);
-                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 24) {
-                        this.plugin.settings.detailsFontSize = fontSize;
-                        await this.plugin.saveSettings();
-                        this.plugin.updateStyles();
-                        this.plugin.refreshSidebar();
-                    }
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.typography.commentTextSize.name'))
-            .setDesc(t('settings.typography.commentTextSize.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.typography.commentTextSize.placeholder'))
-                .setValue(this.plugin.settings.commentFontSize.toString())
-                .onChange(async (value) => {
-                    const fontSize = parseInt(value);
-                    if (!isNaN(fontSize) && fontSize >= 8 && fontSize <= 24) {
-                        this.plugin.settings.commentFontSize = fontSize;
-                        await this.plugin.saveSettings();
-                        this.plugin.updateStyles();
-                        this.plugin.refreshSidebar();
-                    }
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.typography.highlightTextWeight.name'))
-            .setDesc(t('settings.typography.highlightTextWeight.desc'))
-            .addDropdown(dropdown => dropdown
-                .addOption('300', t('settings.typography.fontWeight.light'))
-                .addOption('400', t('settings.typography.fontWeight.normal'))
-                .addOption('500', t('settings.typography.fontWeight.medium'))
-                .addOption('600', t('settings.typography.fontWeight.semiBold'))
-                .addOption('700', t('settings.typography.fontWeight.bold'))
-                .setValue(this.plugin.settings.highlightFontWeight.toString())
-                .onChange(async (value) => {
-                    this.plugin.settings.highlightFontWeight = parseInt(value);
-                    await this.plugin.saveSettings();
-                    this.plugin.updateStyles();
-                    this.plugin.refreshSidebar();
-                }));
-
-        // STYLING SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.styling.heading'));
-
-        // Colors subsection
-        new Setting(containerEl).setName(t('settings.colors.heading')).setHeading();
-
-        let yellowNameSetting: Setting;
-        let yellowColorPicker: ColorComponent | undefined; // Store reference to color picker
-
-        const yellowSetting = new Setting(containerEl)
-            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
-            .setDesc(t('settings.colors.customizeFirst'))
-            .addColorPicker(colorPicker => {
-                yellowColorPicker = colorPicker; // Store reference
-                return colorPicker
-                    .setValue(this.plugin.settings.customColors.yellow)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customColors.yellow = value;
-                        await this.plugin.saveSettings();
-                        this.updateColorMappings();
-                        yellowSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                        yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                    });
-            })
-            .addButton(button => button
-                .setButtonText(t('settings.colors.reset'))
-                .setTooltip(t('settings.colors.resetToYellow'))
-                .onClick(async () => {
-                    this.plugin.settings.customColors.yellow = '#ffd700';
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    yellowSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
-                    yellowColorPicker?.setValue('#ffd700'); // Update color picker value
-                    yellowNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }));
-                }));
-
-        let redNameSetting: Setting;
-        let redColorPicker: ColorComponent | undefined; // Store reference to color picker
-
-        const redSetting = new Setting(containerEl)
-            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
-            .setDesc(t('settings.colors.customizeSecond'))
-            .addColorPicker(colorPicker => {
-                redColorPicker = colorPicker; // Store reference
-                return colorPicker
-                    .setValue(this.plugin.settings.customColors.red)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customColors.red = value;
-                        await this.plugin.saveSettings();
-                        this.updateColorMappings();
-                        redSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                        redNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                    });
-            })
-            .addButton(button => button
-                .setButtonText(t('settings.colors.reset'))
-                .setTooltip(t('settings.colors.resetToRed'))
-                .onClick(async () => {
-                    this.plugin.settings.customColors.red = '#ff6b6b';
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    redSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
-                    redColorPicker?.setValue('#ff6b6b'); // Update color picker value
-                    redNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.red.toUpperCase() }));
-                }));
-
-        let tealNameSetting: Setting;
-        let tealColorPicker: ColorComponent | undefined; // Store reference to color picker
-
-        const tealSetting = new Setting(containerEl)
-            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
-            .setDesc(t('settings.colors.customizeThird'))
-            .addColorPicker(colorPicker => {
-                tealColorPicker = colorPicker; // Store reference
-                return colorPicker
-                    .setValue(this.plugin.settings.customColors.teal)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customColors.teal = value;
-                        await this.plugin.saveSettings();
-                        this.updateColorMappings();
-                        tealSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                        tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                    });
-            })
-            .addButton(button => button
-                .setButtonText(t('settings.colors.reset'))
-                .setTooltip(t('settings.colors.resetToTeal'))
-                .onClick(async () => {
-                    this.plugin.settings.customColors.teal = '#4ecdc4';
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    tealSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
-                    tealColorPicker?.setValue('#4ecdc4'); // Update color picker value
-                    tealNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.teal.toUpperCase() }));
-                }));
-
-        let blueNameSetting: Setting;
-        let blueColorPicker: ColorComponent | undefined; // Store reference to color picker
-
-        const blueSetting = new Setting(containerEl)
-            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
-            .setDesc(t('settings.colors.customizeFourth'))
-            .addColorPicker(colorPicker => {
-                blueColorPicker = colorPicker; // Store reference
-                return colorPicker
-                    .setValue(this.plugin.settings.customColors.blue)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customColors.blue = value;
-                        await this.plugin.saveSettings();
-                        this.updateColorMappings();
-                        blueSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                        blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                    });
-            })
-            .addButton(button => button
-                .setButtonText(t('settings.colors.reset'))
-                .setTooltip(t('settings.colors.resetToBlue'))
-                .onClick(async () => {
-                    this.plugin.settings.customColors.blue = '#45b7d1';
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    blueSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
-                    blueColorPicker?.setValue('#45b7d1'); // Update color picker value
-                    blueNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.blue.toUpperCase() }));
-                }));
-
-        let greenNameSetting: Setting;
-        let greenColorPicker: ColorComponent | undefined; // Store reference to color picker
-
-        const greenSetting = new Setting(containerEl)
-            .setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }))
-            .setDesc(t('settings.colors.customizeFifth'))
-            .addColorPicker(colorPicker => {
-                greenColorPicker = colorPicker; // Store reference
-                return colorPicker
-                    .setValue(this.plugin.settings.customColors.green)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customColors.green = value;
-                        await this.plugin.saveSettings();
-                        this.updateColorMappings();
-                        greenSetting.setName(t('settings.colors.highlightColor', { color: value.toUpperCase() }));
-                        greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: value.toUpperCase() }));
-                    });
-            })
-            .addButton(button => button
-                .setButtonText(t('settings.colors.reset'))
-                .setTooltip(t('settings.colors.resetToGreen'))
-                .onClick(async () => {
-                    this.plugin.settings.customColors.green = '#96ceb4';
-                    await this.plugin.saveSettings();
-                    this.updateColorMappings();
-                    greenSetting.setName(t('settings.colors.highlightColor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
-                    greenColorPicker?.setValue('#96ceb4'); // Update color picker value
-                    greenNameSetting?.setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.green.toUpperCase() }));
-                }));
-
-        // Color names subsection
-        new Setting(containerEl).setName(t('settings.colorNames.heading')).setHeading();
-
-        yellowNameSetting = new Setting(containerEl)
-            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.yellow.toUpperCase() }))
-            .setDesc(t('settings.colorNames.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.colorNames.placeholder'))
-                .setValue(this.plugin.settings.customColorNames.yellow)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.yellow = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        redNameSetting = new Setting(containerEl)
-            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.red.toUpperCase() }))
-            .setDesc(t('settings.colorNames.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.colorNames.placeholder'))
-                .setValue(this.plugin.settings.customColorNames.red)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.red = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        tealNameSetting = new Setting(containerEl)
-            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.teal.toUpperCase() }))
-            .setDesc(t('settings.colorNames.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.colorNames.placeholder'))
-                .setValue(this.plugin.settings.customColorNames.teal)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.teal = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        blueNameSetting = new Setting(containerEl)
-            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.blue.toUpperCase() }))
-            .setDesc(t('settings.colorNames.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.colorNames.placeholder'))
-                .setValue(this.plugin.settings.customColorNames.blue)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.blue = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        greenNameSetting = new Setting(containerEl)
-            .setName(t('settings.colorNames.nameFor', { color: this.plugin.settings.customColors.green.toUpperCase() }))
-            .setDesc(t('settings.colorNames.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.colorNames.placeholder'))
-                .setValue(this.plugin.settings.customColorNames.green)
-                .onChange(async (value) => {
-                    this.plugin.settings.customColorNames.green = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        // COMMENTS SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.comments.heading'));
-
-        new Setting(containerEl)
-            .setName(t('settings.comments.useInlineFootnotes.name'))
-            .setDesc(t('settings.comments.useInlineFootnotes.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.useInlineFootnotes)
-                .onChange(async (value) => {
-                    this.plugin.settings.useInlineFootnotes = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.comments.removeWithHighlight.name'))
-            .setDesc(t('settings.comments.removeWithHighlight.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.removeCommentsWithHighlight)
-                .onChange(async (value) => {
-                    this.plugin.settings.removeCommentsWithHighlight = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.comments.selectTextOnClick.name'))
-            .setDesc(t('settings.comments.selectTextOnClick.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.selectTextOnCommentClick)
-                .onChange(async (value) => {
-                    this.plugin.settings.selectTextOnCommentClick = value;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.detection.detectHtmlComments.name'))
-            .setDesc(t('settings.detection.detectHtmlComments.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.detectHtmlComments)
-                .onChange(async (value) => {
-                    this.plugin.settings.detectHtmlComments = value;
-                    await this.plugin.saveSettings();
-                    // Re-scan all files to apply new detection setting
-                    void this.plugin.scanAllFilesForHighlights();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.detection.detectAdjacentNativeComments.name'))
-            .setDesc(t('settings.detection.detectAdjacentNativeComments.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.detectAdjacentNativeComments)
-                .onChange(async (value) => {
-                    this.plugin.settings.detectAdjacentNativeComments = value;
-                    await this.plugin.saveSettings();
-                    // Re-scan all files to apply new detection setting
-                    void this.plugin.scanAllFilesForHighlights();
-                }));
-
-        // CUSTOM PATTERNS SECTION
-        // Create heading with experimental badge
-        const customPatternsHeadingName = createFragment();
-        customPatternsHeadingName.append(t('settings.detection.customPatterns.heading') + ' ');
-        customPatternsHeadingName.appendChild(createSpan({ cls: 'sh-badge', text: t('settings.detection.customPatterns.experimental') }));
-
-        new Setting(containerEl).setHeading().setName(customPatternsHeadingName);
-
-        // Custom patterns description
-        const customPatternsDesc = createFragment();
-        customPatternsDesc.append(
-            t('settings.detection.customPatterns.desc'),
-            createEl('br'),
-            t('settings.detection.customPatterns.examples'),
-            createEl('code'),
-        );
-        customPatternsDesc.lastChild!.textContent = '//(.+)//';
-        customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forRegexMark') + ' ');
-        const code2 = createEl('code');
-        code2.textContent = '\\[\\[(.+?)\\]\\]';
-        customPatternsDesc.append(code2);
-        customPatternsDesc.append(' ' + t('settings.detection.customPatterns.forWikilinks'));
-
-        new Setting(containerEl)
-            .setDesc(customPatternsDesc);
-
-        // Container for custom pattern list
-        const patternsContainer = containerEl.createDiv('custom-patterns-container');
-
-        const renderPatterns = () => {
-            patternsContainer.empty();
-
-            this.plugin.settings.customPatterns.forEach((pattern, index) => {
-                new Setting(patternsContainer)
-                    .setName(pattern.name || `Pattern ${index + 1}`)
-                    .setDesc(`Type: ${pattern.type} | Pattern: ${pattern.pattern}`)
+    private customPatternRows(): SettingDefinition[] {
+        return this.plugin.settings.customPatterns.map((pattern, index) => ({
+            name: pattern.name || `Pattern ${index + 1}`,
+            desc: `Type: ${pattern.type} | Pattern: ${pattern.pattern}`,
+            render: (setting: Setting) => {
+                setting
                     .addButton(button => button
                         .setButtonText(t('settings.detection.customPatterns.editButton'))
                         .onClick(() => {
                             new CustomPatternModal(this.app, pattern, async (edited) => {
                                 this.plugin.settings.customPatterns[index] = edited;
-                                await this.plugin.saveSettings();
-                                renderPatterns();
-                                void this.plugin.scanAllFilesForHighlights();
+                                await this.saveCustomPatterns();
                             }).open();
                         }))
                     .addButton(button => button
                         .setButtonText(t('settings.detection.customPatterns.deleteButton'))
-                        .setWarning()
+                        .setDestructive()
                         .onClick(async () => {
                             this.plugin.settings.customPatterns.splice(index, 1);
-                            await this.plugin.saveSettings();
-                            renderPatterns();
-                            void this.plugin.scanAllFilesForHighlights();
+                            await this.saveCustomPatterns();
                         }));
-            });
-
-            // Add new pattern button
-            new Setting(patternsContainer)
-                .addButton(button => button
-                    .setButtonText(t('settings.detection.customPatterns.addButton'))
-                    .setCta()
-                    .onClick(() => {
-                        new CustomPatternModal(this.app, null, async (newPattern) => {
-                            this.plugin.settings.customPatterns.push(newPattern);
-                            await this.plugin.saveSettings();
-                            renderPatterns();
-                            void this.plugin.scanAllFilesForHighlights();
-                        }).open();
-                    }));
-        };
-
-        renderPatterns();
-
-        // FILTERS SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.filters.heading'));
-
-        new Setting(containerEl)
-            .setName(t('settings.filters.excludeExcalidraw.name'))
-            .setDesc(t('settings.filters.excludeExcalidraw.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.excludeExcalidraw)
-                .onChange(async (value) => {
-                    this.plugin.settings.excludeExcalidraw = value;
-                    await this.plugin.saveSettings();
-                    // Refresh highlights to apply the new exclusion setting
-                    void this.plugin.scanAllFilesForHighlights();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.filters.excludedFiles.name'))
-            .setDesc(t('settings.filters.excludedFiles.desc'))
-            .addButton(button => {
-                button.setButtonText(t('settings.filters.excludedFiles.manageButton'))
-                    .onClick(() => {
-                        const modal = new ExcludedFilesModal(
-                            this.app,
-                            this.plugin.settings.fileFilters,
-                            this.plugin.settings.fileFilterMode,
-                            async (fileFilters) => {
-                                this.plugin.settings.fileFilters = fileFilters;
-                                await this.plugin.saveSettings();
-                                // Re-scan all files to apply new exclusions
-                                void this.plugin.scanAllFilesForHighlights();
-                                // Refresh sidebar to update tasks from newly included/excluded files
-                                // (invalidates task cache and re-renders)
-                                this.plugin.refreshSidebar();
-                            }
-                        );
-                        modal.open();
-                    });
-            });
-
-        // ========== TASKS TAB SETTINGS ==========
-
-        new Setting(containerEl).setHeading().setName(t('settings.tasks.heading'));
-
-        new Setting(containerEl)
-            .setName(t('settings.tasks.hideTasksPluginMetadata.name'))
-            .setDesc(t('settings.tasks.hideTasksPluginMetadata.desc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.hideTasksPluginMetadata)
-                .onChange(async (value) => {
-                    this.plugin.settings.hideTasksPluginMetadata = value;
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-
-        new Setting(containerEl)
-            .setName(t('settings.tasks.taskDateFormat.name'))
-            .setDesc(t('settings.tasks.taskDateFormat.desc'))
-            .addText(text => text
-                .setPlaceholder(t('settings.tasks.taskDateFormat.placeholder'))
-                .setValue(this.plugin.settings.taskDateFormat)
-                .onChange(async (value) => {
-                    this.plugin.settings.taskDateFormat = value || 'YYYY-MM-DD';
-                    await this.plugin.saveSettings();
-                    this.plugin.refreshSidebar();
-                }));
-
-        // BACKUP & RESTORE SECTION
-        new Setting(containerEl).setHeading().setName(t('settings.backupRestore.heading'));
-
-        // Restore from backup setting with two buttons
-        const restoreSetting = new Setting(containerEl)
-            .setName(t('settings.backupRestore.restoreLatest.name'))
-            .setDesc(t('settings.backupRestore.restoreLatest.desc'));
-
-        // Helper function to restore from backup
-        const performRestore = async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
-            const result = await this.plugin.restoreFromBackup(backupPath);
-            if (result.success) {
-                const recoveredCount = result.recoveredCount || 0;
-                const orphanedCount = result.orphanedCount || 0;
-
-                let message = t('settings.backupRestore.restoreSuccess', {
-                    collections: collectionsCount.toString(),
-                    highlights: recoveredCount.toString()
-                });
-
-                if (orphanedCount > 0) {
-                    message += ` ${t('settings.backupRestore.orphanedCleaned', {
-                        count: orphanedCount.toString()
-                    })}`;
-                }
-                new Notice(message);
-                // Refresh settings display to show restored data
-                this.display();
-            } else {
-                new Notice(t('settings.backupRestore.restoreFailed'));
-            }
-        };
-
-        // "Restore latest" button (CTA)
-        restoreSetting.addButton(button => button
-            .setButtonText(t('settings.backupRestore.restoreLatest.button'))
-            .setCta()
-            .onClick(async () => {
-                const backups = await this.plugin.listBackups();
-                if (backups.length === 0) {
-                    new Notice(t('settings.backupRestore.noBackups'));
-                    return;
-                }
-
-                const latestBackup = backups[0];
-                const collectionsCount = Object.keys(latestBackup.data.collections || {}).length;
-                const highlightsCount = this.plugin.countHighlightsInCollections(latestBackup.data.collections || {});
-
-                if (collectionsCount === 0 && highlightsCount === 0) {
-                    new Notice(t('settings.backupRestore.emptyBackup'));
-                    return;
-                }
-
-                // Show confirmation with backup info
-                const date = latestBackup.data.backupCreatedAt
-                    ? new Date(latestBackup.data.backupCreatedAt).toLocaleString()
-                    : t('settings.backupRestore.unknownDate');
-
-                const message = t('settings.backupRestore.confirmRestore', {
-                    collections: collectionsCount.toString(),
-                    highlights: highlightsCount.toString(),
-                    date
-                });
-
-                // Create a simple confirmation modal
-                const modal = new Modal(this.app);
-                modal.titleEl.setText(t('settings.backupRestore.confirmTitle'));
-                modal.contentEl.createEl('p', { text: message });
-
-                const buttonContainer = modal.contentEl.createDiv({ cls: 'modal-button-container sh-modal-buttons' });
-
-                const cancelBtn = buttonContainer.createEl('button', { text: t('settings.backupRestore.cancel') });
-                cancelBtn.addEventListener('click', () => modal.close());
-
-                const restoreBtn = buttonContainer.createEl('button', {
-                    text: t('settings.backupRestore.restore'),
-                    cls: 'mod-cta'
-                });
-                restoreBtn.addEventListener('click', () => void (async () => {
-                    modal.close();
-                    await performRestore(latestBackup.path, collectionsCount, highlightsCount);
-                })());
-
-                modal.open();
-            }));
-
-        // "Choose" button
-        restoreSetting.addButton(button => button
-            .setButtonText(t('settings.backupRestore.choose.button'))
-            .onClick(async () => {
-                const backups = await this.plugin.listBackups();
-                if (backups.length === 0) {
-                    new Notice(t('settings.backupRestore.noBackups'));
-                    return;
-                }
-
-                const modal = new BackupSelectorModal(
-                    this.app,
-                    backups,
-                    (collections) => this.plugin.countHighlightsInCollections(collections),
-                    async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
-                        // Show confirmation before restoring
-                        const backupToRestore = backups.find(b => b.path === backupPath);
-                        if (!backupToRestore) return;
-
-                        const date = backupToRestore.data.backupCreatedAt
-                            ? new Date(backupToRestore.data.backupCreatedAt).toLocaleString()
-                            : t('settings.backupRestore.unknownDate');
-
-                        const message = t('settings.backupRestore.confirmRestore', {
-                            collections: collectionsCount.toString(),
-                            highlights: highlightsCount.toString(),
-                            date
-                        });
-
-                        const confirmed = await confirmAction(this.app, {
-                            title: t('settings.backupRestore.confirmTitle'),
-                            message,
-                            confirm: t('settings.backupRestore.restore'),
-                            cancel: t('settings.backupRestore.cancel')
-                        });
-                        if (confirmed) await performRestore(backupPath, collectionsCount, highlightsCount);
-                    }
-                );
-
-                modal.open();
-            }));
-
-        new Setting(containerEl)
-            .setName(t('settings.backupRestore.createManual.name'))
-            .setDesc(t('settings.backupRestore.createManual.desc'))
-            .addButton(button => button
-                .setButtonText(t('settings.backupRestore.createManual.button'))
-                .onClick(async () => {
-                    const created = await this.plugin.createBackup('manual');
-                    new Notice(created
-                        ? t('settings.backupRestore.manualBackupCreated')
-                        : t('settings.backupRestore.manualBackupSkipped'));
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settings.backupRestore.maxBackups.name'))
-            .setDesc(t('settings.backupRestore.maxBackups.desc'))
-            .addText(text => text
-                .setPlaceholder(DEFAULT_SETTINGS.maxAutomaticBackups.toString())
-                .setValue((this.plugin.settings.maxAutomaticBackups ?? DEFAULT_SETTINGS.maxAutomaticBackups).toString())
-                .onChange(async (value) => {
-                    const parsed = parseInt(value, 10);
-                    if (isNaN(parsed)) {
-                        return;
-                    }
-                    this.plugin.settings.maxAutomaticBackups = Math.max(
-                        MIN_AUTOMATIC_BACKUPS,
-                        Math.min(MAX_AUTOMATIC_BACKUPS, parsed)
-                    );
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName('Activity log')
-            .setDesc('Copy recent restore activity for debugging.')
-            .addButton(button => button
-                .setButtonText('Copy')
-                .onClick(async () => {
-                    const log = await this.plugin.getRestoreLog();
-                    if (!log) {
-                        new Notice('No restore log found. Perform a backup restoration first.');
-                        return;
-                    }
-                    await navigator.clipboard.writeText(log);
-                    new Notice('Restore log copied to clipboard!');
-                }));
+            },
+        }));
     }
 
-    private renderDisplayModes(container: HTMLElement) {
-        container.empty();
+    private async saveCustomPatterns(): Promise<void> {
+        await this.plugin.saveSettings();
+        this.update();
+        void this.plugin.scanAllFilesForHighlights();
+    }
 
-        if (this.plugin.settings.displayModes.length === 0) {
-            container.createEl('p', {
-                text: t('settings.displayModes.noModes'),
-                cls: 'setting-item-description'
-            });
+    private manageExcludedFiles(): void {
+        new ExcludedFilesModal(
+            this.app,
+            this.plugin.settings.fileFilters,
+            this.plugin.settings.fileFilterMode,
+            async (fileFilters) => {
+                this.plugin.settings.fileFilters = fileFilters;
+                await this.plugin.saveSettings();
+                // Re-scan all files to apply new exclusions
+                void this.plugin.scanAllFilesForHighlights();
+                // Refresh sidebar to update tasks from newly included/excluded files
+                // (invalidates task cache and re-renders)
+                this.plugin.refreshSidebar();
+            }
+        ).open();
+    }
+
+    private async restoreLatestBackup(): Promise<void> {
+        const backups = await this.plugin.listBackups();
+        if (backups.length === 0) {
+            new Notice(t('settings.backupRestore.noBackups'));
             return;
         }
 
-        this.plugin.settings.displayModes.forEach((mode, index) => {
-            const isActive = this.plugin.settings.currentDisplayModeId === mode.id;
+        const latestBackup = backups[0];
+        const collectionsCount = Object.keys(latestBackup.data.collections || {}).length;
+        const highlightsCount = this.plugin.countHighlightsInCollections(latestBackup.data.collections || {});
 
-            new Setting(container)
-                .setName(mode.name)
-                .addButton(button => {
-                    button.setButtonText(isActive ? t('settings.displayModes.appliedButton') : t('settings.displayModes.applyButton'))
-                        .onClick(async () => {
-                            await this.plugin.applyDisplayMode(mode);
-                            new Notice(t('notices.displayModeApplied', { name: mode.name }));
-                            this.display(); // Refresh settings to update toggles and button states
-                        });
+        if (collectionsCount === 0 && highlightsCount === 0) {
+            new Notice(t('settings.backupRestore.emptyBackup'));
+            return;
+        }
 
-                    // Add active class to button if this is the current mode
-                    if (isActive) {
-                        button.buttonEl.addClass('mod-cta');
-                    }
-
-                    return button;
-                })
-                .addButton(button => button
-                    .setButtonText(t('settings.displayModes.updateButton'))
-                    .setTooltip(t('settings.displayModes.updateTooltip'))
-                    .onClick(async () => {
-                        await this.plugin.updateDisplayMode(mode);
-                        new Notice(t('notices.displayModeUpdated', { name: mode.name }));
-                        this.display(); // Refresh settings
-                    }))
-                .addButton(button => button
-                    .setButtonText(t('settings.displayModes.renameButton'))
-                    .onClick(() => {
-                        const modal = new DisplayModeNameModal(this.app, (newName) => {
-                            mode.name = newName;
-                            void this.plugin.saveSettings();
-                            this.plugin.registerDisplayModeCommands();
-                            this.renderDisplayModes(container);
-                            new Notice(t('notices.displayModeRenamed', { name: newName }));
-                        }, mode.name);
-                        modal.open();
-                    }))
-                .addButton(button => button
-                    .setButtonText(t('settings.displayModes.deleteButton'))
-                    .setWarning()
-                    .onClick(() => {
-                        this.plugin.settings.displayModes.splice(index, 1);
-                        // Clear current mode if we're deleting it
-                        if (this.plugin.settings.currentDisplayModeId === mode.id) {
-                            this.plugin.settings.currentDisplayModeId = null;
-                        }
-                        void this.plugin.saveSettings();
-                        this.plugin.registerDisplayModeCommands();
-                        this.renderDisplayModes(container);
-                        new Notice(t('notices.displayModeDeleted', { name: mode.name }));
-                    }));
-        });
+        await this.confirmRestore(latestBackup.path, latestBackup.data.backupCreatedAt, collectionsCount, highlightsCount);
     }
 
-    private updateColorMappings(): void {
-        // Refresh the sidebar to apply new colors
-        this.plugin.refreshSidebar();
-        // Update theme classes if needed
-        this.plugin.updateStyles();
+    private async chooseBackup(): Promise<void> {
+        const backups = await this.plugin.listBackups();
+        if (backups.length === 0) {
+            new Notice(t('settings.backupRestore.noBackups'));
+            return;
+        }
+
+        new BackupSelectorModal(
+            this.app,
+            backups,
+            (collections) => this.plugin.countHighlightsInCollections(collections),
+            async (backupPath: string, collectionsCount: number, highlightsCount: number) => {
+                const backupToRestore = backups.find(b => b.path === backupPath);
+                if (!backupToRestore) return;
+                await this.confirmRestore(backupPath, backupToRestore.data.backupCreatedAt, collectionsCount, highlightsCount);
+            }
+        ).open();
+    }
+
+    /** Asks before a backup replaces the collections, then restores it. */
+    private async confirmRestore(backupPath: string, createdAt: number | undefined, collectionsCount: number, highlightsCount: number): Promise<void> {
+        const date = createdAt
+            ? new Date(createdAt).toLocaleString()
+            : t('settings.backupRestore.unknownDate');
+
+        const confirmed = await confirmAction(this.app, {
+            title: t('settings.backupRestore.confirmTitle'),
+            message: t('settings.backupRestore.confirmRestore', {
+                collections: collectionsCount.toString(),
+                highlights: highlightsCount.toString(),
+                date
+            }),
+            confirm: t('settings.backupRestore.restore'),
+            cancel: t('settings.backupRestore.cancel')
+        });
+        if (!confirmed) return;
+
+        const result = await this.plugin.restoreFromBackup(backupPath);
+        if (!result.success) {
+            new Notice(t('settings.backupRestore.restoreFailed'));
+            return;
+        }
+
+        let message = t('settings.backupRestore.restoreSuccess', {
+            collections: collectionsCount.toString(),
+            highlights: (result.recoveredCount || 0).toString()
+        });
+        const orphanedCount = result.orphanedCount || 0;
+        if (orphanedCount > 0) {
+            message += ` ${t('settings.backupRestore.orphanedCleaned', {
+                count: orphanedCount.toString()
+            })}`;
+        }
+        new Notice(message);
+        // Redraw, so the page shows the restored data
+        this.update();
     }
 }
 

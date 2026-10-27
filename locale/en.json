@@ -115,9 +115,6 @@
         "bold": "Bold (700)"
       }
     },
-    "styling": {
-      "heading": "Styling"
-    },
     "colors": {
       "heading": "Colors",
       "highlightColor": "Highlight color: {{color}}",

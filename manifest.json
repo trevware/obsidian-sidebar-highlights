@@ -2,7 +2,7 @@
 	"id": "sidebar-highlights",
 	"name": "Sidebar Highlights and Tasks",
 	"version": "1.43.0",
-	"minAppVersion": "1.8.10",
+	"minAppVersion": "1.13.0",
 	"description": "Collect every highlight, comment and task in your vault into one sidebar. Sort highlights into collections and plan your tasks by day.",
 	"author": "trevware",
 	"authorUrl": "https://github.com/trevware",
