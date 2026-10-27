@@ -1,10 +1,11 @@
 # Sidebar Highlights and Tasks
 
-Collect every highlight, comment and task in your vault into one sidebar, then find your way back to them. It works with Obsidian's own markdown: highlights are `==text==`, comments are footnotes, and nothing is stored in a format only this plugin can read.
+Collect every highlight, comment and task in your vault into one sidebar, then find your way back to them. It works with Obsidian's own markdown: highlights are `==text==`, comments are footnotes, tasks are checkboxes, and nothing is stored in a format only this plugin can read.
 
 <p align="center">
   <picture>
-    <img src="https://github.com/user-attachments/assets/eebaa062-adee-4bda-b3ce-bdc0a536ecaf" alt="Preview">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/hero-dark.webp">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/hero-light.webp" alt="A note with its highlights listed in the sidebar beside it">
   </picture>
 </p>
 
@@ -35,7 +36,7 @@ Select text and choose **Create highlight** from the right-click menu, or run it
 | `<span style="background:yellow">text</span>` | Background color is read from the style |
 | `%%text%%` | A native Obsidian comment, shown in the sidebar in its own right |
 
-Hover a highlight in the sidebar to reveal its color picker. Your own names for the five palette colors live in **Settings → Color names**, and those names are what the color filter shows.
+Hover a highlight in the sidebar to reveal its color picker (on a phone, press and hold it). Your own names for the five palette colors live in **Settings → Color names**, and those names are what the color filter and color groups show.
 
 ## Comments
 
@@ -55,19 +56,18 @@ Comments are ordinary Obsidian footnotes, so they survive without this plugin in
 
 **Settings → Comments** chooses which style the plugin writes by default, and whether deleting a highlight takes its comments with it.
 
-## The sidebar
+## The Sidebar
 
-Five tabs, each remembering its own filters, grouping and sort:
+Four tabs, each remembering its own filters, grouping and sort:
 
 - **Current note**: highlights in the note you're reading
 - **Current folder**: every note in that note's folder, following you as you move around the vault. Widen it to subfolders from the overflow menu. *Hidden by default; enable in Settings → Views*
 - **All notes**: the whole vault, paginated
 - **Collections**: highlights you've grouped by hand, across any number of notes
-- **Tasks**: every task in the vault. *Hidden by default; enable in Settings → Views*
 
 Clicking anything takes you to it, in Editing or Reading view. **Follow editor scroll**, in the overflow menu, works the other way round: the sidebar tracks the highlight nearest what you're reading.
 
-The status bar keeps count of whatever the tab you're on is showing, after any search or filter: highlights, native comments and notes, or collections, or tasks. With the sidebar closed it counts the note you're in, and clicking it opens the sidebar.
+The status bar keeps count of whatever the tab you're on is showing, after any search or filter: highlights, native comments and notes, or collections. With the sidebar closed it counts the note you're in, and clicking it opens the sidebar.
 
 ### Search
 
@@ -92,14 +92,22 @@ The filter menu narrows what search alone can't:
 
 - **Type**: highlights and comments together, highlights only, or comments only
 - **Colors**: one or several at once, listing only the colors actually present
-- **Tags** and **Collections**: the same sets search reaches, pickable instead of typed
-- **Status** and **Due date**: in the Tasks tab, covering flagged, complete, overdue, due today and more
+- **Tags** and **Collections**: the same sets search reaches, picked from a list
 
 Filters and search compose, and the filter button lights up whenever a filter is active, so a narrowed list is never a mystery.
 
-### Grouping and sorting
+### Grouping and Sorting
 
-Group by color, tag, folder, collection, note, comment count or creation date. Group headings fold away, and stay folded across restarts. Sort alphabetically, by source note, or by when a highlight or note was created, plus by priority and due date in the Tasks tab.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/colors-dark.webp">
+  <img align="right" width="300" src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/colors-light.webp" alt="Highlights grouped by color, under the names Question, Quote and Next step">
+</picture>
+
+Group by color, heading, note, folder, collection, comment count or creation date. Group headings fold away, and stay folded across restarts. Sort alphabetically, by source note, or by when a highlight or note was created.
+
+Name your colors and grouping by color reads like a set of labels: the screenshot uses Key idea, Problem, Quote, Question and Next step.
+
+<br clear="right">
 
 ### Collections
 
@@ -109,25 +117,94 @@ Collections gather related highlights from anywhere in the vault.
 2. **Add** highlights with the collection button on any highlight
 3. **Jump** straight to one from the command palette, where each collection gets its own command as you create it
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/collections-dark.webp">
+    <img width="400" src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/collections-light.webp" alt="Two collections, Redesign brief and Interview quotes">
+  </picture>
+</p>
+
 ## Tasks
 
-The Tasks tab collects every checkbox in the vault: `- [ ]`, `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`.
+**Open tasks**, from the ribbon or the command palette, opens a tab with every checkbox in the vault. Each task stays in the note where you wrote it: ticking it, dating it or moving it changes that line, so the note is always the record.
 
-- Set due dates in natural language, like "tomorrow", "next Monday" or "+3d"
-- Group by due date with readable headings: Today, Tomorrow, weekday names, months
-- Flag what matters, and filter by flag, status or date
-- See each task's context, the indented lines beneath it, without leaving the sidebar
-- Metadata written by the Tasks plugin is hidden by default, in either the Dataview or emoji style
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-dark.webp">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-light.webp" alt="The Tasks tab on Today, with overdue tasks above today's">
+  </picture>
+</p>
 
-## Settings worth knowing
+### Lists
+
+- **Today**: what's overdue, what's due today, and anything in today's daily note. **Reschedule** moves everything overdue in one go
+- **Upcoming**: the days ahead, then weeks and months further out
+- **All Open**, **In Progress**, **Questions** and **Done**
+- Every note with open tasks, grouped by folder, with its tasks under their headings
+
+Each list keeps its own grouping and sorting, and whether it shows completed tasks, under **Display**.
+
+### Adding Tasks
+
+Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-dark.webp">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-light.webp" alt="Quick add reading a date and a priority out of the task as it's typed">
+  </picture>
+</p>
+
+### Working With Tasks
+
+- Click the box to complete a task, or ⌥-click it to cancel
+- Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status
+- Right-click it (or press and hold on a phone) for everything else: move it under another heading, copy it as Markdown, open it beside the note, delete it
+- Drag tasks to reorder them, or onto another heading to move them there
+- Undo any change from the message at the bottom, or with ⌘Z
+- ⌘K searches tasks, notes and commands, and **?** lists every keyboard shortcut
+
+### In the Sidebar
+
+**Open tasks in the sidebar** puts the same tab in the right sidebar, where it starts on **This Note**: the tasks of whichever note you're reading, under their headings.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-sidebar-dark.webp">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-sidebar-light.webp" alt="A project note with its tasks in the sidebar, grouped under the same headings">
+  </picture>
+</p>
+
+### What Counts as a Task
+
+Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. Metadata written by the Tasks plugin is hidden by default.
+
+## On Your Phone
+
+Everything works in Obsidian for iOS and Android. Swipe in from the right for your highlights, open **Tasks** from the menu, and press and hold a highlight or a task for the menu a right-click opens on a computer.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/phone-tasks-dark.webp">
+    <img width="280" src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/phone-tasks-light.webp" alt="The Tasks tab on a phone">
+  </picture>
+  &nbsp;&nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/phone-highlights-dark.webp">
+    <img width="280" src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/phone-highlights-light.webp" alt="A note's highlights in the sidebar on a phone">
+  </picture>
+</p>
+
+## Settings Worth Knowing
 
 Everything lives under **Settings → Sidebar Highlights and Tasks**.
 
-- **Views**: which of the five tabs appear, and whether the status bar shows counts
+- **Views**: which of the four sidebar tabs appear, and whether the status bar shows counts
 - **Display modes**: save your Display and Views settings as a named mode, and apply it from the command palette
 - **Detection**: whether HTML comments and adjacent native comments are picked up
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
+- **Tasks**: the date format your tasks use, and whether Tasks plugin metadata is hidden
 - **Typography** and **Styling**: font sizes and weights per element
 - **Backup and restore**: automatic backups of your collections and highlight metadata, with a retention limit
 
@@ -137,15 +214,16 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 
 **Manually**: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/trevware/obsidian-sidebar-highlights/releases), drop them in `.obsidian/plugins/sidebar-highlights/`, and enable the plugin.
 
-## Notes and limitations
+## Notes and Limitations
 
 - PDF highlights aren't supported
 - Highlights inside code blocks are ignored on purpose, so `==` in a DataviewJS block won't appear
-- Fully localized in English and Chinese (Simplified)
+- Available in English and Chinese (Simplified). The Tasks tab is in English for now
+- Screenshots use the [Minimal](https://github.com/kepano/obsidian-minimal) theme with the Flexoki color scheme
 
 Bugs and feature requests are welcome on [GitHub Issues](https://github.com/trevware/obsidian-sidebar-highlights/issues).
 
-## Support the project
+## Support the Project
 
 This plugin is free and always will be. It's built and maintained in my own time, and support is what makes that sustainable.
 
