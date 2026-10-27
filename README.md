@@ -219,7 +219,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - PDF highlights aren't supported
 - Highlights inside code blocks are ignored on purpose, so `==` in a DataviewJS block won't appear
 - Available in English and Chinese (Simplified). The Tasks tab is in English for now
-- Screenshots use the [Minimal](https://github.com/kepano/obsidian-minimal) theme with the Flexoki color scheme
+- Screenshots use the [Minimal](https://github.com/kepano/obsidian-minimal) theme with the Nord color scheme
 
 Bugs and feature requests are welcome on [GitHub Issues](https://github.com/trevware/obsidian-sidebar-highlights/issues).
 
