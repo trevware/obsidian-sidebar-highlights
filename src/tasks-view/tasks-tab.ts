@@ -50,6 +50,7 @@ import { TaskWriter } from './task-writer';
 import type { LineChange } from './task-writer';
 import { newHeadingLevel } from './task-move';
 import { TaskDrag } from './task-drag';
+import { NoteRefresher } from './note-refresh';
 import type { MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
@@ -563,21 +564,19 @@ export class TasksTabView extends ItemView {
     }
 
     /** Re-reads one note's tasks. Returns whether anything about them changed. */
-    private async refreshFile(path: string): Promise<boolean> {
-        const file = this.app.vault.getAbstractFileByPath(path);
-        const mine = this.allTasks.filter(task => task.filePath === path);
-        const others = this.allTasks.filter(task => task.filePath !== path);
-        const fresh = file instanceof TFile && this.taskManager.shouldProcessFile(file)
-            ? await this.taskManager.scanFileForTasks(file, true, true)
-            : [];
-        const signature = (tasks: Task[]) => tasks
-            .map(task => `${task.lineNumber}\u0001${task.marker}\u0001${task.indentLevel}\u0001${task.section}\u0001${task.text}\u0001${task.context.join('\u0002')}`)
-            .join('\u0003');
-        if (signature(mine) === signature(fresh)) return false;
-        this.allTasks = [...others, ...fresh];
-        this.dataVersion++;
-        return true;
+    private refreshFile(path: string): Promise<boolean> {
+        return this.noteRefresher.refresh(path, async () => {
+            const file = this.app.vault.getAbstractFileByPath(path);
+            return file instanceof TFile && this.taskManager.shouldProcessFile(file)
+                ? await this.taskManager.scanFileForTasks(file, true, true)
+                : [];
+        });
     }
+
+    private readonly noteRefresher = new NoteRefresher(() => this.allTasks, (tasks) => {
+        this.allTasks = tasks;
+        this.dataVersion++;
+    });
 
     private async refreshFiles(paths: Iterable<string>): Promise<boolean> {
         let changed = false;
