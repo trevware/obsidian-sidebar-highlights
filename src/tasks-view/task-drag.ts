@@ -17,6 +17,7 @@ import type { MoveTarget } from './task-move';
 import { isOpenTask } from './task-views';
 import { nearestGap, planDrag, shiftFor } from './drag-plan';
 import type { DragGap, DragItem, DragPlan } from './drag-plan';
+import { paintRun } from './row-runs';
 
 export interface DragHost {
     taskOf(row: HTMLElement): Task | undefined;
@@ -204,6 +205,7 @@ export class TaskDrag {
         window.getSelection()?.removeAllRanges();
         this.column.addClass('has-drag');
         for (let i = plan.blockStart; i < plan.blockEnd; i++) elements[i].addClass('is-dragging');
+        for (let i = plan.blockStart; i < plan.blockEnd; i++) paintRun(elements[i], 'is-dragging');
         if (tasks.length > 1) {
             press.row.createSpan({ cls: 'sh-drag-count', text: String(tasks.length) });
             // The other carried tasks fade where they are, with the subtasks
@@ -308,7 +310,7 @@ export class TaskDrag {
         lift.target?.removeClass('is-drop-target');
         if (animate) this.column.addClass('has-drag');
         for (const el of lift.elements) {
-            el.removeClass('is-dragging', 'is-drag-companion');
+            el.removeClass('is-dragging', 'is-drag-companion', 'joins-is-dragging');
             el.style.removeProperty('transform');
             el.querySelector('.sh-drag-count')?.remove();
         }

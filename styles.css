@@ -1,23 +1,25 @@
-/* Utility classes for show/hide functionality */
-/* Namespaced with sh- prefix to prevent conflicts with other plugins/themes */
-.sh-hidden {
-    display: none !important;
+/* Utility classes for show/hide functionality, namespaced with sh-.
+   A state has to win over any display rule on the element it marks, so each
+   selector carries :not(#sh), which adds an id's worth of specificity. The
+   same guard stands in for !important elsewhere in this file. */
+.sh-hidden:not(#sh) {
+    display: none;
 }
 
-.sh-visible {
-    display: block !important;
+.sh-visible:not(#sh) {
+    display: block;
 }
 
-.sh-visible-flex {
-    display: flex !important;
+.sh-visible-flex:not(#sh) {
+    display: flex;
 }
 
-.sh-visible-inline {
-    display: inline !important;
+.sh-visible-inline:not(#sh) {
+    display: inline;
 }
 
-.sh-visible-inline-block {
-    display: inline-block !important;
+.sh-visible-inline-block:not(#sh) {
+    display: inline-block;
 }
 
 /* Plugin does not style editor highlights - themes handle .cm-highlight completely */
@@ -315,7 +317,10 @@
     padding: 8px;
     border-bottom: 1px solid var(--background-modifier-border);
     flex-shrink: 0;
-    background: transparent !important;
+}
+
+.highlights-sidebar-content .highlights-search-container {
+    background: transparent;
 }
 
 .highlights-search-input {
@@ -346,63 +351,63 @@
     border-color: var(--background-modifier-border-hover);
 }
 
-.highlights-group-button {
+.highlights-sidebar-content button.highlights-group-button {
     -webkit-app-region: no-drag;
-    background-color: transparent !important;
+    background-color: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: var(--size-2-2) var(--size-2-3);
     cursor: var(--cursor);
     border-radius: var(--clickable-icon-radius);
-    color: var(--icon-color) !important;
+    color: var(--icon-color);
     opacity: var(--icon-opacity);
     transition: opacity 0.15s ease-in-out;
-    height: auto !important;
+    height: auto;
     border: none;
     font-family: var(--font-interface);
     box-sizing: border-box;
-    box-shadow: none !important;
+    box-shadow: none;
 }
 
 /* Push the overflow ("more") menu to the far right of the toolbar. */
-.highlights-group-button.highlights-overflow-button {
+.highlights-sidebar-content button.highlights-group-button.highlights-overflow-button {
     margin-left: auto;
 }
 
-.highlights-group-button:hover {
-    background-color: var(--background-modifier-hover) !important;
+.highlights-sidebar-content button.highlights-group-button:hover {
+    background-color: var(--background-modifier-hover);
     opacity: var(--icon-opacity-hover);
-    box-shadow: none !important;
+    box-shadow: none;
 }
 
-.highlights-group-button:active {
-    background-color: var(--background-modifier-active) !important;
-    box-shadow: none !important;
+.highlights-sidebar-content button.highlights-group-button:active {
+    background-color: var(--background-modifier-active);
+    box-shadow: none;
 }
 
-.highlights-group-button.active {
-    background-color: var(--background-modifier-active-hover) !important;
-    color: var(--icon-color-active) !important;
+.highlights-sidebar-content button.highlights-group-button.active {
+    background-color: var(--background-modifier-active-hover);
+    color: var(--icon-color-active);
     opacity: 1;
-    box-shadow: none !important;
+    box-shadow: none;
 }
 
-.highlights-group-button.active:hover {
-    background-color: var(--background-modifier-active-hover) !important;
-    box-shadow: none !important;
+.highlights-sidebar-content button.highlights-group-button.active:hover {
+    background-color: var(--background-modifier-active-hover);
+    box-shadow: none;
 }
 
-.highlights-group-button.is-active {
+.highlights-sidebar-content button.highlights-group-button.is-active {
     opacity: var(--icon-opacity-hover);
-    color: var(--icon-color-active) !important;
-    background-color: var(--background-modifier-active-hover) !important;
-    box-shadow: none !important;
+    color: var(--icon-color-active);
+    background-color: var(--background-modifier-active-hover);
+    box-shadow: none;
 }
 
-.highlights-group-button.is-active:hover {
-    background-color: var(--background-modifier-active-hover) !important;
-    box-shadow: none !important;
+.highlights-sidebar-content button.highlights-group-button.is-active:hover {
+    background-color: var(--background-modifier-active-hover);
+    box-shadow: none;
 }
 
 .search-term-highlight {
@@ -544,8 +549,8 @@
 }
 
 /* Native comment highlight card styling - similar to regular highlights but with muted appearance */
-.highlight-item-card.highlight-native-comment {
-    border-left-color: var(--text-muted) !important;
+.highlights-sidebar-content .highlight-item-card.highlight-native-comment {
+    border-left-color: var(--text-muted);
     background: var(--background-primary);
     opacity: 0.85;
 }
@@ -555,8 +560,8 @@
     opacity: 1;
 }
 
-.highlight-item-card.highlight-native-comment.highlight-selected {
-    box-shadow: 0 0 0 1.5px var(--text-muted), var(--shadow-s) !important;
+.highlights-sidebar-content .highlight-item-card.highlight-native-comment.highlight-selected {
+    box-shadow: 0 0 0 1.5px var(--text-muted), var(--shadow-s);
 }
 
 /* Hover-based color picker - only triggered by left border hover */
@@ -673,8 +678,8 @@
     overflow: visible;
 }
 
-.highlight-filename {
-    color: var(--text-muted) !important;
+.highlights-sidebar-content .highlight-filename {
+    color: var(--text-muted);
     font-size: var(--sh-details-font-size, var(--font-ui-smaller));
     margin-bottom: 4px;
     display: block;
@@ -683,8 +688,8 @@
     order: -1; /* Ensures filename appears first */
 }
 
-.highlight-filename:hover {
-    color: var(--text-normal) !important;
+.highlights-sidebar-content .highlight-filename:hover {
+    color: var(--text-normal);
     text-decoration: underline;
 }
 
@@ -778,7 +783,7 @@
 
 .icon-btn.remove:hover {
     background: var(--text-error);
-    color: white;
+    color: var(--text-on-accent);
     border-color: var(--text-error);
 }
 
@@ -820,8 +825,8 @@
 }
 
 /* Override menu item border-radius for tag filter dropdown - scoped to plugin context only */
-.highlights-dropdown-menu .menu .menu-item {
-    border-radius: 0 !important;
+.highlights-dropdown-menu .menu .menu-item:not(#sh) {
+    border-radius: 0;
 }
 
 /* Highlight tags display */
@@ -880,18 +885,18 @@
 }
 
 /* Tabs container */
-.highlights-tabs-container {
+.highlights-sidebar-content .highlights-tabs-container {
     display: flex;
-    background: transparent !important;
+    background: transparent;
     flex-shrink: 0;
 }
 
-.highlights-tab {
+.highlights-sidebar-content button.highlights-tab {
     flex: 1;
     padding: 10px 0;
-    border: none !important;
-    background: transparent !important;
-    color: var(--text-muted) !important;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
     font-size: var(--font-ui-small);
     font-family: var(--font-interface);
     font-weight: var(--font-weight-normal);
@@ -900,19 +905,19 @@
     text-align: center;
     text-decoration: none;
     position: relative;
-    box-shadow: none !important;
+    box-shadow: none;
 }
 
-.highlights-tab:hover {
-    color: var(--text-normal) !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
+.highlights-sidebar-content button.highlights-tab:hover {
+    color: var(--text-normal);
+    background-color: transparent;
+    box-shadow: none;
 }
 
-.highlights-tab.active {
-    color: var(--text-normal) !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
+.highlights-sidebar-content button.highlights-tab.active {
+    color: var(--text-normal);
+    background-color: transparent;
+    box-shadow: none;
 }
 
 .highlights-tab.active::after {
@@ -975,7 +980,7 @@
 }
 
 /* Add padding only when there's a grid (not for empty state) */
-.collections-container:has(.collections-grid) {
+.collections-container.has-grid {
     padding: 12px;
 }
 
@@ -1109,7 +1114,7 @@
 .collection-delete-btn:hover {
     background: var(--text-error);
     border-color: var(--text-error);
-    color: white;
+    color: var(--text-on-accent);
 }
 
 .collection-delete-btn svg {
@@ -1257,8 +1262,8 @@
     opacity: 0.6;
 }
 
-.highlight-quote-copy-button:hover {
-    opacity: 1 !important;
+.highlight-quote:hover .highlight-quote-copy-button:hover {
+    opacity: 1;
     color: var(--text-normal);
 }
 
@@ -1323,8 +1328,8 @@
 }
 
 /* Search input container visibility */
-.highlights-search-input-container.hidden {
-    display: none !important;
+.highlights-search-input-container.hidden:not(#sh) {
+    display: none;
 }
 
 /* Collection info line styling */
@@ -1432,21 +1437,21 @@
     transition: top 0.15s ease-out, left 0.15s ease-out;
 }
 
-/* Corner radius for dropdown items - need !important to override existing rule */
-.highlights-dropdown-menu .menu-item {
-    border-radius: 0 !important;
+/* Corner radius for dropdown items, guarded to win over the app's and themes' menu rules */
+.highlights-dropdown-menu .menu-item:not(#sh) {
+    border-radius: 0;
 }
 
-.highlights-dropdown-menu .menu-item.first-menu-item {
-    border-radius: var(--radius-m) var(--radius-m) 0 0 !important;
+.highlights-dropdown-menu .menu-item.first-menu-item:not(#sh) {
+    border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
 
-.highlights-dropdown-menu .menu-item.last-menu-item {
-    border-radius: 0 0 var(--radius-m) var(--radius-m) !important;
+.highlights-dropdown-menu .menu-item.last-menu-item:not(#sh) {
+    border-radius: 0 0 var(--radius-m) var(--radius-m);
 }
 
-.highlights-dropdown-menu .menu-item.only-menu-item {
-    border-radius: var(--radius-m) !important;
+.highlights-dropdown-menu .menu-item.only-menu-item:not(#sh) {
+    border-radius: var(--radius-m);
 }
 
 .highlights-dropdown-menu .menu-item.disabled {
@@ -1519,20 +1524,20 @@
 
 /* Collection navigation back button styling */
 .collection-nav-back {
-    background-color: var(--interactive-accent) !important;
-    color: var(--text-on-accent) !important;
-    border-color: var(--interactive-accent) !important;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
 }
 
 /* Disabled button styling */
-.highlights-group-button.disabled {
-    opacity: 0.5 !important;
-    pointer-events: none !important;
+.highlights-sidebar-content button.highlights-group-button.disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
-.highlights-search-input.disabled {
-    opacity: 0.5 !important;
-    pointer-events: none !important;
+.highlights-sidebar-content .highlights-search-input.disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* Pagination controls for "All Notes" performance */
@@ -1656,11 +1661,9 @@
 
 /* Collapsible groups — chevron affordance matching Sidebar RSS */
 
-/* Group collapse hides via a class while task sections hide via inline display,
-   so the two compose: expanding a group restores each section to its own state
-   instead of revealing everything. */
-.group-collapsed {
-    display: none !important;
+/* A folded group's content. */
+.group-collapsed:not(#sh) {
+    display: none;
 }
 
 .highlight-group-header.highlight-group-collapsible {
@@ -2504,7 +2507,7 @@
     border-top-right-radius: 0;
 }
 
-.sh-task-row.is-selected:has(+ .sh-task-row.is-selected) {
+.sh-task-row.is-selected.joins-is-selected {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -2534,7 +2537,7 @@
     border-top-right-radius: 0;
 }
 
-.sh-task-row.is-dragging:has(+ .sh-task-row.is-dragging) {
+.sh-task-row.is-dragging.joins-is-dragging {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -2635,10 +2638,8 @@
     color: var(--text-muted);
 }
 
-.sh-task-row.is-resolved:has(.sh-task-glyph[data-status="done"]) .sh-task-title,
-.sh-task-row.is-resolved:has(.sh-task-glyph[data-status="cancelled"]) .sh-task-title {
+.sh-task-row.is-resolved:is([data-status="done"], [data-status="cancelled"]) .sh-task-title {
     text-decoration: line-through;
-    text-decoration-color: var(--text-faint);
 }
 
 .sh-task-meta {
@@ -3607,9 +3608,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sh-tasks-view *,
-    .sh-tasks-view *::after {
-        transition: none !important;
+    .sh-tasks-view *:not(#sh),
+    .sh-tasks-view *:not(#sh)::after {
+        transition: none;
     }
 }
 

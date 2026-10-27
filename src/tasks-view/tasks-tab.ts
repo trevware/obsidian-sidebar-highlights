@@ -51,6 +51,7 @@ import type { LineChange } from './task-writer';
 import { newHeadingLevel } from './task-move';
 import { TaskDrag } from './task-drag';
 import { NoteRefresher } from './note-refresh';
+import { paintRun } from './row-runs';
 import type { MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
@@ -1102,6 +1103,7 @@ export class TasksTabView extends ItemView {
         const key = taskKey(task);
         row.setCssProps({ '--sh-indent': String(task.indentLevel) });
         row.toggleClass('is-resolved', !isOpenTask(task));
+        row.dataset.status = statusOf(task);
         row.toggleClass('is-lingering', this.lingering.has(key));
         this.rowTasks.set(key, task);
         this.rowGroups.set(key, group);
@@ -1525,11 +1527,24 @@ export class TasksTabView extends ItemView {
             row?.addClass('is-highlighted');
             this.paintedHighlight = this.highlightKey;
         }
+        const changed: HTMLElement[] = [];
         for (const key of this.paintedSelection) {
-            if (!this.selected.has(key)) this.rowEls.get(key)?.removeClass('is-selected');
+            if (this.selected.has(key)) continue;
+            const row = this.rowEls.get(key);
+            row?.removeClass('is-selected');
+            if (row) changed.push(row);
         }
         for (const key of this.selected) {
-            if (!this.paintedSelection.has(key)) this.rowEls.get(key)?.addClass('is-selected');
+            if (this.paintedSelection.has(key)) continue;
+            const row = this.rowEls.get(key);
+            row?.addClass('is-selected');
+            if (row) changed.push(row);
+        }
+        // A row's join depends on the row after it, so the row before each
+        // change is repainted too.
+        for (const row of changed) {
+            paintRun(row, 'is-selected');
+            paintRun(row.previousElementSibling, 'is-selected');
         }
         this.paintedSelection = new Set(this.selected);
         this.column?.toggleClass('has-expanded', this.expandedKey !== null && this.rowEls.has(this.expandedKey));
@@ -2064,6 +2079,7 @@ export class TasksTabView extends ItemView {
             void glyph.offsetWidth;
             glyph.addClass('is-just-changed');
             row.toggleClass('is-resolved', status === 'done' || status === 'cancelled');
+            row.dataset.status = status;
             this.previewed.add(key);
         }
     }

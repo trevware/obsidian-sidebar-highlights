@@ -913,6 +913,9 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private applyHighlightColorStyling(element: HTMLElement, highlight: Highlight) {
+        // A native comment with no colour of its own keeps the grey edge its
+        // class gives it.
+        if (highlight.isNativeComment && !highlight.color) return;
         const highlightColor = highlight.color || this.plugin.settings.highlightColor;
         element.style.borderLeftColor = highlightColor;
         if (!highlight.isNativeComment) {
@@ -1102,6 +1105,7 @@ export class HighlightsSidebarView extends ItemView {
     }
 
     private renderCollectionsGrid(container: HTMLElement, collections: Collection[]) {
+        container.addClass('has-grid');
         const grid = container.createDiv({ cls: 'collections-grid' });
         
         collections.forEach(collection => {
@@ -2277,11 +2281,7 @@ export class HighlightsSidebarView extends ItemView {
                         // Find the highlight data to get the updated color
                         const selectedHighlight = this.getHighlightById(this.plugin.selectedHighlightId);
                         if (selectedHighlight) {
-                            const highlightColor = selectedHighlight.color || this.plugin.settings.highlightColor;
-                            selectedEl.style.borderLeftColor = highlightColor;
-                            if (!selectedHighlight.isNativeComment) {
-                                selectedEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-                            }
+                            this.applyHighlightColorStyling(selectedEl, selectedHighlight);
                         }
                     }
                 }
@@ -2849,11 +2849,7 @@ export class HighlightsSidebarView extends ItemView {
                 newEl.classList.add('highlight-selected');
                 
                 // Update border color and box-shadow to reflect current color
-                const highlightColor = newHighlight.color || this.plugin.settings.highlightColor;
-                newEl.style.borderLeftColor = highlightColor;
-                if (!newHighlight.isNativeComment) {
-                    newEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-                }
+                this.applyHighlightColorStyling(newEl, newHighlight);
             }
         }
         
@@ -5143,11 +5139,7 @@ export class HighlightsSidebarView extends ItemView {
 
         // Apply selected styling to the new target
         targetEl.classList.add('selected', 'highlight-selected');
-        const highlightColor = highlight.color || this.plugin.settings.highlightColor;
-        targetEl.style.borderLeftColor = highlightColor;
-        if (!highlight.isNativeComment) {
-            targetEl.style.boxShadow = `0 0 0 1.5px ${highlightColor}, var(--shadow-s)`;
-        }
+        this.applyHighlightColorStyling(targetEl, highlight);
 
         this.followScrollSelectedId = highlight.id;
     }
