@@ -13,22 +13,22 @@ describe('DeferredSave', () => {
         const run = jest.fn();
         const save = new DeferredSave(run, 1000);
 
-        save.request();
-        save.request();
-        save.request();
+        save.schedule();
+        save.schedule();
+        save.schedule();
         expect(run).not.toHaveBeenCalled();
 
         jest.advanceTimersByTime(1000);
         expect(run).toHaveBeenCalledTimes(1);
     });
 
-    it('restarts the quiet period on each request', () => {
+    it('restarts the quiet period on each schedule', () => {
         const run = jest.fn();
         const save = new DeferredSave(run, 1000);
 
-        save.request();
+        save.schedule();
         jest.advanceTimersByTime(800);
-        save.request();
+        save.schedule();
         jest.advanceTimersByTime(800);
         expect(run).not.toHaveBeenCalled();
 
@@ -41,7 +41,7 @@ describe('DeferredSave', () => {
         const save = new DeferredSave(run, 1000);
 
         expect(save.cancel()).toBe(false);
-        save.request();
+        save.schedule();
         expect(save.cancel()).toBe(true);
 
         jest.advanceTimersByTime(5000);
@@ -52,7 +52,7 @@ describe('DeferredSave', () => {
         const run = jest.fn();
         const save = new DeferredSave(run, 1000);
 
-        save.request();
+        save.schedule();
         save.flush();
         expect(run).toHaveBeenCalledTimes(1);
 

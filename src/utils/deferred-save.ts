@@ -2,7 +2,7 @@
  * A write that waits for a quiet spell, so a burst of highlight edits reaches
  * data.json as a single write (issue #126).
  *
- * Every request restarts the wait. A direct save makes a pending one redundant
+ * Every schedule restarts the wait. A direct save makes a pending one redundant
  * and cancels it, and so does settings arriving from another device, since the
  * pending write would only send them straight back.
  *
@@ -14,7 +14,7 @@ export class DeferredSave {
     constructor(private readonly run: () => void, private readonly delayMs: number) {}
 
     /** Schedule the write, or push a scheduled one back to a full delay from now. */
-    request(): void {
+    schedule(): void {
         this.cancel();
         this.timer = window.setTimeout(() => {
             this.timer = null;

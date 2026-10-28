@@ -2658,7 +2658,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         const owesWrite = shouldSave && persistentChanged;
         this.unsavedHighlightFiles.set(file.path, owesWrite || this.unsavedHighlightFiles.get(file.path) === true);
         if (owesWrite) {
-            this.deferredSave.request();
+            this.deferredSave.schedule();
         }
         if (shouldRefresh) {
             this.smartUpdateSidebar(existingHighlightsForFile, newHighlights);
