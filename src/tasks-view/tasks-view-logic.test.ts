@@ -1,5 +1,6 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, contextRange, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, taskBlockEnd, withState } from './task-line';
+import { buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
+import { capitalizeFirst } from './capitalize';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
@@ -143,6 +144,53 @@ describe('task-line', () => {
         expect(insertionLine(['# A', '- [ ] one', '', '## B', 'text'])).toBe(5);
         expect(insertionLine(['- [ ] a', '', ''])).toBe(1);
         expect(insertionLine(['## A', '- [ ] a'], 'Missing')).toBe(2);
+    });
+
+    it('edits a task\'s words without its date or sync marker', () => {
+        const synced = 'Get each CSM\'s OK #followup 2026-08-07 [↗](https://app.todoist.com/app/task/abc)';
+        expect(editableTitle(synced, '2026-08-07')).toBe('Get each CSM\'s OK #followup');
+        expect(withTitle(synced, '2026-08-07', 'Get every CSM\'s OK #followup'))
+            .toBe('Get every CSM\'s OK #followup 2026-08-07 [↗](https://app.todoist.com/app/task/abc)');
+        expect(editableTitle('2026-10-20 Call Sam', '2026-10-20')).toBe('Call Sam');
+        expect(withTitle('2026-10-20 Call Sam', '2026-10-20', 'Call Sam back')).toBe('2026-10-20 Call Sam back');
+        expect(withTitle('Call Sam', undefined, '  Call   Sam back ')).toBe('Call Sam back');
+        expect(withTitle('Read [the post](https://x.y)', undefined, 'Read [the post](https://x.y) twice')).toBe('Read [the post](https://x.y) twice');
+    });
+
+    it('adds a subtask after the task\'s notes and last subtask', () => {
+        const lines = ['- [ ] Parent', '\t- a note', '', '\t- [ ] Child', '\t\t- child note', '', '- [ ] Next'];
+        expect(subtaskLines(lines, 0, ['- [ ] New'])).toEqual({ at: 5, lines: ['\t- [ ] New'] });
+        expect(subtaskLines(lines, 3, ['- [ ] Deeper'])).toEqual({ at: 5, lines: ['\t\t- [ ] Deeper'] });
+        expect(subtaskLines(lines, 1, ['- [ ] x'])).toBeNull();
+    });
+
+    it('indents a first subtask the way the note indents its lists', () => {
+        expect(subtaskLines(['- [ ] Alone', '- [ ] Next'], 0, ['- [ ] a'])).toEqual({ at: 1, lines: ['\t- [ ] a'] });
+        expect(subtaskLines(['- [ ] Alone', '', '- [ ] Other', '  - [ ] two-space'], 0, ['- [ ] a'])?.lines).toEqual(['  - [ ] a']);
+        expect(subtaskLines(['    - [ ] Nested', '- [ ] Next'], 0, ['- [ ] a'])?.lines).toEqual(['        - [ ] a']);
+        expect(subtaskLines(['- [ ] Parent', '    - [ ] Spaced child'], 0, ['- [ ] a'])?.lines).toEqual(['    - [ ] a']);
+        expect(subtaskLines(['> - [ ] In a callout', '> - [ ] Next'], 0, ['- [ ] a'])).toEqual({ at: 1, lines: ['> \t- [ ] a'] });
+    });
+});
+
+describe('capitalize', () => {
+    it('capitalizes the first word', () => {
+        expect(capitalizeFirst('call the dentist')).toBe('Call the dentist');
+        expect(capitalizeFirst('éclair run')).toBe('Éclair run');
+        expect(capitalizeFirst('**buy** milk')).toBe('**Buy** milk');
+        expect(capitalizeFirst('"quote" it')).toBe('"Quote" it');
+        expect(capitalizeFirst('Already fine')).toBe('Already fine');
+    });
+
+    it('leaves links, tags, code, addresses and mixed-case words alone', () => {
+        expect(capitalizeFirst('[[note]] review')).toBe('[[note]] review');
+        expect(capitalizeFirst('#followup ask Sam')).toBe('#followup ask Sam');
+        expect(capitalizeFirst('`npm` update')).toBe('`npm` update');
+        expect(capitalizeFirst('https://x.y read')).toBe('https://x.y read');
+        expect(capitalizeFirst('www.x.y read')).toBe('www.x.y read');
+        expect(capitalizeFirst('iPhone backup')).toBe('iPhone backup');
+        expect(capitalizeFirst('2026 plan')).toBe('2026 plan');
+        expect(capitalizeFirst('')).toBe('');
     });
 });
 

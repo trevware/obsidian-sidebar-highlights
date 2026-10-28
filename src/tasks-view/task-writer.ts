@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
-import { contextRange, insertionLine, locateTaskLine, notesLines, taskBlockEnd } from './task-line';
+import { contextRange, insertionLine, locateTaskLine, notesLines, subtaskLines, taskBlockEnd } from './task-line';
 import { moveTasks } from './task-move';
 import type { MoveTarget } from './task-move';
 
@@ -150,6 +150,27 @@ export class TaskWriter {
             return lines.join('\n');
         });
         return at;
+    }
+
+    /**
+     * Add lines as subtasks of a task, after its notes and its last subtask.
+     * Returns where they went and the lines as written, or null when the note
+     * or the task is gone.
+     */
+    async insertUnder(path: string, parent: { line: number; text: string }, newLines: readonly string[]): Promise<{ at: number; lines: string[] } | null> {
+        const file = this.file(path);
+        if (!file || newLines.length === 0) return null;
+
+        let placed: { at: number; lines: string[] } | null = null;
+        await this.app.vault.process(file, (data) => {
+            const lines = data.split('\n');
+            const index = locateTaskLine(lines, parent.line, parent.text);
+            placed = index === -1 ? null : subtaskLines(lines, index, newLines);
+            if (!placed) return data;
+            lines.splice(placed.at, 0, ...placed.lines);
+            return lines.join('\n');
+        });
+        return placed;
     }
 
     /** Remove lines this tab just added, for undoing a quick add. */

@@ -71,6 +71,37 @@ export function setDateInText(text: string, oldDateText: string | undefined, new
     return `${text.trimEnd()} ${newDate}`;
 }
 
+/** The marker links at the end of a task's text, with the space before them, or ''. */
+function trailingMarker(text: string): string {
+    const marker = text.match(TRAILING_MARKER);
+    return marker && marker.index !== undefined && marker.index > 0 ? text.slice(marker.index) : '';
+}
+
+/**
+ * A task's words as you'd edit them: its text without its date and without a
+ * trailing marker link, both of which keep their places when the words are
+ * saved with `withTitle`.
+ */
+export function editableTitle(text: string, dateText: string | undefined): string {
+    const marker = trailingMarker(text);
+    let body = text.slice(0, text.length - marker.length);
+    if (dateText && body.includes(dateText)) body = body.replace(dateText, '');
+    return body.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A task's text with new words. A date that led the text stays in front, any
+ * other date follows the words, and a trailing marker link stays last.
+ */
+export function withTitle(text: string, dateText: string | undefined, title: string): string {
+    const marker = trailingMarker(text);
+    const body = text.slice(0, text.length - marker.length);
+    const words = title.replace(/\s+/g, ' ').trim();
+    if (!dateText || !body.includes(dateText)) return `${words}${marker}`;
+    const leads = body.trimStart().startsWith(dateText);
+    return `${leads ? `${dateText} ${words}` : `${words} ${dateText}`}${marker}`;
+}
+
 /**
  * Find a task's line again. The recorded line number is tried first, then the
  * nearest line carrying exactly the same task text, so an edit made after the
@@ -172,6 +203,48 @@ export function taskBlockEnd(lines: string[], index: number): number {
         else break;
     }
     return end;
+}
+
+/**
+ * One step of list indent in a note: a tab when the note indents its lists
+ * with tabs, else its smallest run of spaces, and a tab for a note with no
+ * indented lists yet, which is how Obsidian indents by default.
+ */
+function indentStep(lines: string[], taskIndent: string): string {
+    if (taskIndent.includes('\t')) return '\t';
+    let spaces = Infinity;
+    for (const line of lines) {
+        const lead = line.replace(/^>+ ?/, '').match(/^([ \t]+)(?:[-*+]|\d+[.)])\s/)?.[1];
+        if (!lead) continue;
+        if (lead.includes('\t')) return '\t';
+        spaces = Math.min(spaces, lead.length);
+    }
+    return spaces === Infinity ? '\t' : ' '.repeat(spaces);
+}
+
+/**
+ * New lines as subtasks of the task at `index`: placed after its notes and
+ * its last subtask, indented like its other subtasks, or one step deeper than
+ * the task when it has none, and inside the same callout. Returns where they
+ * go and the lines as they'll be written, or null when `index` isn't a task.
+ */
+export function subtaskLines(lines: string[], index: number, newLines: readonly string[]): { at: number; lines: string[] } | null {
+    const parsed = parseTaskLine(lines[index] ?? '');
+    if (!parsed) return null;
+    const at = taskBlockEnd(lines, index);
+    const prefix = parsed.prefix.trimEnd();
+    const base = indentWidth(parsed.indent);
+
+    let indent: string | undefined;
+    for (let i = index + 1; i < at && indent === undefined; i++) {
+        let line = lines[i];
+        if (prefix && line.startsWith(prefix)) line = line.slice(prefix.length).replace(/^ /, '');
+        const lead = line.match(/^(\s*)(?:[-*+]|\d+[.)])\s/)?.[1];
+        if (lead !== undefined && indentWidth(lead) > base) indent = lead;
+    }
+    indent ??= parsed.indent + indentStep(lines, parsed.indent);
+
+    return { at, lines: newLines.map(line => `${parsed.prefix}${indent}${line}`) };
 }
 
 /**

@@ -4,6 +4,7 @@ import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
 import type { QuickParse } from './quick-parse';
 import { buildTaskLine } from './task-line';
+import { capitalizeFirst } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
 import { hint } from './glass-palette';
 import { t } from '../i18n';
@@ -13,6 +14,8 @@ export interface Destination {
     heading?: string;
     /** Which of two headings with the same name. */
     headingLine?: number;
+    /** A task to add under, as a subtask. */
+    parent?: { line: number; text: string; title: string };
 }
 
 export interface QuickAddPrefill {
@@ -32,6 +35,8 @@ export interface QuickAddHost {
     chooseDestination: (done: (destination: Destination) => void) => void;
     /** Writes the lines; resolves false when nothing could be written. */
     submit: (lines: string[], destination: Destination) => Promise<boolean>;
+    /** Whether a task's first word gets a capital letter. */
+    capitalize: () => boolean;
     onClose: () => void;
 }
 
@@ -98,6 +103,7 @@ export class QuickAdd {
         this.mirror = field.createDiv({ cls: 'sh-quickadd-mirror' });
         this.input = field.createEl('input', { cls: 'sh-quickadd-input', type: 'text' });
         this.input.placeholder = t('tasksTab.quickAdd.placeholder');
+        if (this.host.capitalize()) this.input.setAttr('autocapitalize', 'sentences');
         this.input.value = this.draft.text;
         this.input.addEventListener('input', () => {
             this.draft.text = this.input?.value ?? '';
@@ -174,7 +180,7 @@ export class QuickAdd {
         if (parsed.title === '') return null;
         const date = parsed.date ?? fallback.date;
         return buildTaskLine({
-            text: parsed.title,
+            text: this.host.capitalize() ? capitalizeFirst(parsed.title) : parsed.title,
             priority: parsed.priority ?? fallback.priority,
             date: date ? this.host.formatDate(date) : undefined
         });
@@ -233,7 +239,7 @@ export class QuickAdd {
         if (priority) priorityChip.dataset.priority = String(priority);
 
         const destination = this.draft.destination;
-        this.chip(chips, 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
+        this.chip(chips, destination?.parent ? 'corner-down-right' : 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
             () => this.chooseNote());
     }
 

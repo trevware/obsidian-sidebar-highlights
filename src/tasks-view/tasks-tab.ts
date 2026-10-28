@@ -43,7 +43,8 @@ import {
     tasksForList
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
-import { notesText, parseTaskLine, setDateInText, withState } from './task-line';
+import { editableTitle, notesText, parseTaskLine, setDateInText, withState, withText, withTitle } from './task-line';
+import { capitalizeFirst } from './capitalize';
 import { parseDateQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
@@ -284,6 +285,7 @@ export class TasksTabView extends ItemView {
             defaultDestination: () => this.defaultDestination(),
             chooseDestination: (done) => this.pickDestination(done),
             submit: (lines, destination) => this.addLines(lines, destination),
+            capitalize: () => this.plugin.settings.capitalizeTasks,
             onClose: () => this.focusList()
         });
 
@@ -1197,7 +1199,8 @@ export class TasksTabView extends ItemView {
             if (!row) return;
             row.toggleClass('is-lingering', this.lingering.has(key));
             const signature = this.rowSignature(task, group, progress);
-            if (signature === this.rowSigs.get(key) && !this.justChanged.has(key)) {
+            // A name being edited keeps its field; the save finds the line again.
+            if ((signature === this.rowSigs.get(key) && !this.justChanged.has(key)) || row.querySelector('.sh-title-editor')) {
                 this.rowTasks.set(key, task);
                 return;
             }
@@ -1252,7 +1255,7 @@ export class TasksTabView extends ItemView {
             }
             return;
         }
-        if (target.closest('a, .sh-task-card')) return;
+        if (target.closest('a, textarea, .sh-task-card')) return;
 
         const row = target.closest<HTMLElement>('.sh-task-row');
         if (!row) {
@@ -1280,6 +1283,12 @@ export class TasksTabView extends ItemView {
             return;
         }
 
+        // The open task's name edits in place.
+        if (key === this.expandedKey && target.closest('.sh-task-title') && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+            this.editTitle(row, task);
+            return;
+        }
+
         this.clickRow(task, event);
     }
 
@@ -1287,7 +1296,7 @@ export class TasksTabView extends ItemView {
         // The first click of this double-click already opened the card.
         if (Date.now() - this.cardByClickAt < 600) return;
         const target = event.target as HTMLElement;
-        if (target.closest('a, button, .sh-task-card')) return;
+        if (target.closest('a, button, textarea, .sh-task-card')) return;
         const row = target.closest<HTMLElement>('.sh-task-row');
         const task = row ? this.rowTasks.get(row.dataset.key ?? '') : undefined;
         if (task) this.toggleExpanded(task);
@@ -1295,7 +1304,7 @@ export class TasksTabView extends ItemView {
 
     private onListContextMenu(event: MouseEvent): void {
         const target = event.target as HTMLElement;
-        if (target.closest('.sh-task-card textarea')) return;
+        if (target.closest('textarea')) return;
         const row = target.closest<HTMLElement>('.sh-task-row');
         const key = row?.dataset.key ?? '';
         const task = this.rowTasks.get(key);
@@ -1324,6 +1333,7 @@ export class TasksTabView extends ItemView {
         this.cardField(fields, 'flag', task.priority ? `P${task.priority}` : t('tasksTab.quickAdd.priority'), undefined, () => this.openPalette(this.priorityStage([task])))
             .dataset.priority = task.priority ? String(task.priority) : '';
         this.cardField(fields, 'circle-dot', this.statusLabel(task), undefined, () => this.openPalette(this.statusStage([task])));
+        this.cardField(fields, 'corner-down-right', t('tasksTab.actions.addSubtask'), undefined, () => this.addSubtask(task));
 
         const where = card.createDiv({ cls: 'sh-card-where' });
         setIcon(where.createSpan({ cls: 'sh-meta-icon' }), 'file-text');
@@ -1449,6 +1459,83 @@ export class TasksTabView extends ItemView {
                 await this.refreshFile(change.path);
                 this.update();
             }
+        });
+    }
+
+    /**
+     * The open task's name, edited in place as plain text. ↵ or clicking
+     * away saves and Escape puts it back. The date and a sync marker at the
+     * end of the line stay where they are.
+     */
+    private editTitle(row: HTMLElement, task: Task): void {
+        const title = row.querySelector<HTMLElement>(':scope > .sh-task-line .sh-task-title');
+        if (!title) return;
+        const original = editableTitle(task.text, task.dateText);
+        const editor = createEl('textarea', { cls: 'sh-title-editor' });
+        editor.value = original;
+        editor.rows = 1;
+        editor.spellcheck = true;
+        editor.setAttr('enterkeyhint', 'done');
+        if (this.plugin.settings.capitalizeTasks) editor.setAttr('autocapitalize', 'sentences');
+        title.replaceWith(editor);
+        const fit = () => {
+            editor.setCssProps({ height: 'auto' });
+            editor.setCssProps({ height: `${editor.scrollHeight}px` });
+        };
+
+        let done = false;
+        // Caught at the window, where Obsidian's own hotkeys listen, so
+        // Escape and ⌘↵ reach the field first.
+        const onWindowKey = (event: KeyboardEvent) => {
+            if (document.activeElement !== editor || event.isComposing) return;
+            if (event.key === 'Escape' || event.key === 'Enter') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                void finish(event.key === 'Enter').then(() => this.focusList());
+            }
+        };
+        window.addEventListener('keydown', onWindowKey, true);
+
+        const finish = async (save: boolean) => {
+            if (done) return;
+            done = true;
+            window.removeEventListener('keydown', onWindowKey, true);
+            const typed = editor.value.replace(/\s+/g, ' ').trim();
+            const words = this.plugin.settings.capitalizeTasks ? capitalizeFirst(typed) : typed;
+            const changed = save && words !== '' && words !== original;
+            if (changed) title.setText(words);
+            if (editor.isConnected) editor.replaceWith(title);
+            if (changed) await this.renameTask(task, words);
+        };
+
+        editor.addEventListener('input', fit);
+        editor.addEventListener('blur', () => void finish(true));
+        editor.focus();
+        editor.select();
+        fit();
+    }
+
+    private async renameTask(task: Task, words: string): Promise<void> {
+        const text = withTitle(task.text, task.dateText, words);
+        await this.write([task], t('tasksTab.notices.renamed', { task: truncate(words, 40) }), line => withText(line, text));
+    }
+
+    /** Opens a task's card with its name ready to edit. */
+    private startRename(task: Task): void {
+        const key = taskKey(task);
+        this.selected.clear();
+        this.highlightKey = key;
+        if (this.expandedKey !== key) this.setExpanded(key);
+        this.paintSelection();
+        this.scrollToRow(key);
+        const row = this.rowEls.get(key);
+        if (row) this.editTitle(row, task);
+    }
+
+    /** Quick add, aimed under a task, so what you type becomes its subtask. */
+    private addSubtask(task: Task): void {
+        this.openQuickAdd({
+            destination: { path: task.filePath, parent: { line: task.lineNumber, text: task.text, title: this.plainText(task) } }
         });
     }
 
@@ -1830,6 +1917,20 @@ export class TasksTabView extends ItemView {
                 consume();
                 this.openMoveStage(this.targets());
                 return;
+            case lower === 'r' || key === 'F2': {
+                const task = this.findTask(this.highlightKey);
+                if (!task) return;
+                consume();
+                this.startRename(task);
+                return;
+            }
+            case lower === 'a': {
+                const task = this.findTask(this.highlightKey);
+                if (!task) return;
+                consume();
+                this.addSubtask(task);
+                return;
+            }
             case lower === 'q' || lower === 'n':
                 consume();
                 this.openQuickAdd();
@@ -2051,8 +2152,7 @@ export class TasksTabView extends ItemView {
     }
 
     private plainText(task: Task): string {
-        const text = task.dateText ? task.text.replace(task.dateText, '') : task.text;
-        return text.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s{2,}/g, ' ').trim();
+        return editableTitle(task.text, task.dateText).replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s{2,}/g, ' ').trim();
     }
 
     private async toggleComplete(tasks: Task[]): Promise<void> {
@@ -2135,24 +2235,41 @@ export class TasksTabView extends ItemView {
     }
 
     private async addLines(lines: string[], destination: Destination): Promise<boolean> {
-        const at = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine);
-        if (at === -1) {
-            new Notice(t('tasksTab.notices.noteMissing'));
-            return false;
+        const parent = destination.parent;
+        let at: number;
+        let written = lines;
+        if (parent) {
+            const placed = await this.writer.insertUnder(destination.path, parent, lines);
+            if (!placed) {
+                new Notice(t('tasksTab.notices.parentMissing'));
+                return false;
+            }
+            ({ at, lines: written } = placed);
+        } else {
+            at = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine);
+            if (at === -1) {
+                new Notice(t('tasksTab.notices.noteMissing'));
+                return false;
+            }
+            // A subtask's place isn't remembered: the next task goes back to a note.
+            this.writeJson(STORAGE.destination, destination);
         }
-        this.writeJson(STORAGE.destination, destination);
         await this.refreshFile(destination.path);
         const keys = lines.map((_line, i) => `${destination.path}:${at + i}`);
         this.render(true);
         const shown = this.revealAdded(keys);
 
-        const label = lines.length === 1
-            ? t('tasksTab.notices.addedOne', { note: this.destinationLabel(destination) })
-            : t('tasksTab.notices.addedMany', { count: lines.length, note: this.destinationLabel(destination) });
+        const label = parent
+            ? lines.length === 1
+                ? t('tasksTab.notices.addedUnderOne', { task: truncate(parent.title, 40) })
+                : t('tasksTab.notices.addedUnderMany', { count: lines.length, task: truncate(parent.title, 40) })
+            : lines.length === 1
+                ? t('tasksTab.notices.addedOne', { note: this.destinationLabel(destination) })
+                : t('tasksTab.notices.addedMany', { count: lines.length, note: this.destinationLabel(destination) });
         this.undoStack.push({
             label,
             undo: async () => {
-                await this.writer.remove(destination.path, at, lines);
+                await this.writer.remove(destination.path, at, written);
                 await this.refreshFile(destination.path);
                 this.render(true);
             }
@@ -2262,6 +2379,7 @@ export class TasksTabView extends ItemView {
     // ── Quick add destinations ──────────────────────────────────────────
 
     private destinationLabel(destination: Destination): string {
+        if (destination.parent) return truncate(destination.parent.title, 40);
         const name = this.noteInfo.basename(destination.path);
         return destination.heading ? `${name} › ${destination.heading}` : name;
     }
@@ -2733,7 +2851,9 @@ export class TasksTabView extends ItemView {
             ['1 2 3 / 0', 'setPriority'],
             ['S', 'setStatus'],
             ['M', 'moveToHeading'],
+            ['R', 'rename'],
             ['Q', 'addTask'],
+            ['A', 'addSubtask'],
             ['⌘K  /', 'search'],
             [this.inSidebar() ? 'G then N T U A I Q D' : 'G then T U A I Q D', 'goTo'],
             ['⇧V', 'display'],
@@ -2770,6 +2890,8 @@ export class TasksTabView extends ItemView {
         }
         if (tasks.length === 1) {
             items.push(
+                { label: t('tasksTab.actions.rename'), icon: 'pencil', detail: shortcut('R'), divider: true, run: () => this.startRename(task) },
+                { label: t('tasksTab.actions.addSubtask'), icon: 'corner-down-right', detail: shortcut('A'), run: () => this.addSubtask(task) },
                 { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', detail: shortcut('↵'), divider: true, run: () => void this.openTask(task) },
                 { label: t('tasksTab.actions.openToSide'), icon: 'columns-2', detail: shortcut('⌘↵'), run: () => void this.openTask(task, true) }
             );

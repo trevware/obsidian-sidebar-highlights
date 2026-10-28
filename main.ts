@@ -165,6 +165,7 @@ export interface CommentPluginSettings {
     showStatusBarCounts: boolean; // Show the sidebar's counts in Obsidian's status bar
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
+    capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
@@ -222,6 +223,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showStatusBarCounts: true, // Status bar counter on by default
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
+    capitalizeTasks: false,
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
@@ -3696,6 +3698,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 heading: t('settings.tasks.heading'),
                 items: [
                     { ...this.label('settings.tasks.hideTasksPluginMetadata'), control: { type: 'toggle', key: 'hideTasksPluginMetadata' } },
+                    { ...this.label('settings.tasks.capitalizeTasks'), control: { type: 'toggle', key: 'capitalizeTasks' } },
                     {
                         ...this.label('settings.tasks.taskDateFormat'),
                         control: { type: 'text', key: 'taskDateFormat', placeholder: t('settings.tasks.taskDateFormat.placeholder') },

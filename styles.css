@@ -2616,6 +2616,32 @@
     font-weight: 550;
 }
 
+/* The open task's name, edited in place: the same type, in a well. */
+.sh-tasks-view textarea.sh-title-editor,
+.sh-tasks-view textarea.sh-title-editor:focus,
+.sh-tasks-view textarea.sh-title-editor:hover {
+    display: block;
+    width: calc(100% + 16px);
+    margin: -3px -8px;
+    padding: 2px 8px;
+    border: none;
+    border-radius: var(--sh-inner-radius);
+    background-color: var(--sh-inner-well);
+    box-shadow: inset 0 0 0 1px var(--sh-rule);
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    color: var(--sh-surface-text);
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 550;
+    line-height: 1.4;
+}
+
+.sh-task-row.is-expanded .sh-task-title {
+    cursor: text;
+}
+
 .sh-task-line {
     display: flex;
     align-items: flex-start;

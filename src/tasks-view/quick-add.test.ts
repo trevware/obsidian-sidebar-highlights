@@ -23,6 +23,7 @@ proto.createSpan = function (this: HTMLElement, info?: Info) { return (this as u
 proto.toggleClass = function (this: HTMLElement, cls: string, on: boolean) { this.classList.toggle(cls, on); };
 proto.addClass = function (this: HTMLElement, ...cls: string[]) { this.classList.add(...cls); };
 proto.removeClass = function (this: HTMLElement, ...cls: string[]) { this.classList.remove(...cls); };
+proto.setAttr = function (this: HTMLElement, name: string, value: string) { this.setAttribute(name, value); };
 proto.hasClass = function (this: HTMLElement, cls: string) { return this.classList.contains(cls); };
 proto.empty = function (this: HTMLElement) { this.replaceChildren(); };
 proto.setCssProps = function (this: HTMLElement, props: Record<string, string>) { for (const [key, value] of Object.entries(props)) this.style.setProperty(key, value); };
@@ -41,6 +42,7 @@ function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true), ove
         defaultDestination: () => ({ path: 'Inbox.md' }),
         chooseDestination: () => undefined,
         submit,
+        capitalize: () => false,
         onClose: () => { closed++; },
         ...overrides
     };
@@ -143,6 +145,29 @@ describe('saving from quick add', () => {
         enter();
         await settle();
         expect(submit).toHaveBeenCalledTimes(2);
+    });
+
+    it('capitalizes the task when Capitalize tasks is on, and tells the keyboard to', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { capitalize: () => true });
+        quickAdd.open();
+        expect(field(container).getAttribute('autocapitalize')).toBe('sentences');
+        type(container, 'call the dentist fri');
+        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toMatch(/^- \[ \] Call the dentist /);
+        enter();
+        await settle();
+        expect(submit.mock.calls[0][0][0]).toMatch(/^- \[ \] Call the dentist /);
+    });
+
+    it('writes the task as typed when Capitalize tasks is off', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        expect(field(container).hasAttribute('autocapitalize')).toBe(false);
+        type(container, 'call the dentist');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] call the dentist'], { path: 'Inbox.md' });
     });
 });
 
