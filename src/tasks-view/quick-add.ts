@@ -40,6 +40,30 @@ export interface QuickAddHost {
     onClose: () => void;
 }
 
+/**
+ * The Markdown line for what was typed, or null when it's nothing but a date
+ * or a priority. A date or priority picked from a chip fills in for one that
+ * wasn't typed.
+ */
+export function taskLineFor(
+    parsed: QuickParse,
+    host: Pick<QuickAddHost, 'formatDate' | 'capitalize'>,
+    fallback: { date?: string; priority?: 1 | 2 | 3 } = {}
+): string | null {
+    if (parsed.title === '') return null;
+    const date = parsed.date ?? fallback.date;
+    return buildTaskLine({
+        text: host.capitalize() ? capitalizeFirst(parsed.title) : parsed.title,
+        priority: parsed.priority ?? fallback.priority,
+        date: date ? host.formatDate(date) : undefined
+    });
+}
+
+/** Pasted text as one entry per line, without list bullets or checkboxes. */
+export function pastedEntries(text: string): string[] {
+    return text.split(/\r?\n/).map(line => line.replace(/^\s*(?:[-*+]\s+)?(?:\[.\]\s+)?/, '').trim()).filter(Boolean);
+}
+
 interface Draft {
     text: string;
     ignored: Set<string>;
@@ -176,14 +200,7 @@ export class QuickAdd {
     }
 
     private lineFor(parsed: QuickParse, fallback: Pick<Draft, 'date' | 'priority'>): string | null {
-        // A line that is nothing but a date or a priority has no task in it.
-        if (parsed.title === '') return null;
-        const date = parsed.date ?? fallback.date;
-        return buildTaskLine({
-            text: this.host.capitalize() ? capitalizeFirst(parsed.title) : parsed.title,
-            priority: parsed.priority ?? fallback.priority,
-            date: date ? this.host.formatDate(date) : undefined
-        });
+        return taskLineFor(parsed, this.host, fallback);
     }
 
     private refresh(): void {
@@ -239,7 +256,7 @@ export class QuickAdd {
         if (priority) priorityChip.dataset.priority = String(priority);
 
         const destination = this.draft.destination;
-        this.chip(chips, destination?.parent ? 'corner-down-right' : 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
+        this.chip(chips, 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
             () => this.chooseNote());
     }
 
@@ -450,7 +467,7 @@ export class QuickAdd {
     /** Several pasted lines become one task each, every line read on its own. */
     private handlePaste(event: ClipboardEvent): void {
         const text = event.clipboardData?.getData('text/plain') ?? '';
-        const pasted = text.split(/\r?\n/).map(line => line.replace(/^\s*(?:[-*+]\s+)?(?:\[.\]\s+)?/, '').trim()).filter(Boolean);
+        const pasted = pastedEntries(text);
         if (pasted.length < 2) return;
         event.preventDefault();
 

@@ -509,7 +509,8 @@
       "noContext": "No notes under this task.",
       "addNotes": "Add notes",
       "notesPlaceholder": "Notes in Markdown. ⌘↵ or Esc to save.",
-      "notesPlaceholderTouch": "Notes in Markdown. Tap outside to save."
+      "notesPlaceholderTouch": "Notes in Markdown. Tap outside to save.",
+      "subtaskPlaceholder": "Subtask name"
     },
     "actions": {
       "search": "Search",

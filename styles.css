@@ -2977,6 +2977,78 @@
     margin-top: 16px;
 }
 
+/* A subtask typed straight into the card, in the same well as the name. */
+.sh-card-subtask {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 0 10px;
+    border-radius: var(--sh-inner-radius);
+    background-color: var(--sh-inner-well);
+    box-shadow: inset 0 0 0 1px var(--sh-rule);
+}
+
+.sh-card-subtask-icon {
+    display: inline-flex;
+    color: var(--sh-surface-dim);
+}
+
+.sh-card-subtask-icon .svg-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.sh-card-subtask-field {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sh-card-subtask-mirror,
+.sh-tasks-view input.sh-card-subtask-input {
+    width: 100%;
+    height: auto;
+    padding: 7px 0;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    letter-spacing: normal;
+    white-space: pre;
+}
+
+.sh-card-subtask-mirror {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    color: var(--sh-surface-text);
+    pointer-events: none;
+}
+
+.sh-tasks-view input.sh-card-subtask-input,
+.sh-tasks-view input.sh-card-subtask-input:hover,
+.sh-tasks-view input.sh-card-subtask-input:active,
+.sh-tasks-view input.sh-card-subtask-input:focus,
+.sh-tasks-view input.sh-card-subtask-input:focus-visible {
+    position: relative;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    color: transparent;
+    caret-color: var(--sh-surface-text);
+}
+
+.sh-tasks-view input.sh-card-subtask-input::placeholder {
+    color: var(--sh-surface-faint);
+}
+
+/* A phone zooms into a field with type under 16px. */
+.is-mobile .sh-card-subtask-mirror,
+.is-mobile .sh-tasks-view input.sh-card-subtask-input {
+    font-size: 16px;
+}
+
 .sh-card-where {
     display: flex;
     align-items: center;

@@ -57,6 +57,7 @@ import type { MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
+import { SubtaskField } from './subtask-field';
 import { GlassMenu } from './glass-menu';
 import { MARKER_DEFS, markerDef } from './markers';
 import { EASE, arrive, capture, collapse, flip, motionAllowed } from './motion';
@@ -156,6 +157,8 @@ export class TasksTabView extends ItemView {
     private anchorKey: string | null = null;
     private selected = new Set<string>();
     private expandedKey: string | null = null;
+    /** The field in the open card for typing subtasks, while it's up. */
+    private subtaskField: SubtaskField | null = null;
     private lingering = new Set<string>();
     /** Rows whose checkbox just changed, so the new glyph plays its pop once. */
     private justChanged = new Set<string>();
@@ -417,6 +420,7 @@ export class TasksTabView extends ItemView {
         this.palette?.close();
         this.glassMenu?.close();
         this.quickAdd?.close(true);
+        this.subtaskField?.close(false);
         this.closeMenu();
         this.resizer?.disconnect();
         this.cardComponent?.unload();
@@ -948,6 +952,7 @@ export class TasksTabView extends ItemView {
                 if (!this.rowEls.has(key)) this.selected.delete(key);
             }
             if (this.expandedKey && !this.rowEls.has(this.expandedKey)) this.expandedKey = null;
+            if (this.subtaskField && this.subtaskField.key !== this.expandedKey) this.subtaskField.close(false);
             this.paintSelection();
         };
 
@@ -1304,7 +1309,7 @@ export class TasksTabView extends ItemView {
 
     private onListContextMenu(event: MouseEvent): void {
         const target = event.target as HTMLElement;
-        if (target.closest('textarea')) return;
+        if (target.closest('input, textarea')) return;
         const row = target.closest<HTMLElement>('.sh-task-row');
         const key = row?.dataset.key ?? '';
         const task = this.rowTasks.get(key);
@@ -1344,6 +1349,13 @@ export class TasksTabView extends ItemView {
             void this.openTask(task);
         });
         where.createSpan({ cls: 'sh-key-hint', text: '↵' });
+
+        // A subtask being typed survives the card being drawn again.
+        const field = this.subtaskField;
+        if (field?.key === taskKey(task)) {
+            card.insertBefore(field.el, where);
+            field.focus();
+        }
         return card;
     }
 
@@ -1532,11 +1544,49 @@ export class TasksTabView extends ItemView {
         if (row) this.editTitle(row, task);
     }
 
-    /** Quick add, aimed under a task, so what you type becomes its subtask. */
+    /** Opens the task's card with a field in it for typing subtasks. */
     private addSubtask(task: Task): void {
-        this.openQuickAdd({
-            destination: { path: task.filePath, parent: { line: task.lineNumber, text: task.text, title: this.plainText(task) } }
+        const key = taskKey(task);
+        if (this.subtaskField?.key === key) {
+            this.subtaskField.focus();
+            return;
+        }
+        this.subtaskField?.close(false);
+        const field = new SubtaskField(key, {
+            today: () => isoToday(),
+            formatDate: (iso) => this.formatDate(iso),
+            capitalize: () => this.plugin.settings.capitalizeTasks,
+            submit: (lines) => {
+                // The task as it is now, in case it was renamed since.
+                const parent = this.findTask(key) ?? task;
+                return this.addLines(lines, {
+                    path: parent.filePath,
+                    parent: { line: parent.lineNumber, text: parent.text, title: this.plainText(parent) }
+                });
+            },
+            onClose: (byKey) => {
+                if (this.subtaskField === field) this.subtaskField = null;
+                if (byKey) this.focusList();
+            }
         });
+        this.subtaskField = field;
+
+        if (this.expandedKey === key) {
+            const card = this.rowEls.get(key)?.querySelector<HTMLElement>('.sh-task-card');
+            if (card) {
+                card.insertBefore(field.el, card.querySelector('.sh-card-where'));
+                field.focus();
+            }
+        } else {
+            this.selected.clear();
+            this.highlightKey = key;
+            this.setExpanded(key);
+            this.paintSelection();
+            this.scrollToRow(key);
+        }
+        if (field.el.isConnected && motionAllowed()) {
+            field.el.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: EASE });
+        }
     }
 
     private cardField(parent: HTMLElement, icon: string, label: string, tone: string | undefined, run: () => void): HTMLElement {
@@ -1712,9 +1762,11 @@ export class TasksTabView extends ItemView {
     }
 
     private collapseRow(row: HTMLElement, task: Task): void {
-        // A note still being edited saves as the card closes.
+        // A note still being edited saves as the card closes, and so does a
+        // subtask still being typed.
         const editor = row.querySelector<HTMLTextAreaElement>('.sh-card-editor');
         if (editor) editor.blur();
+        if (this.subtaskField?.key === taskKey(task)) void this.subtaskField.commit();
         row.removeClass('is-expanded');
         row.querySelector('.sh-task-card')?.remove();
         this.cardComponent?.unload();
@@ -2255,6 +2307,16 @@ export class TasksTabView extends ItemView {
             this.writeJson(STORAGE.destination, destination);
         }
         await this.refreshFile(destination.path);
+        // Line numbers are the tasks' identity, so whatever refers to a task
+        // below the new lines follows it down.
+        const follow = (key: string) => {
+            if (!key.startsWith(`${destination.path}:`)) return key;
+            const line = Number(key.slice(destination.path.length + 1));
+            return line >= at ? `${destination.path}:${line + lines.length}` : key;
+        };
+        this.selected = new Set([...this.selected].map(follow));
+        if (this.highlightKey) this.highlightKey = follow(this.highlightKey);
+        if (this.expandedKey) this.expandedKey = follow(this.expandedKey);
         const keys = lines.map((_line, i) => `${destination.path}:${at + i}`);
         this.render(true);
         const shown = this.revealAdded(keys);
@@ -2308,12 +2370,6 @@ export class TasksTabView extends ItemView {
             return true;
         }
         this.pendingReveal = null;
-
-        // Lines below the new ones moved down, so a selection would now point
-        // at the wrong tasks.
-        this.selected.clear();
-        this.highlightKey = null;
-        this.paintSelection();
 
         if (scroll) {
             const first = rows[0];
@@ -2379,7 +2435,6 @@ export class TasksTabView extends ItemView {
     // ── Quick add destinations ──────────────────────────────────────────
 
     private destinationLabel(destination: Destination): string {
-        if (destination.parent) return truncate(destination.parent.title, 40);
         const name = this.noteInfo.basename(destination.path);
         return destination.heading ? `${name} › ${destination.heading}` : name;
     }
@@ -2807,7 +2862,12 @@ export class TasksTabView extends ItemView {
         }
         this.flipRemap = remap;
         this.render(true);
-        if (reveal) this.revealAdded(result.landed.map(line => `${path}:${line}`), true);
+        if (reveal) {
+            this.selected.clear();
+            this.highlightKey = null;
+            this.paintSelection();
+            this.revealAdded(result.landed.map(line => `${path}:${line}`), true);
+        }
 
         const label = heading === null
             ? this.countLabel('moved', tasks)
