@@ -7,6 +7,9 @@
  * to move. Instead each change is a FLIP: positions are captured before the
  * rebuild, and after it every element that moved is played back from where it
  * was, while elements that are new fade in.
+ *
+ * Only what's on screen, give or take a margin, is measured and moved, so a
+ * note with hundreds of rows costs the same as one with ten.
  */
 
 /** Oriko's curve: a quick start that settles without overshoot. */
@@ -16,12 +19,34 @@ export function motionAllowed(): boolean {
     return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-/** Where every `[data-flip]` element sits right now, by its id. */
-export function capture(root: HTMLElement): Map<string, number> {
+/** The stretch of the page worth animating: the visible part of `view`, plus room for rows sliding in. */
+interface Band {
+    top: number;
+    bottom: number;
+}
+
+function bandOf(view: HTMLElement): Band {
+    const rect = view.getBoundingClientRect();
+    return { top: rect.top - 400, bottom: rect.bottom + 200 };
+}
+
+/**
+ * Calls `visit` with each element in `root` matching `selector` that sits in
+ * the band, in page order. The elements run top to bottom, so it stops at the
+ * first one below the band without measuring the rest.
+ */
+function eachInBand(root: HTMLElement, selector: string, band: Band, visit: (el: HTMLElement, rect: DOMRect) => void): void {
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>(selector))) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top > band.bottom) return;
+        if (rect.bottom >= band.top) visit(el, rect);
+    }
+}
+
+/** Where every `[data-flip]` element on screen in `view` sits right now, by its id. */
+export function capture(root: HTMLElement, view: HTMLElement): Map<string, number> {
     const positions = new Map<string, number>();
-    root.querySelectorAll<HTMLElement>('[data-flip]').forEach(el => {
-        positions.set(el.dataset.flip ?? '', el.getBoundingClientRect().top);
-    });
+    eachInBand(root, '[data-flip]', bandOf(view), (el, rect) => positions.set(el.dataset.flip ?? '', rect.top));
     return positions;
 }
 
@@ -31,12 +56,10 @@ export interface Placed {
     rect: DOMRect;
 }
 
-/** The elements matching `selector`, by flip id, with where each one stands. */
-export function snapshot(root: HTMLElement, selector: string): Map<string, Placed> {
+/** The elements on screen in `view` matching `selector`, by flip id, with where each one stands. */
+export function snapshot(root: HTMLElement, view: HTMLElement, selector: string): Map<string, Placed> {
     const placed = new Map<string, Placed>();
-    root.querySelectorAll<HTMLElement>(selector).forEach(el => {
-        placed.set(el.dataset.flip ?? '', { el, rect: el.getBoundingClientRect() });
-    });
+    eachInBand(root, selector, bandOf(view), (el, rect) => placed.set(el.dataset.flip ?? '', { el, rect }));
     return placed;
 }
 
@@ -52,22 +75,20 @@ export interface FlipOptions {
 }
 
 /**
- * Plays the rebuilt elements back from their captured positions. Elements
- * that weren't there before fade in, unless there was nothing before at all
- * (a fresh list), which keeps a list switch from animating every row.
+ * Plays the rebuilt elements on screen in `view` back from their captured
+ * positions. Elements that weren't there before (or were off screen) fade in,
+ * unless there was nothing before at all (a fresh list), which keeps a list
+ * switch from animating every row.
  */
-export function flip(root: HTMLElement, before: Map<string, number>, options: FlipOptions = {}): void {
+export function flip(root: HTMLElement, view: HTMLElement, before: Map<string, number>, options: FlipOptions = {}): void {
     if (!motionAllowed() || before.size === 0) return;
     const { move = 280, enterDelay = 0, leaving, dissolve } = options;
-    const viewport = root.getBoundingClientRect();
-    const present = new Set<string>();
     const dissolved = new Set<string>();
-    root.querySelectorAll<HTMLElement>('[data-flip]').forEach(el => {
+    const shown = new Set<string>();
+    eachInBand(root, '[data-flip]', bandOf(view), (el, rect) => {
         const id = el.dataset.flip ?? '';
-        present.add(id);
-        const top = el.getBoundingClientRect().top;
-        // Off-screen elements would animate unseen and cost frames for nothing.
-        if (top > viewport.bottom + 200 || top < viewport.top - 400) return;
+        shown.add(id);
+        const top = rect.top;
         const old = before.get(id);
         const moved = old !== undefined && Math.abs(old - top) > 0.5;
         if (moved && dissolve?.has(id)) dissolved.add(id);
@@ -84,8 +105,11 @@ export function flip(root: HTMLElement, before: Map<string, number>, options: Fl
         }
     });
     if (!leaving) return;
+    // A row that left the screen without leaving the list fades out too:
+    // there's nowhere on screen for it to slide to.
+    const origin = root.getBoundingClientRect();
     for (const [id, placed] of leaving) {
-        if (!present.has(id) || dissolved.has(id)) fadeOutInPlace(root, placed, viewport);
+        if (!shown.has(id) || dissolved.has(id)) fadeOutInPlace(root, placed, origin);
     }
 }
 
@@ -94,16 +118,15 @@ export function flip(root: HTMLElement, before: Map<string, number>, options: Fl
  * rows around it are already moving. It goes in first, so the rows sliding
  * over its spot draw on top of it.
  */
-function fadeOutInPlace(root: HTMLElement, { el, rect }: Placed, viewport: DOMRect): void {
-    if (rect.top > viewport.bottom + 200 || rect.bottom < viewport.top - 400) return;
+function fadeOutInPlace(root: HTMLElement, { el, rect }: Placed, origin: DOMRect): void {
     const ghost = el.cloneNode(true) as HTMLElement;
     ghost.removeAttribute('data-flip');
     ghost.removeAttribute('data-key');
     ghost.addClass('sh-flip-ghost');
     ghost.setAttr('aria-hidden', 'true');
     ghost.setCssProps({
-        top: `${rect.top - viewport.top}px`,
-        left: `${rect.left - viewport.left}px`,
+        top: `${rect.top - origin.top}px`,
+        left: `${rect.left - origin.left}px`,
         width: `${rect.width}px`
     });
     root.prepend(ghost);

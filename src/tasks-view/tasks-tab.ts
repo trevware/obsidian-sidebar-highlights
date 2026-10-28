@@ -93,8 +93,6 @@ const STORAGE = {
 const LINGER_MS = 1200;
 /** Rows drawn before a list asks to show more, so a big Logbook stays quick. */
 const ROW_CAP = 300;
-/** Lists longer than this redraw without the glide, which would cost more than it shows. */
-const FLIP_LIMIT = 120;
 /** Below this width the rail tucks away behind a button. */
 const NARROW_PX = 760;
 /** A list this wide fits the toast between the bottom controls. */
@@ -713,9 +711,8 @@ export class TasksTabView extends ItemView {
      * Only data changes come through here. Moving the highlight, selecting,
      * and opening or closing a card patch the one or two rows involved in
      * place, so they cost the same on a note with ten tasks as on one with a
-     * thousand. With `animate`, a short list glides its rows to their new
-     * places; a long one redraws without motion, since measuring hundreds of
-     * rows twice costs more than the motion is worth.
+     * thousand. With `animate`, the rows on screen glide to their new places;
+     * only those are measured, so a long list moves as cheaply as a short one.
      *
      * A `displayChange` (showing or hiding completed tasks, or moving them to
      * the bottom) answers quicker: rows it hides fade out where they stood
@@ -731,18 +728,16 @@ export class TasksTabView extends ItemView {
         }
         this.dirty = false;
         const today = isoToday();
-        let before = animate && this.rowEls.size <= FLIP_LIMIT && motionAllowed() ? capture(this.column) : null;
+        let before = animate && motionAllowed() ? capture(this.column, this.scroller) : null;
         const remap = this.flipRemap;
         this.flipRemap = null;
         if (before && remap) before = new Map([...before].map(([id, top]) => [remap.get(id) ?? id, top]));
-        const leaving = before && displayChange ? snapshot(this.column, '[data-flip^="task:"]') : undefined;
+        const leaving = before && displayChange ? snapshot(this.column, this.scroller, '[data-flip^="task:"]') : undefined;
         this.renderRail(today);
         this.renderMain(today);
         this.paintSelection(true);
         this.topbar.querySelector('.sh-display-button')?.toggleClass('has-changes', this.isDisplayChanged());
-        if (before && this.rowEls.size <= FLIP_LIMIT) {
-            flip(this.column, before, leaving ? { move: 200, enterDelay: 50, leaving, dissolve: this.finishedFamilies() } : undefined);
-        }
+        if (before) flip(this.column, this.scroller, before, leaving ? { move: 200, enterDelay: 50, leaving, dissolve: this.finishedFamilies() } : undefined);
         this.justChanged.clear();
     }
 
@@ -2171,7 +2166,7 @@ export class TasksTabView extends ItemView {
         const nextSignature = this.groupSignatureOf(groups);
         if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;
 
-        const before = this.rowEls.size <= FLIP_LIMIT && motionAllowed() ? capture(this.column) : null;
+        const before = motionAllowed() ? capture(this.column, this.scroller) : null;
         const gone = new Set(keys);
         for (const key of keys) {
             this.rowEls.get(key)?.remove();
@@ -2189,7 +2184,7 @@ export class TasksTabView extends ItemView {
             if (count) count.setText(String(group.count));
         }
         this.groupSignature = nextSignature;
-        if (before) flip(this.column, before);
+        if (before) flip(this.column, this.scroller, before);
         this.renderRail(today);
         this.paintSelection();
         return true;
