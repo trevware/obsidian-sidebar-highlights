@@ -2511,6 +2511,15 @@
     border-bottom-right-radius: 0;
 }
 
+/* A row the list just let go of, fading out where it stood while the rows
+   around it close up. */
+.sh-tasks-column > .sh-flip-ghost {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    pointer-events: none;
+}
+
 /* Dragging a task: it lifts and follows the pointer, and the rows around it
    slide apart to show where it will land. A lifted task with subtasks reads
    as one card, the way a selection block does. */

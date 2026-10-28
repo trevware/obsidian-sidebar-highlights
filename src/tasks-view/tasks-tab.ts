@@ -60,7 +60,7 @@ import { QuickAdd } from './quick-add';
 import { SubtaskField } from './subtask-field';
 import { GlassMenu } from './glass-menu';
 import { MARKER_DEFS, markerDef } from './markers';
-import { EASE, arrive, capture, collapse, flip, motionAllowed } from './motion';
+import { EASE, arrive, capture, collapse, flip, motionAllowed, reveal, snapshot } from './motion';
 import type { GlassMenuItem } from './glass-menu';
 import type { Destination, QuickAddPrefill } from './quick-add';
 
@@ -184,6 +184,8 @@ export class TasksTabView extends ItemView {
     private pendingReveal: { keys: string[]; scroll: boolean } | null = null;
     /** Row ids that changed with a move, old to new, so rows slide to their new places. */
     private flipRemap: Map<string, string> | null = null;
+    /** The display menu switch being flipped, while the menu redraws around it. */
+    private flippedToggle: string | null = null;
     private paintedHighlight: string | null = null;
     private paintedSelection = new Set<string>();
     /** A change arrived while the tab was in the background. */
@@ -481,7 +483,7 @@ export class TasksTabView extends ItemView {
         const key = listKey(this.list);
         this.displayByList[key] = { ...this.display(), ...patch };
         this.writeJson(STORAGE.display, this.displayByList);
-        this.render(true);
+        this.render(true, true);
     }
 
     private isDisplayChanged(): boolean {
@@ -714,8 +716,13 @@ export class TasksTabView extends ItemView {
      * thousand. With `animate`, a short list glides its rows to their new
      * places; a long one redraws without motion, since measuring hundreds of
      * rows twice costs more than the motion is worth.
+     *
+     * A `displayChange` (showing or hiding completed tasks, or moving them to
+     * the bottom) answers quicker: rows it hides fade out where they stood
+     * while the rest close up, and completed rows that change places fade
+     * across instead of sliding through the open ones.
      */
-    private render(animate = false): void {
+    private render(animate = false, displayChange = false): void {
         if (!this.column) return;
         // A tab in the background redraws when it comes back to the front.
         if (!this.contentEl.isShown()) {
@@ -728,12 +735,26 @@ export class TasksTabView extends ItemView {
         const remap = this.flipRemap;
         this.flipRemap = null;
         if (before && remap) before = new Map([...before].map(([id, top]) => [remap.get(id) ?? id, top]));
+        const leaving = before && displayChange ? snapshot(this.column, '[data-flip^="task:"]') : undefined;
         this.renderRail(today);
         this.renderMain(today);
         this.paintSelection(true);
         this.topbar.querySelector('.sh-display-button')?.toggleClass('has-changes', this.isDisplayChanged());
-        if (before && this.rowEls.size <= FLIP_LIMIT) flip(this.column, before);
+        if (before && this.rowEls.size <= FLIP_LIMIT) {
+            flip(this.column, before, leaving ? { move: 200, enterDelay: 50, leaving, dissolve: this.finishedFamilies() } : undefined);
+        }
         this.justChanged.clear();
+    }
+
+    /** The rows of every family whose top task is finished, the ones Completed at the bottom moves. */
+    private finishedFamilies(): Set<string> {
+        const ids = new Set<string>();
+        let finished = false;
+        for (const task of this.order) {
+            if (task.indentLevel === 0) finished = !isOpenTask(task);
+            if (finished) ids.add(`task:${taskKey(task)}`);
+        }
+        return ids;
     }
 
     private renderRail(today: string): void {
@@ -3012,9 +3033,11 @@ export class TasksTabView extends ItemView {
             // Completed tasks belong to a note's own list; the smart lists are
             // open work (and Done is all completed), so the toggles live here.
             if (this.list.kind === 'note') {
-                this.menuToggle(menu, t('tasksTab.display.showCompleted'), display.showCompleted, () => this.setDisplay({ showCompleted: !display.showCompleted }), paint);
+                const showCompleted = t('tasksTab.display.showCompleted');
+                this.menuToggle(menu, showCompleted, display.showCompleted, () => this.setDisplay({ showCompleted: !display.showCompleted }), paint);
                 if (display.showCompleted) {
-                    this.menuToggle(menu, t('tasksTab.display.completedLast'), display.completedLast, () => this.setDisplay({ completedLast: !display.completedLast }), paint);
+                    const completedLast = this.menuToggle(menu, t('tasksTab.display.completedLast'), display.completedLast, () => this.setDisplay({ completedLast: !display.completedLast }), paint);
+                    if (this.flippedToggle === showCompleted) reveal(completedLast, 160);
                 }
             }
             this.menuToggle(menu, t('tasksTab.display.showContext'), display.showContext, () => this.setDisplay({ showContext: !display.showContext }), paint);
@@ -3050,15 +3073,24 @@ export class TasksTabView extends ItemView {
         });
     }
 
-    private menuToggle(menu: HTMLElement, label: string, on: boolean, run: () => void, repaint: () => void): void {
+    private menuToggle(menu: HTMLElement, label: string, on: boolean, run: () => void, repaint: () => void): HTMLElement {
         const row = menu.createDiv({ cls: 'sh-menu-item' });
         row.createDiv({ cls: 'sh-menu-label', text: label });
         const toggle = row.createDiv({ cls: 'sh-menu-toggle' });
+        // The menu is redrawn on every change, so the switch just flipped is
+        // drawn the old way first and then slides across.
+        if (label === this.flippedToggle) {
+            toggle.toggleClass('is-on', !on);
+            toggle.getBoundingClientRect();
+        }
         toggle.toggleClass('is-on', on);
         row.addEventListener('click', () => {
+            this.flippedToggle = label;
             run();
             repaint();
+            this.flippedToggle = null;
         });
+        return row;
     }
 
     private closeMenu(): void {
