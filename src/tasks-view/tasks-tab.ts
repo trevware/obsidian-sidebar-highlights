@@ -1520,7 +1520,7 @@ export class TasksTabView extends ItemView {
         await this.write([task], t('tasksTab.notices.renamed', { task: truncate(words, 40) }), line => withText(line, text));
     }
 
-    /** Opens a task's card with its name ready to edit. */
+    /** Opens a task's card with its name ready to edit, for R. */
     private startRename(task: Task): void {
         const key = taskKey(task);
         this.selected.clear();
@@ -2890,8 +2890,7 @@ export class TasksTabView extends ItemView {
         }
         if (tasks.length === 1) {
             items.push(
-                { label: t('tasksTab.actions.rename'), icon: 'pencil', detail: shortcut('R'), divider: true, run: () => this.startRename(task) },
-                { label: t('tasksTab.actions.addSubtask'), icon: 'corner-down-right', detail: shortcut('A'), run: () => this.addSubtask(task) },
+                { label: t('tasksTab.actions.addSubtask'), icon: 'corner-down-right', detail: shortcut('A'), divider: true, run: () => this.addSubtask(task) },
                 { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', detail: shortcut('↵'), divider: true, run: () => void this.openTask(task) },
                 { label: t('tasksTab.actions.openToSide'), icon: 'columns-2', detail: shortcut('⌘↵'), run: () => void this.openTask(task, true) }
             );
