@@ -70,7 +70,11 @@ export interface FlipOptions {
     enterDelay?: number;
     /** Elements from before the rebuild: any the rebuild dropped fade out where they stood. */
     leaving?: Map<string, Placed>;
-    /** Ids that change places by fading out and back in, instead of sliding through their neighbours. */
+    /**
+     * Ids that fade out and back in when they change places with an element
+     * outside the set, instead of sliding through it. One that only shifts
+     * along with its neighbours still slides.
+     */
     dissolve?: ReadonlySet<string>;
 }
 
@@ -83,15 +87,15 @@ export interface FlipOptions {
 export function flip(root: HTMLElement, view: HTMLElement, before: Map<string, number>, options: FlipOptions = {}): void {
     if (!motionAllowed() || before.size === 0) return;
     const { move = 280, enterDelay = 0, leaving, dissolve } = options;
-    const dissolved = new Set<string>();
-    const shown = new Set<string>();
+    const placed: Array<{ el: HTMLElement; id: string; top: number; old: number | undefined }> = [];
     eachInBand(root, '[data-flip]', bandOf(view), (el, rect) => {
         const id = el.dataset.flip ?? '';
-        shown.add(id);
-        const top = rect.top;
-        const old = before.get(id);
+        placed.push({ el, id, top: rect.top, old: before.get(id) });
+    });
+    const dissolved = dissolve ? crossers(placed, dissolve) : new Set<string>();
+    const shown = new Set(placed.map(item => item.id));
+    for (const { el, id, top, old } of placed) {
         const moved = old !== undefined && Math.abs(old - top) > 0.5;
-        if (moved && dissolve?.has(id)) dissolved.add(id);
         if (old === undefined || dissolved.has(id)) {
             el.animate(
                 [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }],
@@ -103,7 +107,7 @@ export function flip(root: HTMLElement, view: HTMLElement, before: Map<string, n
                 { duration: move, easing: EASE }
             );
         }
-    });
+    }
     if (!leaving) return;
     // A row that left the screen without leaving the list fades out too:
     // there's nowhere on screen for it to slide to.
@@ -111,6 +115,18 @@ export function flip(root: HTMLElement, view: HTMLElement, before: Map<string, n
     for (const [id, placed] of leaving) {
         if (!shown.has(id) || dissolved.has(id)) fadeOutInPlace(root, placed, origin);
     }
+}
+
+/** The candidates that swapped order with an element outside the set, so would slide through it. */
+function crossers(placed: Array<{ id: string; top: number; old: number | undefined }>, candidates: ReadonlySet<string>): Set<string> {
+    const others = placed.filter(item => item.old !== undefined && !candidates.has(item.id));
+    const crossing = new Set<string>();
+    for (const item of placed) {
+        const old = item.old;
+        if (old === undefined || !candidates.has(item.id)) continue;
+        if (others.some(other => Math.sign(old - (other.old as number)) !== Math.sign(item.top - other.top))) crossing.add(item.id);
+    }
+    return crossing;
 }
 
 /**

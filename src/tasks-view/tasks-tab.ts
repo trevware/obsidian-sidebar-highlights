@@ -89,8 +89,12 @@ const STORAGE = {
     newHeading: 'sidebar-highlights-tasks-new-heading'
 };
 
-/** How long a just-completed task stays in place before it leaves its list. */
-const LINGER_MS = 1200;
+/**
+ * How long a just-completed task stays in place before it leaves its list or
+ * moves to the bottom: long enough to see the tick land, counted from the
+ * last tick, so a run of quick ticks holds still and then settles together.
+ */
+const LINGER_MS = 600;
 /** Rows drawn before a list asks to show more, so a big Logbook stays quick. */
 const ROW_CAP = 300;
 /** Below this width the rail tucks away behind a button. */
@@ -199,10 +203,9 @@ export class TasksTabView extends ItemView {
     private pendingG = 0;
     /** What drove the last action, so a completion from the keys can hand the highlight on. */
     private lastInput: 'keyboard' | 'pointer' = 'pointer';
-    /** The pointer is over the list, where a row it just ticked stays put. */
-    private pointerInList = false;
-    /** Ticked rows waiting for the pointer to leave the list before they go. */
-    private heldKeys: string[] = [];
+    /** Ticked rows waiting to settle, and the timer that settles them. */
+    private settling: string[] = [];
+    private settleTimer: number | null = null;
     /** When a single click last opened a card, so the double-click it belongs to leaves it open. */
     private cardByClickAt = 0;
     /** Whether the tab sat in a sidebar when it last looked, to notice it moving. */
@@ -319,15 +322,6 @@ export class TasksTabView extends ItemView {
         this.registerDomEvent(this.contentEl, 'pointerdown', () => {
             this.lastInput = 'pointer';
         }, { capture: true });
-        // A row ticked with a click stays put while the pointer is over the
-        // list, so the task below never slides under it before the next click.
-        this.registerDomEvent(this.scroller, 'pointerenter', () => {
-            this.pointerInList = true;
-        });
-        this.registerDomEvent(this.scroller, 'pointerleave', () => {
-            this.pointerInList = false;
-            this.releaseHeld();
-        });
         // Capture, so a drag's release never reaches the list as a click.
         this.registerDomEvent(this.scroller, 'click', (event) => this.drag.click(event), true);
 
@@ -416,6 +410,7 @@ export class TasksTabView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        this.cancelSettling();
         this.drag?.destroy();
         this.palette?.close();
         this.glassMenu?.close();
@@ -541,9 +536,8 @@ export class TasksTabView extends ItemView {
 
     /** Puts another list up without moving the focus, so This note can follow notes as they open. */
     private showList(ref: ListRef, animate: boolean): void {
-        // Rows held for the pointer don't follow it to another list.
-        for (const key of this.heldKeys) this.lingering.delete(key);
-        this.heldKeys = [];
+        // Rows waiting to settle don't follow you to another list.
+        this.cancelSettling();
         this.list = ref;
         this.writeJson(this.inSidebar() ? STORAGE.sidebarList : STORAGE.list, ref);
         this.selected.clear();
@@ -714,12 +708,13 @@ export class TasksTabView extends ItemView {
      * thousand. With `animate`, the rows on screen glide to their new places;
      * only those are measured, so a long list moves as cheaply as a short one.
      *
-     * A `displayChange` (showing or hiding completed tasks, or moving them to
-     * the bottom) answers quicker: rows it hides fade out where they stood
-     * while the rest close up, and completed rows that change places fade
-     * across instead of sliding through the open ones.
+     * With `settle` (completed tasks shown, hidden or moved to the bottom, by
+     * the display menu or by a tick settling) the list answers quicker: rows
+     * that go fade out where they stood while the rest close up, and
+     * completed rows that change places fade across instead of sliding
+     * through the open ones.
      */
-    private render(animate = false, displayChange = false): void {
+    private render(animate = false, settle = false): void {
         if (!this.column) return;
         // A tab in the background redraws when it comes back to the front.
         if (!this.contentEl.isShown()) {
@@ -732,7 +727,7 @@ export class TasksTabView extends ItemView {
         const remap = this.flipRemap;
         this.flipRemap = null;
         if (before && remap) before = new Map([...before].map(([id, top]) => [remap.get(id) ?? id, top]));
-        const leaving = before && displayChange ? snapshot(this.column, this.scroller, '[data-flip^="task:"]') : undefined;
+        const leaving = before && settle ? snapshot(this.column, this.scroller, '[data-flip^="task:"]') : undefined;
         this.renderRail(today);
         this.renderMain(today);
         this.paintSelection(true);
@@ -1184,8 +1179,8 @@ export class TasksTabView extends ItemView {
      * elements, so nothing on screen blinks. Anything that moves rows (a new
      * date, a task leaving the list) falls back to a full rebuild.
      */
-    private update(animate = false): void {
-        if (!this.patchInPlace()) this.render(animate);
+    private update(animate = false, settle = false): void {
+        if (!this.patchInPlace()) this.render(animate, settle);
         this.justChanged.clear();
     }
 
@@ -2030,6 +2025,7 @@ export class TasksTabView extends ItemView {
 
     private async write(tasks: Task[], label: string, transform: (line: string, task: Task) => string | null, linger = false): Promise<void> {
         if (tasks.length === 0) return;
+        const started = performance.now();
         const result = await this.writer.apply(tasks, transform);
         if (result.missed.length > 0) {
             new Notice(t('tasksTab.notices.missed', { count: result.missed.length }));
@@ -2046,10 +2042,7 @@ export class TasksTabView extends ItemView {
         }
         this.previewed.clear();
 
-        if (linger) {
-            for (const key of keys) this.lingering.add(key);
-            window.setTimeout(() => this.settleLingering(keys), LINGER_MS);
-        }
+        if (linger) this.linger(keys, started);
 
         await this.refreshFiles(result.changes.map(change => change.path));
         this.update(true);
@@ -2091,9 +2084,9 @@ export class TasksTabView extends ItemView {
     }
 
     /**
-     * A completed row folds away, then the rows below glide up into its
-     * place. With Show completed on it stays in the list, and slides down to
-     * the bottom of its heading when completed tasks go last.
+     * A completed row fades out while the rows below glide up into its
+     * place. With Show completed on it stays in the list, and moves to the
+     * bottom of its heading when completed tasks go last.
      */
     private releaseLingering(keys: string[]): void {
         for (const key of keys) this.lingering.delete(key);
@@ -2101,31 +2094,35 @@ export class TasksTabView extends ItemView {
         const staying = new Set(tasksForList(this.allTasks, this.list, isoToday(), this.display(), this.lingering, this.todaysDailyNote()).map(taskKey));
         const leavingKeys = keys.filter(key => !staying.has(key));
         if (leavingKeys.length === 0) {
-            this.update(true);
+            this.update(true, true);
             return;
         }
-        const leaving = leavingKeys
-            .map(key => this.rowEls.get(key))
-            .filter((row): row is HTMLElement => row !== undefined);
-        collapse(leaving, () => {
-            if (!this.removeRowsInPlace(leavingKeys)) this.render(true);
-        });
+        if (!this.removeRowsInPlace(leavingKeys)) this.render(true, true);
     }
 
-    /** A row ticked with a click waits for the pointer to leave the list. */
-    private settleLingering(keys: string[]): void {
-        if (this.lastInput === 'pointer' && this.pointerInList) {
-            this.heldKeys.push(...keys);
-            return;
-        }
-        this.releaseLingering(keys);
+    /**
+     * Holds just-ticked rows in place, then settles them a moment after the
+     * last tick. Each tick restarts the wait, so the row under the pointer
+     * never moves while you're working down the list. The wait counts from
+     * the tick, not from when the note finished saving.
+     */
+    private linger(keys: string[], since: number): void {
+        for (const key of keys) this.lingering.add(key);
+        this.settling.push(...keys);
+        if (this.settleTimer !== null) window.clearTimeout(this.settleTimer);
+        this.settleTimer = window.setTimeout(() => {
+            this.settleTimer = null;
+            const settled = this.settling;
+            this.settling = [];
+            this.releaseLingering(settled);
+        }, Math.max(0, LINGER_MS - (performance.now() - since)));
     }
 
-    private releaseHeld(): void {
-        if (this.heldKeys.length === 0) return;
-        const keys = this.heldKeys;
-        this.heldKeys = [];
-        this.releaseLingering(keys);
+    private cancelSettling(): void {
+        if (this.settleTimer !== null) window.clearTimeout(this.settleTimer);
+        this.settleTimer = null;
+        for (const key of this.settling) this.lingering.delete(key);
+        this.settling = [];
     }
 
     /**
@@ -2153,8 +2150,8 @@ export class TasksTabView extends ItemView {
 
     /**
      * Takes rows out of the list without rebuilding it, when every group they
-     * leave is still there afterwards: the rows go, the counts update, and a
-     * short list glides the rows below up into the gap.
+     * leave is still there afterwards: the rows go, the counts update, and
+     * the rows below glide up into the gap while the ones that went fade out.
      */
     private removeRowsInPlace(keys: string[]): boolean {
         if (!this.column || this.planPending || !this.contentEl.isShown()) return false;
@@ -2167,6 +2164,8 @@ export class TasksTabView extends ItemView {
         if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;
 
         const before = motionAllowed() ? capture(this.column, this.scroller) : null;
+        const ids = new Set(keys.map(key => `task:${key}`));
+        const leaving = before ? new Map([...snapshot(this.column, this.scroller, '[data-flip^="task:"]')].filter(([id]) => ids.has(id))) : undefined;
         const gone = new Set(keys);
         for (const key of keys) {
             this.rowEls.get(key)?.remove();
@@ -2184,7 +2183,7 @@ export class TasksTabView extends ItemView {
             if (count) count.setText(String(group.count));
         }
         this.groupSignature = nextSignature;
-        if (before) flip(this.column, this.scroller, before);
+        if (before) flip(this.column, this.scroller, before, { move: 200, leaving });
         this.renderRail(today);
         this.paintSelection();
         return true;
