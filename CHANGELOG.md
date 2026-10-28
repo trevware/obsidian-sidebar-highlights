@@ -5,6 +5,17 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-28
+
+### Added
+- **You can rename a task from its card.** Open the card and click or tap the task's name to edit it. ↵ or clicking away saves, and Esc puts it back. On a computer, **R** does the same from the list. A date or a link at the end of the line stays where it was.
+- **You can add subtasks from a task's card.** **Add subtask** in the card (or **A**, or the right-click menu) opens a field right there in the card. Type a subtask, press ↵, and the field is ready for the next one. Dates and priorities work the way they do in quick add, and each subtask goes under the task, after its notes and any subtasks already there.
+- **Tasks can start with a capital letter.** Turn on **Capitalize tasks** in Settings → Sidebar Highlights and Tasks → Tasks, and tasks you add or rename in the Tasks tab start with a capital. On a phone, the keyboard starts with a capital too.
+
+### Fixed
+- **An open card stays on its task when you add a task higher up in the same note.** The task you'd clicked or selected stays highlighted, too.
+- **Messages and ⌘K results show a task's name without the ↗ link at the end of the line.**
+
 ## [2.0.0] - 2026-10-27
 
 ### Added
