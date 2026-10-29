@@ -5,6 +5,15 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-10-28
+
+### Changed
+- **A task you tick moves on its own.** About half a second after the tick, it leaves the list, or joins the other completed tasks at the bottom when **Completed at the bottom** is on. Tick a few in a row and everything holds still until you pause, so the next task never slides out from under your pointer.
+- **Show completed and Completed at the bottom are quicker and smoother.** Completed tasks fade in and out where they sit while the rest of the list closes up around them, and the switches in the Display menu slide across.
+
+### Fixed
+- **Long notes animate too.** A note with hundreds of tasks used to redraw in one jump when you showed completed tasks or ticked one. It now moves the same way a short list does.
+
 ## [2.1.1] - 2026-10-28
 
 ### Fixed
