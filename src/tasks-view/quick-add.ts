@@ -6,6 +6,7 @@ import type { QuickParse } from './quick-parse';
 import { buildTaskLine } from './task-line';
 import { titleCase, titleCaseTyped } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
+import { TIME_PRESETS } from './times';
 import { hint } from './glass-palette';
 import { t } from '../i18n';
 
@@ -30,6 +31,10 @@ export interface QuickAddHost {
     formatDate: (iso: string) => string;
     /** An ISO day in words, for the chip: "Tomorrow", "Friday". */
     dateLabel: (iso: string) => string;
+    /** A 24-hour HH:mm time as it will be written, in the vault's time format. */
+    formatTime: (time: string) => string;
+    /** A 24-hour HH:mm time as the chip shows it. */
+    timeLabel: (time: string) => string;
     destinationLabel: (destination: Destination) => string;
     defaultDestination: () => Destination | null;
     /** The day a new task starts on in the list on screen: today, in Today. */
@@ -44,20 +49,22 @@ export interface QuickAddHost {
 
 /**
  * The Markdown line for what was typed, or null when it's nothing but a date
- * or a priority. A date or priority picked from a chip fills in for one that
- * wasn't typed.
+ * or a priority. A date, time or priority picked from a chip fills in for one
+ * that wasn't typed, and a time with no day goes on today.
  */
 export function taskLineFor(
     parsed: QuickParse,
-    host: Pick<QuickAddHost, 'formatDate' | 'capitalize'>,
-    fallback: { date?: string; priority?: 1 | 2 | 3 } = {}
+    host: Pick<QuickAddHost, 'today' | 'formatDate' | 'formatTime' | 'capitalize'>,
+    fallback: { date?: string; priority?: 1 | 2 | 3; time?: string } = {}
 ): string | null {
     if (parsed.title === '') return null;
-    const date = parsed.date ?? fallback.date;
+    const time = parsed.time ?? fallback.time;
+    const date = parsed.date ?? fallback.date ?? (time ? host.today() : undefined);
     return buildTaskLine({
         text: host.capitalize() ? titleCase(parsed.title, { final: true }) : parsed.title,
         priority: parsed.priority ?? fallback.priority,
-        date: date ? host.formatDate(date) : undefined
+        date: date ? host.formatDate(date) : undefined,
+        time: date && time ? host.formatTime(time) : undefined
     });
 }
 
@@ -70,6 +77,7 @@ interface Draft {
     text: string;
     ignored: Set<string>;
     date?: string;
+    time?: string;
     priority?: 1 | 2 | 3;
     destination?: Destination;
 }
@@ -199,14 +207,18 @@ export class QuickAdd {
     }
 
     private effectiveDate(): string | undefined {
-        return this.parsed.date ?? this.draft.date;
+        return this.parsed.date ?? this.draft.date ?? (this.effectiveTime() ? this.host.today() : undefined);
+    }
+
+    private effectiveTime(): string | undefined {
+        return this.parsed.time ?? this.draft.time;
     }
 
     private effectivePriority(): 1 | 2 | 3 | undefined {
         return this.parsed.priority ?? this.draft.priority;
     }
 
-    private lineFor(parsed: QuickParse, fallback: Pick<Draft, 'date' | 'priority'>): string | null {
+    private lineFor(parsed: QuickParse, fallback: Pick<Draft, 'date' | 'time' | 'priority'>): string | null {
         return taskLineFor(parsed, this.host, fallback);
     }
 
@@ -242,12 +254,17 @@ export class QuickAdd {
         chips.empty();
 
         const date = this.effectiveDate();
-        const dateToken = this.parsed.tokens.find(token => token.kind === 'date');
-        this.chip(chips, 'calendar', date ? this.host.dateLabel(date) : t('tasksTab.quickAdd.date'), !!date,
+        const time = this.effectiveTime();
+        const label = date ? `${this.host.dateLabel(date)}${time ? ` ${this.host.timeLabel(time)}` : ''}` : t('tasksTab.quickAdd.date');
+        this.chip(chips, 'calendar', label, !!date,
             (chip) => this.dateMenu(chip),
             date ? () => {
-                if (dateToken) this.unparse(dateToken.text);
-                else this.draft.date = undefined;
+                // The day and its time go together.
+                for (const token of this.parsed.tokens) {
+                    if (token.kind === 'date' || token.kind === 'time') this.unparse(token.text);
+                }
+                this.draft.date = undefined;
+                this.draft.time = undefined;
                 this.refresh();
             } : undefined);
 
@@ -308,7 +325,7 @@ export class QuickAdd {
     }
 
     /** Picking a chip value replaces a typed phrase for the same thing. */
-    private removeToken(kind: 'date' | 'priority'): void {
+    private removeToken(kind: 'date' | 'time' | 'priority'): void {
         const token = this.parsed.tokens.find(candidate => candidate.kind === kind);
         if (!token || !this.input) return;
         const text = this.draft.text;
@@ -327,6 +344,7 @@ export class QuickAdd {
             [t('tasksTab.dates.noDate'), undefined, 'calendar-x']
         ];
         const current = this.effectiveDate();
+        const time = this.effectiveTime();
         const items: GlassMenuItem[] = options.map(([label, iso, icon], index) => ({
             label,
             icon,
@@ -334,12 +352,42 @@ export class QuickAdd {
             checked: current === iso,
             divider: index === options.length - 1,
             run: () => {
+                // A new day keeps the time; no day takes the time with it.
                 this.removeToken('date');
                 this.draft.date = iso;
+                if (!iso) this.clearTime();
+                this.refresh();
+            }
+        }));
+        items.push({ label: t('tasksTab.actions.addTime'), icon: 'clock', divider: true, run: () => this.timeMenu(chip) });
+        if (time) {
+            items.push({ label: t('tasksTab.actions.removeTime'), icon: 'alarm-clock-off', run: () => {
+                this.clearTime();
+                this.refresh();
+            } });
+        }
+        this.menu.showBelow(chip, items, () => this.input?.focus({ preventScroll: true }));
+    }
+
+    /** A few times to pick from; any other is typed in the field. */
+    private timeMenu(chip: HTMLElement): void {
+        const current = this.effectiveTime();
+        const items: GlassMenuItem[] = TIME_PRESETS.map(time => ({
+            label: this.host.timeLabel(time),
+            icon: 'clock',
+            checked: current === time,
+            run: () => {
+                this.removeToken('time');
+                this.draft.time = time;
                 this.refresh();
             }
         }));
         this.menu.showBelow(chip, items, () => this.input?.focus({ preventScroll: true }));
+    }
+
+    private clearTime(): void {
+        this.removeToken('time');
+        this.draft.time = undefined;
     }
 
     private priorityMenu(chip: HTMLElement): void {

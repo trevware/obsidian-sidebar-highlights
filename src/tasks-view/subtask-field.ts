@@ -6,7 +6,7 @@ import type { QuickParse } from './quick-parse';
 import { titleCaseTyped } from './capitalize';
 import { t } from '../i18n';
 
-export interface SubtaskFieldHost extends Pick<QuickAddHost, 'today' | 'formatDate' | 'capitalize'> {
+export interface SubtaskFieldHost extends Pick<QuickAddHost, 'today' | 'formatDate' | 'formatTime' | 'capitalize'> {
     /** Writes the lines under the task; resolves false when nothing could be written. */
     submit: (lines: string[]) => Promise<boolean>;
     /** The field closed: with a key (Escape, or ↵ on an empty field), or by clicking away. */

@@ -295,6 +295,8 @@ export class TasksTabView extends ItemView {
             today: () => isoToday(),
             formatDate: (iso) => this.formatDate(iso),
             dateLabel: (iso) => this.dateLabel(iso).text,
+            formatTime: (time) => this.formatTime(time),
+            timeLabel: (time) => this.timeLabel(time),
             destinationLabel: (destination) => this.destinationLabel(destination),
             defaultDestination: () => this.defaultDestination(),
             defaultDate: () => this.list.kind === 'smart' && this.list.id === 'today' ? isoToday() : undefined,
@@ -1617,6 +1619,7 @@ export class TasksTabView extends ItemView {
         const field = new SubtaskField(key, {
             today: () => isoToday(),
             formatDate: (iso) => this.formatDate(iso),
+            formatTime: (time) => this.formatTime(time),
             capitalize: () => this.plugin.settings.capitalizeTasks,
             submit: (lines) => {
                 // The task as it is now, in case it was renamed since.

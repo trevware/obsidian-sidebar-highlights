@@ -3452,7 +3452,8 @@
     background-color: var(--sh-token-bg);
 }
 
-.sh-quickadd-token.is-date {
+.sh-quickadd-token.is-date,
+.sh-quickadd-token.is-time {
     --sh-token-bg: color-mix(in oklch, var(--sh-accent) 26%, transparent);
 }
 

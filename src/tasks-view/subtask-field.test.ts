@@ -31,6 +31,7 @@ function setup(submit: SubtaskFieldHost['submit'] = () => Promise.resolve(true),
     const field = new SubtaskField('Project.md:3', {
         today: () => '2026-10-28',
         formatDate: (iso) => iso,
+        formatTime: (time) => time,
         capitalize: () => capitalize,
         submit,
         onClose: (byKey) => { closes.push(byKey); }
@@ -60,6 +61,15 @@ describe('typing subtasks in the card', () => {
         expect(input().value).toBe('A');
         type('A note for b');
         expect(input().value).toBe('A Note for B');
+    });
+
+    it('adds a subtask with a time on today', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        setup(submit);
+        type('ask about pricing 3pm');
+        key('Enter');
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] ask about pricing 2026-10-28 15:00']);
     });
 
     it('adds on Enter, reading the date, and stays open for the next one', async () => {

@@ -41,6 +41,8 @@ function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true), ove
         destinationLabel: (destination) => destination.path,
         defaultDestination: () => ({ path: 'Inbox.md' }),
         defaultDate: () => undefined,
+        formatTime: (time) => time,
+        timeLabel: (time) => time,
         chooseDestination: () => undefined,
         submit,
         capitalize: () => false,
@@ -207,6 +209,41 @@ describe('saving from quick add', () => {
 });
 
 describe('the day a task starts on', () => {
+    it('writes a typed time on today, or on the day quick add already has', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call mom 3pm');
+        expect(chips(container)[0].textContent).toBe('2026-10-25 15:00');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call mom 2026-10-25 15:00'], { path: 'Inbox.md' });
+
+        quickAdd.open({ date: '2026-10-30' });
+        type(container, 'Dentist 9am');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenLastCalledWith(['- [ ] Dentist 2026-10-30 09:00'], { path: 'Inbox.md' });
+    });
+
+    it('clears the date and the time with the date chip\'s ×', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call mom fri 3pm');
+        (chips(container)[0].querySelector('.sh-chip-clear') as HTMLElement).click();
+        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toBe('- [ ] Call mom fri 3pm');
+    });
+
+    it('never adds a time from the list\'s day', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { defaultDate: () => '2026-10-25' });
+        quickAdd.open();
+        type(container, 'Call mom');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call mom 2026-10-25'], { path: 'Inbox.md' });
+    });
+
     it('starts on the list\'s day, so a task added in Today is due today', async () => {
         const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
         const { quickAdd, container } = setup(submit, { defaultDate: () => '2026-10-25' });

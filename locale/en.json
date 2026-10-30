@@ -532,6 +532,8 @@
       "setDate": "Set date",
       "addDate": "Add date",
       "removeDate": "Remove date",
+      "addTime": "Add time",
+      "removeTime": "Remove time",
       "setPriority": "Set priority",
       "setStatus": "Set status",
       "moveToHeading": "Move to heading",

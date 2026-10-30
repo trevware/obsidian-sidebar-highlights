@@ -18,6 +18,9 @@ export type TimeFormat = 'HH:mm' | 'h:mma';
  */
 export const TIME_SOURCE = String.raw`(?=\d{1,2}(?::\d{2}|\s?[ap](?:m|\.m\.)))(\d{1,2})(?::(\d{2}))?(?:\s?([ap])(?:m|\.m\.))?`;
 
+/** The times offered to pick from, before any typed one. */
+export const TIME_PRESETS = ['09:00', '12:00', '15:00', '18:00'];
+
 const WHOLE_TIME = new RegExp(`^${TIME_SOURCE}$`, 'iu');
 
 const pad = (n: number) => String(n).padStart(2, '0');
