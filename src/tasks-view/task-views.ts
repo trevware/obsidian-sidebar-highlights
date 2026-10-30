@@ -215,8 +215,13 @@ function comparePriority(a: Task, b: Task): number {
     return (a.priority ?? 9) - (b.priority ?? 9);
 }
 
+/** By day, and within a day timed tasks first, earliest first. */
 function compareDate(a: Task, b: Task): number {
-    return (a.date ?? '9999').localeCompare(b.date ?? '9999');
+    return (a.date ?? '9999').localeCompare(b.date ?? '9999') || compareTime(a, b);
+}
+
+function compareTime(a: Task, b: Task): number {
+    return (a.time ? 0 : 1) - (b.time ? 0 : 1) || (a.time ?? '').localeCompare(b.time ?? '');
 }
 
 function sortTasks(tasks: Task[], sort: SortMode): Task[] {

@@ -47,6 +47,8 @@ export interface SortableTask {
     lineNumber: number;
     priority?: 1 | 2 | 3;
     date?: string;
+    /** 24-hour HH:mm, when a time follows the date. */
+    time?: string;
 }
 
 /** Lookup for a note's creation time, in epoch milliseconds. */
@@ -178,6 +180,8 @@ export function compareTasks(
             if (mode === 'date-desc' && dateA !== '9999-12-31' && dateB !== '9999-12-31') {
                 primary = -primary;
             }
+            // Within a day, timed tasks first and earliest first, in both directions.
+            if (primary === 0) primary = (a.time ? 0 : 1) - (b.time ? 0 : 1) || (a.time ?? '').localeCompare(b.time ?? '');
             break;
         }
         default:

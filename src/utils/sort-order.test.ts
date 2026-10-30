@@ -201,6 +201,17 @@ describe('compareTasks', () => {
             .toEqual(['late', 'early', 'undated']);
     });
 
+    it('should put timed tasks first within a day, earliest first, in both directions', () => {
+        const untimed = task({ text: 'untimed', date: '2026-10-30', lineNumber: 1 });
+        const late = task({ text: '15:00', date: '2026-10-30', time: '15:00', lineNumber: 2 });
+        const early = task({ text: '09:00', date: '2026-10-30', time: '09:00', lineNumber: 3 });
+
+        expect(sortTasks([untimed, late, early], 'date-asc').map(t => t.text))
+            .toEqual(['09:00', '15:00', 'untimed']);
+        expect(sortTasks([untimed, late, early], 'date-desc').map(t => t.text))
+            .toEqual(['09:00', '15:00', 'untimed']);
+    });
+
     it('should sort tasks by source note title', () => {
         const zoo = task({ filePath: 'Archive/Zoo.md' });
         const apple = task({ filePath: 'Work/Apple.md' });

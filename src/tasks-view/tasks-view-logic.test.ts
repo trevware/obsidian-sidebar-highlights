@@ -427,6 +427,19 @@ describe('sorting', () => {
         expect(listDefaults({ kind: 'note', path: 'Work/Note.md' }).sort).toBe('file');
     });
 
+    it('puts timed tasks first within a day, earliest first, under priority', () => {
+        const ref = { kind: 'smart' as const, id: 'today' as const };
+        const list = [
+            task({ text: 'P3 untimed', date: TODAY, lineNumber: 0, priority: 3 }),
+            task({ text: 'P3 15:00', date: TODAY, time: '15:00', lineNumber: 3, priority: 3 }),
+            task({ text: 'P1 untimed', date: TODAY, lineNumber: 1, priority: 1 }),
+            task({ text: 'P3 9:00', date: TODAY, time: '09:00', lineNumber: 2, priority: 3 })
+        ];
+        const display = { ...DEFAULT_DISPLAY, ...listDefaults(ref) };
+        // Priority first (an untimed P1 stays above a P3 at 09:00), then time.
+        expect(texts(buildGroups(list, ref, TODAY, display, labels, notes))).toEqual(['P1 untimed', 'P3 9:00', 'P3 15:00', 'P3 untimed']);
+    });
+
     it('keeps weeks ahead in date order, priority breaking ties', () => {
         const ref = { kind: 'smart' as const, id: 'upcoming' as const };
         const list = [
