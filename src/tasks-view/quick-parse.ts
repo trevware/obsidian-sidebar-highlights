@@ -8,7 +8,7 @@
  */
 
 import { addDays, addMonths, startOfWeek, weekday } from './dates';
-import { parseTime } from './times';
+import { COLON_SOURCE, MERIDIEM_SOURCE, parseTime } from './times';
 
 export type TokenKind = 'date' | 'priority' | 'time';
 
@@ -133,8 +133,8 @@ const DATE_RULES: DateRule[] = [
 ];
 
 const AT = String.raw`(?:at|@)\s*`;
-const MERIDIEM_TIME = String.raw`\d{1,2}(?::\d{2})?\s?[ap](?:m|\.m\.)`;
-const COLON_TIME = String.raw`\d{1,2}:\d{2}`;
+// Never the tail of something with a colon in it: "3:5pm" is not 5pm.
+const NOT_AFTER_COLON = String.raw`(?<!:)`;
 
 /**
  * Where a time may stand in quick add. One with am/pm, or noon and midnight,
@@ -142,9 +142,9 @@ const COLON_TIME = String.raw`\d{1,2}:\d{2}`;
  * it or a date phrase right before it, so a verse like "John 3:16" stays words.
  */
 const TIME_RULES: Array<{ pattern: string; afterDate?: boolean }> = [
-    { pattern: String.raw`(?:${AT})?(${MERIDIEM_TIME}|noon|midnight)` },
-    { pattern: String.raw`${AT}(${COLON_TIME})` },
-    { pattern: String.raw`(${COLON_TIME})`, afterDate: true }
+    { pattern: String.raw`(?:${AT})?${NOT_AFTER_COLON}(${MERIDIEM_SOURCE}|noon|midnight)` },
+    { pattern: String.raw`${AT}(${COLON_SOURCE})` },
+    { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true }
 ];
 
 // Word edges that understand letters beyond ASCII, so "fri" inside "Friedrich"

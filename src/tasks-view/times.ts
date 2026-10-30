@@ -13,20 +13,24 @@ import { dateTimeFormat } from './formatters';
 /** How times are written: 24-hour `15:00`, or 12-hour `3pm`. */
 export type TimeFormat = 'HH:mm' | 'h:mma';
 
+/** A 24-hour time alone: `15:00`, `9:05`. */
+export const COLON_SOURCE = String.raw`\d{1,2}:\d{2}`;
+
+/** A 12-hour time: `3pm`, `3:30 PM`, `9 a.m.`. */
+export const MERIDIEM_SOURCE = String.raw`\d{1,2}(?::\d{2})?\s?[ap](?:m|\.m\.)`;
+
 /**
- * One time as it may be written: `15:00`, `9:05`, `3pm`, `3:30 PM`, `9 a.m.`.
- * The hour needs a colon or an am/pm after it, so a bare number is never a
- * time. Its groups are the hour, the minutes and the meridiem's letter.
+ * One time as it may be written, either way. The hour needs a colon or an
+ * am/pm after it, so a bare number is never a time. Its groups are the hour,
+ * the minutes and the meridiem's letter. Quick add builds its own rules from
+ * the same two shapes, so a time reads the same typed or in a note.
  */
-export const TIME_SOURCE = String.raw`(?=\d{1,2}(?::\d{2}|\s?[ap](?:m|\.m\.)))(\d{1,2})(?::(\d{2}))?(?:\s?([ap])(?:m|\.m\.))?`;
+export const TIME_SOURCE = String.raw`(?=${COLON_SOURCE}|${MERIDIEM_SOURCE})(\d{1,2})(?::(\d{2}))?(?:\s?([ap])(?:m|\.m\.))?`;
 
 /** The times offered to pick from, before any typed one. */
 export const TIME_PRESETS = ['09:00', '12:00', '15:00', '18:00'];
 
 const WHOLE_TIME = new RegExp(`^${TIME_SOURCE}$`, 'iu');
-
-/** A 24-hour time alone, without any am/pm after it. */
-const COLON_SOURCE = String.raw`\d{1,2}:\d{2}`;
 
 /** The end of a word: nothing after it, or something other than a letter, digit or colon. */
 const WORD_EDGE = String.raw`(?![\p{L}\p{N}_:])`;

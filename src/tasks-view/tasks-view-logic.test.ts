@@ -1,6 +1,7 @@
 import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
 import { titleCase } from './capitalize';
+import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
@@ -285,6 +286,12 @@ describe('quick-parse', () => {
         expect(parseQuickAdd('Ship oct 30 3pm', TODAY)).toMatchObject({ title: 'Ship', date: '2026-10-30', time: '15:00' });
         expect(parseQuickAdd('Lunch @ noon', TODAY)).toMatchObject({ title: 'Lunch', time: '12:00' });
         expect(parseQuickAdd('Plan 2026-10-30 15:00', TODAY)).toMatchObject({ title: 'Plan', date: '2026-10-30', time: '15:00' });
+    });
+
+    it('reads exactly the times the note reader reads', () => {
+        for (const phrase of ['15:00', '9:05', '3pm', '3:30 PM', '9 a.m.', '12am', 'noon', 'midnight', '24:00', '13pm', '3:5pm', '3:60', '0pm', '3']) {
+            expect([phrase, parseQuickAdd(`Call at ${phrase}`, TODAY).time]).toEqual([phrase, parseTime(phrase)]);
+        }
     });
 
     it('leaves numbers that are not times as words', () => {
