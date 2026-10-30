@@ -21,9 +21,20 @@ export const PLUS_BASE = 'https://powerup.trevware.com';
 export const CALENDAR_LAUNCHED = false;
 export const CALENDAR_PREVIEW_KEY = 'sidebar-highlights-calendar-preview';
 
+/**
+ * A development install, where the hot-reload marker sits in the plugin's
+ * folder: calendar sync shows there before launch. The marker is gitignored
+ * and never ships, so store installs are unaffected.
+ */
+let devInstall = false;
+
+export function markDevInstall(value: boolean): void {
+    devInstall = value;
+}
+
 /** Whether calendar sync, and with it any call to the Power-Up server, is on in this vault. */
 export function calendarAvailable(app: App): boolean {
-    return CALENDAR_LAUNCHED || app.loadLocalStorage(CALENDAR_PREVIEW_KEY) === 'true';
+    return CALENDAR_LAUNCHED || devInstall || app.loadLocalStorage(CALENDAR_PREVIEW_KEY) === 'true';
 }
 /** Obsidian keychain id for the license key, shared with Oriko. */
 export const LICENSE_SECRET = 'oriko-plus-license';

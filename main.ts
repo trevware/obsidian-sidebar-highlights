@@ -26,7 +26,7 @@ import { hideCalendarIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
 import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
-import { calendarAvailable } from './src/plus/plus-client';
+import { calendarAvailable, markDevInstall } from './src/plus/plus-client';
 import type { PlusStatus } from './src/plus/plus-client';
 import type { Extension } from '@codemirror/state';
 import type { TimeFormat } from './src/tasks-view/times';
@@ -329,6 +329,8 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
+        // A copy with the hot-reload marker beside it is a development install.
+        if (this.manifest.dir) markDevInstall(await this.app.vault.adapter.exists(`${this.manifest.dir}/.hotreload`));
 
         // Resolve highlight classes from the owning plugin's settings rather than
         // its stylesheet, which may not be injected yet when we scan (see method).
