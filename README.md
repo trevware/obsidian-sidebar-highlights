@@ -179,6 +179,10 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 
 Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. A time written right after that date, like `2026-10-30 15:00` or `2026-10-30 3pm`, is the task's time: it shows on the row, sorts the day, and turns red once it has gone by. Metadata written by the Tasks plugin is hidden by default.
 
+### Reminders
+
+A task with a time reminds you when that time comes, as long as Obsidian is open. On a computer it's a notification like any other app's, and clicking it opens the note at the task. On a phone or tablet, the reminder shows inside Obsidian until you tap it. If Obsidian was closed or the computer was asleep, the day's missed reminders show as soon as it's back, and several at once arrive together. Set how early they come, or turn them off, under **Settings → Reminders**, where **Test reminder** checks that notifications get through.
+
 ## On Your Phone
 
 Everything works in Obsidian for iOS and Android. Swipe in from the right for your highlights, open **Tasks** from the menu, and press and hold a highlight or a task for the menu a right-click opens on a computer.
@@ -205,6 +209,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
 - **Tasks**: the date and time formats your tasks use, and whether Tasks plugin metadata is hidden
+- **Reminders**: whether tasks with a time remind you, and how long before
 - **Typography** and **Styling**: font sizes and weights per element
 - **Backup and restore**: automatic backups of your collections and highlight metadata, with a retention limit
 

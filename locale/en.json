@@ -207,6 +207,28 @@
         "h12": "12-hour (3pm)"
       }
     },
+    "reminders": {
+      "heading": "Reminders",
+      "taskReminders": {
+        "name": "Remind me at a task's time",
+        "desc": "Shows a notification from your computer when a task's time comes, while Obsidian is open. On a phone or tablet, the reminder shows inside Obsidian. Only tasks with a time get one."
+      },
+      "taskReminderLead": {
+        "name": "When to remind me",
+        "desc": "How long before a task's time its reminder shows.",
+        "m0": "At the time",
+        "m5": "5 minutes before",
+        "m10": "10 minutes before",
+        "m15": "15 minutes before",
+        "m30": "30 minutes before",
+        "m60": "1 hour before"
+      },
+      "test": {
+        "name": "Test reminder",
+        "desc": "Shows a sample reminder now. If nothing appears, allow notifications for Obsidian in your computer's settings.",
+        "button": "Send"
+      }
+    },
     "backupRestore": {
       "heading": "Backup and restore",
       "restoreLatest": {
@@ -691,6 +713,14 @@
       "win": "Win",
       "up": "Up",
       "down": "Down"
+    }
+  },
+  "reminders": {
+    "many": "{{count}} tasks are due",
+    "untitled": "A task is due",
+    "test": {
+      "title": "Reminders are working",
+      "body": "Tasks with a time will remind you like this."
     }
   }
 }

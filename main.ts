@@ -18,6 +18,8 @@ import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
 import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from './src/utils/note-colors';
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
+import { ReminderManager } from './src/managers/reminder-manager';
+import { REMINDER_LEADS } from './src/tasks-view/reminders';
 import type { TimeFormat } from './src/tasks-view/times';
 import { i18n, t } from './src/i18n';
 import { confirmAction } from './src/modals/confirm-modal';
@@ -170,6 +172,8 @@ export interface CommentPluginSettings {
     taskTimeFormat: TimeFormat; // How times are written into tasks and shown in the Tasks tab; either form is read
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
+    taskReminders: boolean; // Show a reminder at a task's time while Obsidian is open
+    taskReminderLead: number; // Minutes before a task's time its reminder shows
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
@@ -229,6 +233,8 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskTimeFormat: 'HH:mm', // 24-hour times by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     capitalizeTasks: false,
+    taskReminders: true, // Tasks with a time remind you by default
+    taskReminderLead: 0, // At the task's time
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
@@ -275,6 +281,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     // closing that instance left the reference pointing at a dead view.
     private sidebarViews: Set<HighlightsSidebarView> = new Set();
     private statusBarCounter: StatusBarCounter | null = null;
+    reminders: ReminderManager;
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
     // Whether the edits waiting on detectHighlightsTimeout include the user's own
@@ -318,6 +325,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
         this.inlineFootnoteManager = new InlineFootnoteManager();
+        this.reminders = new ReminderManager(this);
         
         // Register hover source for link previews
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
@@ -430,6 +438,8 @@ export default class HighlightCommentsPlugin extends Plugin {
 
             void this.scanAllFilesForHighlights();
 
+            this.reminders.start();
+
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
 
@@ -481,6 +491,8 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         // Obsidian removes the status bar item itself; only a pending recount remains.
         this.statusBarCounter?.destroy();
+
+        this.reminders?.stop();
 
         // Write anything still waiting for its quiet spell.
         this.deferredSave.flush();
@@ -1856,6 +1868,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         }
         this.unsavedHighlightFiles.clear();
         await this.rereadHighlightFiles(localChanges);
+
+        this.reminders.settingsChanged();
     }
 
     /**
@@ -3731,6 +3745,30 @@ class HighlightSettingTab extends PluginSettingTab {
             },
             {
                 type: 'group',
+                heading: t('settings.reminders.heading'),
+                items: [
+                    { ...this.label('settings.reminders.taskReminders'), control: { type: 'toggle', key: 'taskReminders' } },
+                    {
+                        ...this.label('settings.reminders.taskReminderLead'),
+                        control: {
+                            type: 'dropdown',
+                            key: 'taskReminderLead',
+                            options: Object.fromEntries(REMINDER_LEADS.map(lead => [String(lead), t(`settings.reminders.taskReminderLead.m${lead}`)])),
+                            disabled: () => !this.plugin.settings.taskReminders,
+                        },
+                    },
+                    {
+                        ...this.label('settings.reminders.test'),
+                        render: (setting) => {
+                            setting.addButton(button => button
+                                .setButtonText(t('settings.reminders.test.button'))
+                                .onClick(() => this.plugin.reminders.sendTest()));
+                        },
+                    },
+                ],
+            },
+            {
+                type: 'group',
                 heading: t('settings.backupRestore.heading'),
                 items: [
                     {
@@ -3795,6 +3833,7 @@ class HighlightSettingTab extends PluginSettingTab {
     getControlValue(key: string): unknown {
         // The dropdown offers its weights as text
         if (key === 'highlightFontWeight') return String(this.plugin.settings.highlightFontWeight);
+        if (key === 'taskReminderLead') return String(this.plugin.settings.taskReminderLead);
         return (this.plugin.settings as unknown as Record<string, unknown>)[key];
     }
 
@@ -3802,6 +3841,8 @@ class HighlightSettingTab extends PluginSettingTab {
         const settings = this.plugin.settings as unknown as Record<string, unknown>;
         if (key === 'highlightFontWeight') {
             this.plugin.settings.highlightFontWeight = parseInt(String(value), 10);
+        } else if (key === 'taskReminderLead') {
+            this.plugin.settings.taskReminderLead = Number(value) || 0;
         } else if (key === 'taskDateFormat') {
             this.plugin.settings.taskDateFormat = String(value) || DEFAULT_SETTINGS.taskDateFormat;
         } else if (WHOLE_NUMBER_SETTINGS.has(key)) {
@@ -3810,6 +3851,8 @@ class HighlightSettingTab extends PluginSettingTab {
             settings[key] = value;
         }
         await this.plugin.saveSettings();
+        this.plugin.reminders.settingsChanged();
+        if (key === 'taskReminders') this.update();
 
         switch (SETTING_EFFECTS[key as keyof CommentPluginSettings]) {
             case 'styles':
@@ -3995,6 +4038,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
                 // Re-scan all files to apply new exclusions
                 void this.plugin.scanAllFilesForHighlights();
+                this.plugin.reminders.settingsChanged();
                 // Refresh sidebar to update tasks from newly included/excluded files
                 // (invalidates task cache and re-renders)
                 this.plugin.refreshSidebar();

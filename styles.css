@@ -3951,3 +3951,18 @@
     font-size: 0.8em;
     font-weight: 500;
 }
+
+/* Reminders shown inside Obsidian, on a phone or tablet */
+.sh-reminder-notice {
+    cursor: pointer;
+}
+
+.sh-reminder-notice .sh-reminder-title {
+    font-weight: var(--font-semibold, 600);
+}
+
+.sh-reminder-notice .sh-reminder-detail {
+    margin-top: 2px;
+    font-size: var(--font-ui-smaller, 12px);
+    opacity: 0.75;
+}

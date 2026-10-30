@@ -192,6 +192,28 @@
         "h12": "12 小时制（3pm）"
       }
     },
+    "reminders": {
+      "heading": "提醒",
+      "taskReminders": {
+        "name": "在任务时间提醒我",
+        "desc": "Obsidian 打开时，任务的时间一到就显示电脑的系统通知。在手机或平板上，提醒显示在 Obsidian 内。只有带时间的任务会有提醒。"
+      },
+      "taskReminderLead": {
+        "name": "提醒时间",
+        "desc": "在任务时间之前多久显示提醒。",
+        "m0": "准时",
+        "m5": "提前 5 分钟",
+        "m10": "提前 10 分钟",
+        "m15": "提前 15 分钟",
+        "m30": "提前 30 分钟",
+        "m60": "提前 1 小时"
+      },
+      "test": {
+        "name": "测试提醒",
+        "desc": "立即显示一条示例提醒。如果没有出现，请在电脑的系统设置中允许 Obsidian 发送通知。",
+        "button": "发送"
+      }
+    },
     "backupRestore": {
       "heading": "备份和恢复",
       "restoreLatest": {
@@ -430,5 +452,13 @@
     "files": "{{count}} 篇笔记",
     "collection": "{{count}} 个合集",
     "collections": "{{count}} 个合集"
+  },
+  "reminders": {
+    "many": "{{count}} 个任务到期",
+    "untitled": "有任务到期",
+    "test": {
+      "title": "提醒功能正常",
+      "body": "带时间的任务会这样提醒你。"
+    }
   }
 }
