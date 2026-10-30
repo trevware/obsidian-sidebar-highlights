@@ -3,7 +3,7 @@ import { pastedEntries, taskLineFor } from './quick-add';
 import type { QuickAddHost } from './quick-add';
 import { parseQuickAdd } from './quick-parse';
 import type { QuickParse } from './quick-parse';
-import { capitalizeTyped } from './capitalize';
+import { titleCaseTyped } from './capitalize';
 import { t } from '../i18n';
 
 export interface SubtaskFieldHost extends Pick<QuickAddHost, 'today' | 'formatDate' | 'capitalize'> {
@@ -39,10 +39,10 @@ export class SubtaskField {
         this.input = field.createEl('input', { cls: 'sh-card-subtask-input', type: 'text' });
         this.input.placeholder = t('tasksTab.card.subtaskPlaceholder');
         this.input.spellcheck = true;
-        if (host.capitalize()) this.input.setAttr('autocapitalize', 'sentences');
+        if (host.capitalize()) this.input.setAttr('autocapitalize', 'words');
 
         this.input.addEventListener('input', (event) => {
-            if (host.capitalize() && !(event as InputEvent).isComposing) capitalizeTyped(this.input);
+            if (host.capitalize() && !(event as InputEvent).isComposing) titleCaseTyped(this.input);
             this.refresh();
         });
         this.input.addEventListener('scroll', () => this.syncScroll());

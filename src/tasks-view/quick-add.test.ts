@@ -148,26 +148,33 @@ describe('saving from quick add', () => {
         expect(submit).toHaveBeenCalledTimes(2);
     });
 
-    it('capitalizes the task when Capitalize tasks is on, and tells the keyboard to', async () => {
+    it('writes the task in Title Case when Capitalize tasks is on, and tells the keyboard to', async () => {
         const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
         const { quickAdd, container } = setup(submit, { capitalize: () => true });
         quickAdd.open();
-        expect(field(container).getAttribute('autocapitalize')).toBe('sentences');
-        type(container, 'call the dentist fri');
-        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toMatch(/^- \[ \] Call the dentist /);
+        expect(field(container).getAttribute('autocapitalize')).toBe('words');
+        type(container, 'call the dentist about the bill fri');
+        expect(field(container).value).toBe('Call the Dentist About the Bill Fri');
+        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toMatch(/^- \[ \] Call the Dentist About the Bill /);
         enter();
         await settle();
-        expect(submit.mock.calls[0][0][0]).toMatch(/^- \[ \] Call the dentist /);
+        expect(submit.mock.calls[0][0][0]).toMatch(/^- \[ \] Call the Dentist About the Bill \d{4}-\d{2}-\d{2}$/);
     });
 
-    it('capitalizes the field itself as the first letter is typed', () => {
+    it('capitalizes each word in the field as its first letter is typed, and a small word once it\'s finished', () => {
         const { quickAdd, container } = setup(undefined, { capitalize: () => true });
         quickAdd.open();
         type(container, 'c');
         expect(field(container).value).toBe('C');
         expect(field(container).selectionStart).toBe(1);
-        type(container, 'Call mom');
-        expect(field(container).value).toBe('Call mom');
+        type(container, 'Call m');
+        expect(field(container).value).toBe('Call M');
+        type(container, 'Call Mom t');
+        expect(field(container).value).toBe('Call Mom T');
+        type(container, 'Call Mom To');
+        expect(field(container).value).toBe('Call Mom To');
+        type(container, 'Call Mom To ');
+        expect(field(container).value).toBe('Call Mom to ');
     });
 
     it('gives the capital back when the word turns out to be an iPhone or a web address', () => {
@@ -178,7 +185,7 @@ describe('saving from quick add', () => {
         type(container, 'IP');
         expect(field(container).value).toBe('iP');
         type(container, 'iPhone backup');
-        expect(field(container).value).toBe('iPhone backup');
+        expect(field(container).value).toBe('iPhone Backup');
 
         type(container, '');
         type(container, 'h');

@@ -193,7 +193,7 @@
       },
       "capitalizeTasks": {
         "name": "Capitalize tasks",
-        "desc": "Start each task you add or rename in the Tasks tab with a capital letter. On a phone, the keyboard starts with a capital too."
+        "desc": "Write each task you add or rename in the Tasks tab in Title Case, as you type: every word starts with a capital, except small words like a, the, and, or to. Links, tags and code are left as written."
       },
       "taskDateFormat": {
         "name": "Due date format",

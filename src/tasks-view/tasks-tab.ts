@@ -44,7 +44,7 @@ import {
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
 import { editableTitle, notesText, parseTaskLine, setDateInText, withState, withText, withTitle } from './task-line';
-import { capitalizeFirst, capitalizeTyped } from './capitalize';
+import { titleCase, titleCaseTyped } from './capitalize';
 import { parseDateQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
@@ -1500,7 +1500,7 @@ export class TasksTabView extends ItemView {
         editor.rows = 1;
         editor.spellcheck = true;
         editor.setAttr('enterkeyhint', 'done');
-        if (this.plugin.settings.capitalizeTasks) editor.setAttr('autocapitalize', 'sentences');
+        if (this.plugin.settings.capitalizeTasks) editor.setAttr('autocapitalize', 'words');
         title.replaceWith(editor);
         const fit = () => {
             editor.setCssProps({ height: 'auto' });
@@ -1525,7 +1525,7 @@ export class TasksTabView extends ItemView {
             done = true;
             window.removeEventListener('keydown', onWindowKey, true);
             const typed = editor.value.replace(/\s+/g, ' ').trim();
-            const words = this.plugin.settings.capitalizeTasks ? capitalizeFirst(typed) : typed;
+            const words = this.plugin.settings.capitalizeTasks ? titleCase(typed, { final: true }) : typed;
             const changed = save && words !== '' && words !== original;
             if (changed) title.setText(words);
             if (editor.isConnected) editor.replaceWith(title);
@@ -1533,7 +1533,7 @@ export class TasksTabView extends ItemView {
         };
 
         editor.addEventListener('input', (event) => {
-            if (this.plugin.settings.capitalizeTasks && !(event as InputEvent).isComposing) capitalizeTyped(editor);
+            if (this.plugin.settings.capitalizeTasks && !(event as InputEvent).isComposing) titleCaseTyped(editor);
             fit();
         });
         editor.addEventListener('blur', () => void finish(true));

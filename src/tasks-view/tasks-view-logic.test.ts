@@ -1,6 +1,6 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
-import { capitalizeFirst } from './capitalize';
+import { titleCase } from './capitalize';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
@@ -173,24 +173,46 @@ describe('task-line', () => {
     });
 });
 
-describe('capitalize', () => {
-    it('capitalizes the first word', () => {
-        expect(capitalizeFirst('call the dentist')).toBe('Call the dentist');
-        expect(capitalizeFirst('éclair run')).toBe('Éclair run');
-        expect(capitalizeFirst('**buy** milk')).toBe('**Buy** milk');
-        expect(capitalizeFirst('"quote" it')).toBe('"Quote" it');
-        expect(capitalizeFirst('Already fine')).toBe('Already fine');
+describe('title case', () => {
+    it('capitalizes every word but the small ones', () => {
+        expect(titleCase('call mom to ask about the lease', { final: true })).toBe('Call Mom to Ask About the Lease');
+        expect(titleCase('does this actually work', { final: true })).toBe('Does This Actually Work');
+        expect(titleCase('éclair run')).toBe('Éclair Run');
+        expect(titleCase("don't forget mom's gift")).toBe("Don't Forget Mom's Gift");
+        expect(titleCase('**buy** milk and (fresh) eggs')).toBe('**Buy** Milk and (Fresh) Eggs');
+        expect(titleCase('"quote" it')).toBe('"Quote" It');
+        expect(titleCase('Already Fine')).toBe('Already Fine');
     });
 
-    it('leaves links, tags, code, addresses and mixed-case words alone', () => {
-        expect(capitalizeFirst('[[note]] review')).toBe('[[note]] review');
-        expect(capitalizeFirst('#followup ask Sam')).toBe('#followup ask Sam');
-        expect(capitalizeFirst('`npm` update')).toBe('`npm` update');
-        expect(capitalizeFirst('https://x.y read')).toBe('https://x.y read');
-        expect(capitalizeFirst('www.x.y read')).toBe('www.x.y read');
-        expect(capitalizeFirst('iPhone backup')).toBe('iPhone backup');
-        expect(capitalizeFirst('2026 plan')).toBe('2026 plan');
-        expect(capitalizeFirst('')).toBe('');
+    it('makes small words small, unless they open the task, follow a colon or end it', () => {
+        expect(titleCase('The Plan For The Week')).toBe('The Plan for the Week');
+        expect(titleCase('the plan', { final: true })).toBe('The Plan');
+        expect(titleCase('launch: a new site')).toBe('Launch: A New Site');
+        expect(titleCase('log in', { final: true })).toBe('Log In');
+        expect(titleCase('log in')).toBe('Log in');
+        expect(titleCase('apples vs. oranges')).toBe('Apples vs. Oranges');
+    });
+
+    it('capitalizes each part of a hyphenated word', () => {
+        expect(titleCase('follow-up with step-by-step notes')).toBe('Follow-Up With Step-by-Step Notes');
+    });
+
+    it('leaves links, tags, code, addresses, file names and words with their own capitals alone', () => {
+        expect(titleCase('[[my note]] review')).toBe('[[my note]] Review');
+        expect(titleCase('read [the docs](https://x.y) today')).toBe('Read [the docs](https://x.y) Today');
+        expect(titleCase('#followup ask sam')).toBe('#followup Ask Sam');
+        expect(titleCase('run `npm run build` again')).toBe('Run `npm run build` Again');
+        expect(titleCase('open https://x.y and www.x.y')).toBe('Open https://x.y and www.x.y');
+        expect(titleCase('email bob@x.y about notes.md and src/main.ts')).toBe('Email bob@x.y About notes.md and src/main.ts');
+        expect(titleCase('iPhone backup to USB, e.g. tonight')).toBe('iPhone Backup to USB, e.g. Tonight');
+        expect(titleCase('2026 plan')).toBe('2026 Plan');
+        expect(titleCase('')).toBe('');
+    });
+
+    it('leaves a link being typed alone', () => {
+        expect(titleCase('see [[my no')).toBe('See [[my no');
+        expect(titleCase('see [[my note]')).toBe('See [[my note]');
+        expect(titleCase('run `npm i')).toBe('Run `npm i');
     });
 });
 

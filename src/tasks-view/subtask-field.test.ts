@@ -54,10 +54,12 @@ const key = (name: string) => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('typing subtasks in the card', () => {
-    it('capitalizes the field as the first letter is typed, when Capitalize tasks is on', () => {
+    it('title cases the field as it\'s typed, when Capitalize tasks is on', () => {
         setup(undefined, true);
         type('a');
         expect(input().value).toBe('A');
+        type('A note for b');
+        expect(input().value).toBe('A Note for B');
     });
 
     it('adds on Enter, reading the date, and stays open for the next one', async () => {
@@ -66,7 +68,7 @@ describe('typing subtasks in the card', () => {
         type('ask about pricing tomorrow');
         key('Enter');
         await settle();
-        expect(submit).toHaveBeenCalledWith(['- [ ] Ask about pricing 2026-10-29']);
+        expect(submit).toHaveBeenCalledWith(['- [ ] Ask About Pricing 2026-10-29']);
         expect(input().value).toBe('');
         expect(field.el.isConnected).toBe(true);
         expect(document.activeElement).toBe(input());

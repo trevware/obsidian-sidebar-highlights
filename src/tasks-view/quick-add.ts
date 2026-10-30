@@ -4,7 +4,7 @@ import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
 import type { QuickParse } from './quick-parse';
 import { buildTaskLine } from './task-line';
-import { capitalizeFirst, capitalizeTyped } from './capitalize';
+import { titleCase, titleCaseTyped } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
 import { hint } from './glass-palette';
 import { t } from '../i18n';
@@ -37,7 +37,7 @@ export interface QuickAddHost {
     chooseDestination: (done: (destination: Destination) => void) => void;
     /** Writes the lines; resolves false when nothing could be written. */
     submit: (lines: string[], destination: Destination) => Promise<boolean>;
-    /** Whether a task's first word gets a capital letter. */
+    /** Whether tasks are written in Title Case. */
     capitalize: () => boolean;
     onClose: () => void;
 }
@@ -55,7 +55,7 @@ export function taskLineFor(
     if (parsed.title === '') return null;
     const date = parsed.date ?? fallback.date;
     return buildTaskLine({
-        text: host.capitalize() ? capitalizeFirst(parsed.title) : parsed.title,
+        text: host.capitalize() ? titleCase(parsed.title, { final: true }) : parsed.title,
         priority: parsed.priority ?? fallback.priority,
         date: date ? host.formatDate(date) : undefined
     });
@@ -132,11 +132,11 @@ export class QuickAdd {
         this.mirror = field.createDiv({ cls: 'sh-quickadd-mirror' });
         this.input = field.createEl('input', { cls: 'sh-quickadd-input', type: 'text' });
         this.input.placeholder = t('tasksTab.quickAdd.placeholder');
-        if (this.host.capitalize()) this.input.setAttr('autocapitalize', 'sentences');
+        if (this.host.capitalize()) this.input.setAttr('autocapitalize', 'words');
         this.input.value = this.draft.text;
         this.input.addEventListener('input', (event) => {
             if (!this.input) return;
-            if (this.host.capitalize() && !(event as InputEvent).isComposing) capitalizeTyped(this.input);
+            if (this.host.capitalize() && !(event as InputEvent).isComposing) titleCaseTyped(this.input);
             this.draft.text = this.input.value;
             this.refresh();
         });
