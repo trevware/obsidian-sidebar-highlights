@@ -480,6 +480,8 @@
       "weekend": "This weekend",
       "nextWeek": "Next week",
       "twoWeeks": "In two weeks",
+      "atTime": "At {{time}}",
+      "keepsDay": "On each task's own day",
       "noDate": "No date"
     },
     "priority": {
@@ -561,6 +563,7 @@
       "notes": "Notes",
       "tasks": "Tasks",
       "datePlaceholder": "Type a date: fri, in 3 days, nov 3…",
+      "timePlaceholder": "Type a time: 3pm, 15:30…",
       "priorityPlaceholder": "Pick a priority",
       "statusPlaceholder": "Pick a status",
       "headingPlaceholder": "Find a heading, or type a new one…",
@@ -619,6 +622,10 @@
       "dateAddedMany": "Scheduled {{count}} tasks",
       "dateRemovedOne": "Removed the date from “{{task}}”",
       "dateRemovedMany": "Removed the date from {{count}} tasks",
+      "timeSetOne": "Set the time on “{{task}}”",
+      "timeSetMany": "Set the time on {{count}} tasks",
+      "timeRemovedOne": "Removed the time from “{{task}}”",
+      "timeRemovedMany": "Removed the time from {{count}} tasks",
       "copiedOne": "Copied “{{task}}”",
       "copiedMany": "Copied {{count}} tasks",
       "addedOne": "Added to {{note}}",

@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
+import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
@@ -100,6 +100,15 @@ describe('task-line', () => {
 
     it('clears a date and its time, keeping a marker last', () => {
         expect(setDateInText('Call 2026-10-30 15:00 [↗](https://x.y)', '2026-10-30 15:00', null)).toBe('Call [↗](https://x.y)');
+    });
+
+    it('re-dates a task and keeps its time as written', () => {
+        const task = { dateText: '2026-10-30 3pm', timeText: '3pm' };
+        expect(setDueInText('Call 2026-10-30 3pm', task, '2026-11-02')).toBe('Call 2026-11-02 3pm');
+        expect(setDueInText('Call 2026-10-30 3pm', task, '2026-11-02', '16:00')).toBe('Call 2026-11-02 16:00');
+        expect(setDueInText('Call 2026-10-30 3pm', task, '2026-10-30', null)).toBe('Call 2026-10-30');
+        expect(setDueInText('Call 2026-10-30 3pm', task, null)).toBe('Call');
+        expect(setDueInText('Call [↗](https://x.y)', {}, '2026-10-30', '15:00')).toBe('Call 2026-10-30 15:00 [↗](https://x.y)');
     });
 
     it('writes a new task with a time', () => {

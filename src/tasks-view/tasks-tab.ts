@@ -25,7 +25,7 @@ import { t } from '../i18n';
 import { onLongPress } from '../utils/long-press';
 import { addDays, dueLabel, isoToday, nowTime, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel, DateWords } from './dates';
-import { displayTime, formatTime } from './times';
+import { TIME_PRESETS, displayTime, formatTime, parseTime } from './times';
 import {
     breadcrumbFor,
     buildGroups,
@@ -44,9 +44,9 @@ import {
     tasksForList
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
-import { editableTitle, notesText, parseTaskLine, setDateInText, withState, withText, withTitle } from './task-line';
+import { editableTitle, notesText, parseTaskLine, setDueInText, withState, withText, withTitle } from './task-line';
 import { titleCase, titleCaseTyped } from './capitalize';
-import { parseDateQuery } from './quick-parse';
+import { parseDateTimeQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
 import type { LineChange } from './task-writer';
@@ -2326,13 +2326,30 @@ export class TasksTabView extends ItemView {
         });
     }
 
-    private async setDates(tasks: Task[], iso: string | null): Promise<void> {
+    /** Sets a day, and a time with it when one is given. A time left out stays as each task has it. */
+    private async setDates(tasks: Task[], iso: string | null, time?: string | null): Promise<void> {
         const formatted = iso ? this.formatDate(iso) : null;
+        const timeText = time ? this.formatTime(time) : time;
         const key = !iso ? 'dateRemoved' : tasks.every(task => !task.date) ? 'dateAdded' : 'dateSet';
         await this.write(tasks, this.countLabel(key, tasks), (line, task) => {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
-            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDateInText(parsed.text, task.dateText, formatted)}`;
+            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, formatted, timeText)}`;
+        });
+    }
+
+    /**
+     * Sets or removes a time and keeps each task's own day, so a time on its
+     * own never moves a task. A task with no day gets today.
+     */
+    private async setTimes(tasks: Task[], time: string | null): Promise<void> {
+        const today = isoToday();
+        const timeText = time ? this.formatTime(time) : null;
+        await this.write(tasks, this.countLabel(time ? 'timeSet' : 'timeRemoved', tasks), (line, task) => {
+            const parsed = parseTaskLine(line);
+            if (!parsed) return null;
+            if (!time && !task.time) return line;
+            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, this.formatDate(task.date ?? today), timeText)}`;
         });
     }
 
@@ -2342,7 +2359,7 @@ export class TasksTabView extends ItemView {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
             const next = this.formatDate(addDays(task.date ?? today, days));
-            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDateInText(parsed.text, task.dateText, next)}`;
+            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, next)}`;
         });
     }
 
@@ -2743,9 +2760,14 @@ export class TasksTabView extends ItemView {
             readsQuery: true,
             items: (query) => {
                 const rows: PaletteItem[] = [];
-                const parsed = parseDateQuery(query, today);
+                const read = parseDateTimeQuery(query, today);
+                const parsed = read?.date;
+                const time = read?.time;
                 if (parsed) {
-                    rows.push({ id: `date:${parsed}`, section: '', icon: 'calendar-check', label: this.dateLabel(parsed).text, sublabel: this.formatDate(parsed), run: () => void this.setDates(tasks, parsed) });
+                    const label = `${this.dateLabel(parsed).text}${time ? ` ${this.timeLabel(time)}` : ''}`;
+                    rows.push({ id: `date:${parsed}`, section: '', icon: 'calendar-check', label, sublabel: this.formatDate(parsed), run: () => void this.setDates(tasks, parsed, time) });
+                } else if (time) {
+                    rows.push({ id: `time:${time}`, section: '', icon: 'clock', label: t('tasksTab.dates.atTime', { time: this.timeLabel(time) }), sublabel: t('tasksTab.dates.keepsDay'), run: () => void this.setTimes(tasks, time) });
                 }
                 const needle = query.trim().toLowerCase();
                 for (const [label, iso] of presets) {
@@ -2755,6 +2777,32 @@ export class TasksTabView extends ItemView {
                 }
                 if (tasks.some(task => task.date) && (!needle || t('tasksTab.dates.noDate').toLowerCase().includes(needle))) {
                     rows.push({ id: 'date:none', section: '', icon: 'calendar-x', label: t('tasksTab.dates.noDate'), divider: true, run: () => void this.setDates(tasks, null) });
+                }
+                if (!needle) {
+                    rows.push({ id: 'time:add', section: '', icon: 'clock', label: t('tasksTab.actions.addTime'), divider: !rows.some(row => row.divider), stage: this.timeStage(tasks) });
+                    if (tasks.some(task => task.time)) {
+                        rows.push({ id: 'time:none', section: '', icon: 'alarm-clock-off', label: t('tasksTab.actions.removeTime'), run: () => void this.setTimes(tasks, null) });
+                    }
+                }
+                return rows;
+            }
+        };
+    }
+
+    /** A time for the tasks, typed or picked, on each task's own day. */
+    private timeStage(tasks: Task[]): PaletteStage {
+        const scope = tasks.length > 1 ? ` · ${tasks.length}` : '';
+        return {
+            title: t('tasksTab.actions.addTime') + scope,
+            placeholder: t('tasksTab.palette.timePlaceholder'),
+            readsQuery: true,
+            items: (query) => {
+                const rows: PaletteItem[] = [];
+                const typed = parseTime(query);
+                if (typed) rows.push({ id: `time:${typed}`, section: '', icon: 'clock', label: this.timeLabel(typed), run: () => void this.setTimes(tasks, typed) });
+                for (const time of TIME_PRESETS) {
+                    if (time === typed) continue;
+                    rows.push({ id: `time:${time}`, section: '', icon: 'clock', label: this.timeLabel(time), run: () => void this.setTimes(tasks, time) });
                 }
                 return rows;
             }

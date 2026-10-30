@@ -71,6 +71,16 @@ export function setDateInText(text: string, oldDateText: string | undefined, new
     return `${text.trimEnd()} ${newDate}`;
 }
 
+/**
+ * A task's text with its date and time set. `date` and `time` come already
+ * formatted. A null date takes the time with it; an undefined time keeps the
+ * one the task has, exactly as it was written, and a null time removes it.
+ */
+export function setDueInText(text: string, task: { dateText?: string; timeText?: string }, date: string | null, time?: string | null): string {
+    if (date === null) return setDateInText(text, task.dateText, null);
+    return setDateInText(text, task.dateText, dateTimeText(date, time === undefined ? task.timeText : time ?? undefined));
+}
+
 /** The marker links at the end of a task's text, with the space before them, or ''. */
 function trailingMarker(text: string): string {
     const marker = text.match(TRAILING_MARKER);
