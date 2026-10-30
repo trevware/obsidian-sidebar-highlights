@@ -32,6 +32,21 @@ describe('readTimeAfter', () => {
     });
 });
 
+describe('readTimeAfter, with words after the time', () => {
+    it('reads the time when the next word starts like am or pm', () => {
+        expect(readTimeAfter('Call 2026-10-30 15:00 Amsterdam office', 15)).toEqual({ time: '15:00', text: '15:00', end: 21 });
+        expect(readTimeAfter('2026-10-30 9:00 amend contract', 10)).toEqual({ time: '09:00', text: '9:00', end: 15 });
+        expect(readTimeAfter('2026-10-30 10:00 AMA prep', 10)).toEqual({ time: '10:00', text: '10:00', end: 16 });
+        expect(readTimeAfter('2026-10-30 15:00 pmo sync', 10)).toEqual({ time: '15:00', text: '15:00', end: 16 });
+        expect(readTimeAfter('2026-10-30 07:00 ampm', 10)).toEqual({ time: '07:00', text: '07:00', end: 16 });
+    });
+
+    it('reads a 24-hour time that has a stray pm after it', () => {
+        expect(readTimeAfter('2026-10-30 14:00 PM standup', 10)).toEqual({ time: '14:00', text: '14:00', end: 16 });
+        expect(readTimeAfter('2026-10-30 15:00 pm', 10)).toEqual({ time: '15:00', text: '15:00', end: 16 });
+    });
+});
+
 describe('formatTime', () => {
     it('writes the setting\'s form', () => {
         expect(formatTime('15:00', 'HH:mm')).toBe('15:00');

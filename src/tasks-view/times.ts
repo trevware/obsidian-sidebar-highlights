@@ -23,6 +23,12 @@ export const TIME_PRESETS = ['09:00', '12:00', '15:00', '18:00'];
 
 const WHOLE_TIME = new RegExp(`^${TIME_SOURCE}$`, 'iu');
 
+/** A 24-hour time alone, without any am/pm after it. */
+const COLON_SOURCE = String.raw`\d{1,2}:\d{2}`;
+
+/** The end of a word: nothing after it, or something other than a letter, digit or colon. */
+const WORD_EDGE = String.raw`(?![\p{L}\p{N}_:])`;
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** One time phrase as `HH:mm`, or undefined when it isn't a real time. */
@@ -51,14 +57,17 @@ export function parseTime(word: string): string | undefined {
  */
 export function readTimeAfter(text: string, from: number): { time: string; text: string; end: number } | undefined {
     if (text[from] !== ' ' || !/\S/u.test(text[from + 1] ?? '')) return undefined;
-    const pattern = new RegExp(TIME_SOURCE, 'iuy');
-    pattern.lastIndex = from + 1;
-    const match = pattern.exec(text);
-    if (!match) return undefined;
-    const end = from + 1 + match[0].length;
-    if (end < text.length && /[\p{L}\p{N}_:]/u.test(text[end])) return undefined;
-    const time = parseTime(match[0]);
-    return time ? { time, text: match[0], end } : undefined;
+    // The word edge sits inside the pattern, so "15:00 Amsterdam" falls back
+    // to 15:00 instead of losing the time. A 24-hour time with a stray pm
+    // after it ("14:00 PM standup") is read without the pm.
+    for (const source of [TIME_SOURCE, COLON_SOURCE]) {
+        const pattern = new RegExp(`${source}${WORD_EDGE}`, 'iuy');
+        pattern.lastIndex = from + 1;
+        const match = pattern.exec(text);
+        const time = match ? parseTime(match[0]) : undefined;
+        if (match && time) return { time, text: match[0], end: from + 1 + match[0].length };
+    }
+    return undefined;
 }
 
 /** A time as it's written into a note: `15:00`, or `3pm` and `3:30pm`. */
