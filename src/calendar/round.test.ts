@@ -15,7 +15,11 @@ class FakeCalendar implements CalendarProvider {
     async list(): Promise<CalendarEvent[]> {
         return [...this.events.values()].map(event => ({ ...event }));
     }
-    async put(draft: EventDraft): Promise<void> {
+    async create(draft: EventDraft): Promise<void> {
+        if (this.events.has(draft.id)) throw new Error(`duplicate id ${draft.id}`);
+        await this.update(draft);
+    }
+    async update(draft: EventDraft): Promise<void> {
         this.puts++;
         this.events.set(draft.id, { id: draft.id, date: draft.date, time: draft.time, title: draft.title, written: draft.written });
     }

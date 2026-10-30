@@ -86,7 +86,7 @@ describe('planSync: deleted events', () => {
         expect(steps([synced()], [event({ cancelled: true })])).toEqual(['clear Call Mom']);
     });
     it('brings the event back when clearing is off', () => {
-        expect(steps([synced()], [], { ...options, clearOnDelete: false })).toEqual(['update Call Mom']);
+        expect(steps([synced()], [], { ...options, clearOnDelete: false })).toEqual(['create Call Mom']);
     });
     it('only unlinks a done task whose event is gone', () => {
         expect(steps([synced({ open: false })], [])).toEqual(['unlink Call Mom']);

@@ -86,14 +86,14 @@ export async function runRound(deps: RoundDeps): Promise<RoundResult> {
             case 'create': {
                 const { task } = step;
                 const id = newId();
-                await deps.provider.put(deps.draft(id, { ...task, date: task.date! }, written(task, 0, task.date!, task.time)));
+                await deps.provider.create(deps.draft(id, { ...task, date: task.date! }, written(task, 0, task.date!, task.time)));
                 edit(task.path, { kind: 'ref', line: task.line, text: task.text, ref: { id, rev: 0 } });
                 result.created++;
                 break;
             }
             case 'update': {
                 const { task } = step;
-                await deps.provider.put(deps.draft(step.id, { ...task, date: task.date! }, written(task, step.rev, task.date!, task.time)));
+                await deps.provider.update(deps.draft(step.id, { ...task, date: task.date! }, written(task, step.rev, task.date!, task.time)));
                 result.updated++;
                 break;
             }
@@ -139,7 +139,7 @@ export async function runRound(deps: RoundDeps): Promise<RoundResult> {
     // A pull whose note couldn't be written leaves the event as it is; the
     // next round sees the same move and tries again.
     for (const pull of afterPull) {
-        if (!missedIn.get(pull.path)) await deps.provider.put(pull.draft);
+        if (!missedIn.get(pull.path)) await deps.provider.update(pull.draft);
     }
     return result;
 }

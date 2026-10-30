@@ -79,7 +79,7 @@ export interface NoteInfo {
 }
 
 export type SyncStep =
-    /** A new event for a task with none, then the ID written into the task's line. */
+    /** A new event for a task with none (or whose event was deleted), then its ID written into the task's line. */
     | { kind: 'create'; task: SyncTask }
     /** The task's event brought in line with the task. */
     | { kind: 'update'; task: SyncTask; id: string; rev: number }
@@ -155,7 +155,8 @@ export function planSync(tasks: readonly SyncTask[], events: readonly CalendarEv
         if (!event || event.cancelled) {
             if (!wanted) steps.push({ kind: 'unlink', task });
             else if (options.clearOnDelete) steps.push({ kind: 'clear', task, event });
-            else steps.push({ kind: 'update', task, id: task.ref.id, rev: task.ref.rev });
+            // Back under a new ID: Google never reuses a deleted event's.
+            else steps.push({ kind: 'create', task });
             continue;
         }
         if (!wanted) {

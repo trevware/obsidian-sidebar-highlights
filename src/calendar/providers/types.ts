@@ -52,8 +52,10 @@ export class ProviderError extends Error {
 export interface CalendarProvider {
     /** Every event in the vault's calendar, the plugin's own and any others. */
     list(): Promise<CalendarEvent[]>;
-    /** Creates the event, or replaces it when one with this id exists. */
-    put(draft: EventDraft): Promise<void>;
+    /** Creates the event under the draft's id. */
+    create(draft: EventDraft): Promise<void>;
+    /** Replaces the event with this id, creating it if the calendar lost it. */
+    update(draft: EventDraft): Promise<void>;
     /** Deletes the event; one already gone is fine. */
     remove(id: string): Promise<void>;
 }
