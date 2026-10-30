@@ -1,6 +1,6 @@
 import { Notice, Platform, TFile } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import { TaskManager } from './task-manager';
+import type { TaskIndex } from './task-index';
 import { dueLabel, isoToday, nowTime } from '../tasks-view/dates';
 import { locateTaskLine } from '../tasks-view/task-line';
 import { openNoteAt } from '../tasks-view/open-note';
@@ -11,53 +11,40 @@ import { t } from '../i18n';
 interface AppliedSettings {
     enabled: boolean;
     lead: number;
-    /** What decides which tasks are read and how their dates are found. */
-    notes: string;
 }
 
 /** Where this device keeps the moment it last looked for reminders. */
 const LAST_LOOK_KEY = 'sidebar-highlights-reminders-last-look';
 
 /**
- * Watches every note for tasks with a time and shows each one's reminder
- * when it comes due: a notification from the computer on desktop, and a
- * notice inside Obsidian on a phone or tablet, which can't show
- * notifications for plugins. Only works while Obsidian is open.
+ * Shows each task's reminder when it comes due: a notification from the
+ * computer on desktop, and a notice inside Obsidian on a phone or tablet,
+ * which can't show notifications for plugins. Only works while Obsidian is
+ * open. The tasks come from the shared task index.
  */
 export class ReminderManager {
     private plugin: HighlightCommentsPlugin;
-    private taskManager: TaskManager;
-    /** Each note's tasks with a time, by path. */
-    private timedTasks = new Map<string, TimedTask[]>();
+    private index: TaskIndex;
     private reminders: Reminder[] = [];
     private timer: number | null = null;
-    /** Every note has been read, so a look sees every reminder. */
-    private ready = false;
-    /** Bumped by each full read of the notes, so an older one still running stops. */
-    private generation = 0;
+    private unsubscribe: (() => void) | null = null;
     /** The settings reminders depend on, as they stood when last applied. */
     private applied: AppliedSettings | null = null;
 
-    constructor(plugin: HighlightCommentsPlugin) {
+    constructor(plugin: HighlightCommentsPlugin, index: TaskIndex) {
         this.plugin = plugin;
-        this.taskManager = new TaskManager(plugin);
+        this.index = index;
     }
 
-    /** Starts watching the notes. Call once the workspace is ready. */
+    /** Starts following the task index. Call once the workspace is ready. */
     start(): void {
-        const { app } = this.plugin;
-        this.plugin.registerEvent(app.metadataCache.on('changed', (file, data) => this.noteChanged(file, data)));
-        this.plugin.registerEvent(app.vault.on('delete', (file) => this.forget(file.path)));
-        this.plugin.registerEvent(app.vault.on('rename', (file, oldPath) => {
-            this.forget(oldPath);
-            if (file instanceof TFile) void this.readNote(file);
-        }));
         this.applied = this.appliedSettings();
-        void this.reload();
+        this.unsubscribe = this.index.onChange(() => this.rebuild());
+        this.rebuild();
     }
 
     stop(): void {
-        this.generation++;
+        this.unsubscribe?.();
         this.clearTimer();
     }
 
@@ -72,8 +59,7 @@ export class ReminderManager {
         if (!was) return;
         // Turned on: start from now, so reminders that went by while it was off stay quiet.
         if (now.enabled && !was.enabled) this.saveLastLook(Date.now());
-        if (now.enabled !== was.enabled || now.notes !== was.notes) void this.reload();
-        else if (now.lead !== was.lead && now.enabled) this.rebuild();
+        if (now.enabled !== was.enabled || now.lead !== was.lead) this.rebuild();
     }
 
     /** Shows a sample reminder, so you can check that notifications get through. */
@@ -81,82 +67,32 @@ export class ReminderManager {
         this.show(t('reminders.test.title'), t('reminders.test.body'), () => undefined);
     }
 
-    // ── Reading the notes ───────────────────────────────────────────────
-
     private appliedSettings(): AppliedSettings {
-        const settings = this.plugin.settings;
-        return {
-            enabled: settings.taskReminders,
-            lead: settings.taskReminderLead,
-            notes: JSON.stringify([settings.taskDateFormat, settings.excludeExcalidraw, settings.fileFilters])
-        };
+        return { enabled: this.plugin.settings.taskReminders, lead: this.plugin.settings.taskReminderLead };
     }
 
-    /** Reads every note again. */
-    private async reload(): Promise<void> {
-        const generation = ++this.generation;
-        this.clearTimer();
-        this.ready = false;
-        this.timedTasks.clear();
-        this.reminders = [];
-        if (!this.plugin.settings.taskReminders) return;
-
-        const { vault, metadataCache } = this.plugin.app;
-        for (const file of vault.getMarkdownFiles()) {
-            if (!this.taskManager.shouldProcessFile(file)) continue;
-            // A note with no list items has no tasks, so it isn't worth reading.
-            const cache = metadataCache.getFileCache(file);
-            if (cache && !cache.listItems?.length) continue;
-            const content = await vault.cachedRead(file);
-            if (generation !== this.generation) return;
-            this.index(file.path, content);
-        }
-        this.ready = true;
-        this.rebuild();
-    }
-
-    private async readNote(file: TFile): Promise<void> {
-        if (!this.plugin.settings.taskReminders || !this.taskManager.shouldProcessFile(file)) return;
-        const generation = this.generation;
-        const content = await this.plugin.app.vault.cachedRead(file);
-        if (generation !== this.generation) return;
-        this.index(file.path, content);
-        if (this.ready) this.rebuild();
-    }
-
-    private noteChanged(file: TFile, content: string): void {
-        if (!this.plugin.settings.taskReminders) return;
-        if (this.taskManager.shouldProcessFile(file)) this.index(file.path, content);
-        else this.timedTasks.delete(file.path);
-        if (this.ready) this.rebuild();
-    }
-
-    private forget(path: string): void {
-        if (this.timedTasks.delete(path) && this.ready) this.rebuild();
-    }
-
-    /** Notes the open tasks with a time in one note. Done and cancelled tasks have no reminder. */
-    private index(path: string, content: string): void {
+    /** Open tasks with a time. Done and cancelled tasks have no reminder. */
+    private timedTasks(): TimedTask[] {
         const timed: TimedTask[] = [];
-        for (const task of this.taskManager.tasksInContent(path, content, false, false)) {
-            if (!task.date || !task.time) continue;
-            timed.push({ path, line: task.lineNumber, text: task.text, dateText: task.dateText, date: task.date, time: task.time });
+        for (const task of this.index.tasks()) {
+            if (!task.date || !task.time || task.status === 'done' || task.status === 'cancelled') continue;
+            timed.push({ path: task.filePath, line: task.lineNumber, text: task.text, dateText: task.dateText, date: task.date, time: task.time });
         }
-        if (timed.length) this.timedTasks.set(path, timed);
-        else this.timedTasks.delete(path);
+        return timed;
     }
 
     // ── Timing ──────────────────────────────────────────────────────────
 
     private rebuild(): void {
-        this.reminders = remindersFor([...this.timedTasks.values()].flat(), this.plugin.settings.taskReminderLead);
-        this.look();
+        const ready = this.plugin.settings.taskReminders && this.index.isReady();
+        this.reminders = ready ? remindersFor(this.timedTasks(), this.plugin.settings.taskReminderLead) : [];
+        if (ready) this.look();
+        else this.clearTimer();
     }
 
     /** Shows what came due since the last look, then waits for the next one. */
     private look(): void {
         this.clearTimer();
-        if (!this.ready) return;
         const now = Date.now();
         const due = dueBetween(this.reminders, this.lastLook(now), now);
         this.saveLastLook(now);

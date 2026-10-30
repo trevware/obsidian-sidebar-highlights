@@ -19,7 +19,12 @@ import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from '
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
 import { ReminderManager } from './src/managers/reminder-manager';
+import { TaskIndex } from './src/managers/task-index';
 import { REMINDER_LEADS } from './src/tasks-view/reminders';
+import { isCalendarComment } from './src/calendar/ids';
+import { hideCalendarIds } from './src/calendar/hide-ids';
+import type { CalendarConnection } from './src/calendar/providers/types';
+import type { Extension } from '@codemirror/state';
 import type { TimeFormat } from './src/tasks-view/times';
 import { i18n, t } from './src/i18n';
 import { confirmAction } from './src/modals/confirm-modal';
@@ -174,6 +179,11 @@ export interface CommentPluginSettings {
     capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
     taskReminders: boolean; // Show a reminder at a task's time while Obsidian is open
     taskReminderLead: number; // Minutes before a task's time its reminder shows
+    calendar: CalendarConnection | null; // The calendar dated tasks sync to, shared by every device
+    calendarTimedOnly: boolean; // Only tasks with a time get an event
+    calendarEventMinutes: number; // How long a timed task's event lasts
+    calendarClearOnDelete: boolean; // Deleting an event clears its task's date; otherwise the event comes back
+    showCalendarIds: boolean; // Show synced tasks' calendar IDs in the editor
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
@@ -235,6 +245,11 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     capitalizeTasks: false,
     taskReminders: true, // Tasks with a time remind you by default
     taskReminderLead: 0, // At the task's time
+    calendar: null, // Not connected
+    calendarTimedOnly: false, // Every dated task
+    calendarEventMinutes: 30,
+    calendarClearOnDelete: true,
+    showCalendarIds: false,
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
@@ -281,6 +296,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     // closing that instance left the reference pointing at a dead view.
     private sidebarViews: Set<HighlightsSidebarView> = new Set();
     private statusBarCounter: StatusBarCounter | null = null;
+    taskIndex: TaskIndex;
+    /** The editor extensions that hide calendar IDs, emptied while Show calendar IDs is on. */
+    private calendarIdExtension: Extension[] = [];
     reminders: ReminderManager;
     private ribbonIconEl: HTMLElement | null = null;
     private detectHighlightsTimeout: number | null = null;
@@ -325,7 +343,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
         this.inlineFootnoteManager = new InlineFootnoteManager();
-        this.reminders = new ReminderManager(this);
+        this.taskIndex = new TaskIndex(this, () => this.settings.taskReminders);
+        this.reminders = new ReminderManager(this, this.taskIndex);
         
         // Register hover source for link previews
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
@@ -425,6 +444,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.addSettingTab(new HighlightSettingTab(this.app, this));
         this.updateCustomColorStyles();
 
+        this.registerEditorExtension(this.calendarIdExtension);
+        this.applyCalendarIdVisibility();
+
         // Register collection commands
         this.registerCollectionCommands();
 
@@ -438,6 +460,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
             void this.scanAllFilesForHighlights();
 
+            this.taskIndex.start();
             this.reminders.start();
 
             // Ensure custom color styles are applied on load
@@ -493,6 +516,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.statusBarCounter?.destroy();
 
         this.reminders?.stop();
+        this.taskIndex?.stop();
 
         // Write anything still waiting for its quiet spell.
         this.deferredSave.flush();
@@ -764,6 +788,19 @@ export default class HighlightCommentsPlugin extends Plugin {
     refreshSidebar() {
         this.forEachSidebarView(view => view.refresh());
         this.requestStatusBarUpdate();
+    }
+
+    /** Hides synced tasks' calendar IDs in every editor, or shows them while Show calendar IDs is on. */
+    applyCalendarIdVisibility(): void {
+        this.calendarIdExtension.length = 0;
+        if (!this.settings.showCalendarIds) this.calendarIdExtension.push(...hideCalendarIds);
+        this.app.workspace.updateOptions();
+    }
+
+    /** Brings reminders and the task index they read up to date with the settings. */
+    taskSettingsChanged(): void {
+        this.taskIndex.settingsChanged();
+        this.reminders.settingsChanged();
     }
 
     /** Redraws every open Tasks tab, for a setting that changes how its rows read. */
@@ -1869,7 +1906,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.unsavedHighlightFiles.clear();
         await this.rereadHighlightFiles(localChanges);
 
-        this.reminders.settingsChanged();
+        this.taskSettingsChanged();
     }
 
     /**
@@ -2367,6 +2404,11 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Find all comment matches
         while ((match = commentHighlightRegex.exec(content)) !== null) {
+            // A synced task's calendar ID is the plugin's own bookkeeping, never a comment of yours.
+            if (isCalendarComment(match[1])) {
+                continue;
+            }
+
             // Skip if match is inside a code block
             if (this.isInsideCodeBlock(match.index, match.index + match[0].length, codeBlockRanges)) {
                 continue;
@@ -3851,7 +3893,7 @@ class HighlightSettingTab extends PluginSettingTab {
             settings[key] = value;
         }
         await this.plugin.saveSettings();
-        this.plugin.reminders.settingsChanged();
+        this.plugin.taskSettingsChanged();
         if (key === 'taskReminders') this.update();
 
         switch (SETTING_EFFECTS[key as keyof CommentPluginSettings]) {
@@ -4038,7 +4080,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
                 // Re-scan all files to apply new exclusions
                 void this.plugin.scanAllFilesForHighlights();
-                this.plugin.reminders.settingsChanged();
+                this.plugin.taskSettingsChanged();
                 // Refresh sidebar to update tasks from newly included/excluded files
                 // (invalidates task cache and re-renders)
                 this.plugin.refreshSidebar();

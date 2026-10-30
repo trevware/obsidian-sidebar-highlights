@@ -7,6 +7,7 @@
  */
 
 import { CHECKBOX_REGEX_WITH_PREFIX } from '../utils/task-status';
+import { CALENDAR_ID_SOURCE } from '../calendar/ids';
 
 export interface ParsedTaskLine {
     prefix: string;
@@ -42,11 +43,12 @@ export function withText(line: string, text: string): string | null {
 
 /**
  * A trailing link whose label is a single symbol, such as the `[↗](…)` marker
- * a sync tool appends. A date goes in front of it, so the marker stays last
- * on the line where the tool expects it. A link with words in its label is
- * part of the task's own text and is left where it is.
+ * a sync tool appends, and the calendar ID calendar sync writes after it. A
+ * date goes in front of them, so they stay last on the line where their
+ * owners expect them. A link with words in its label is part of the task's
+ * own text and is left where it is.
  */
-const TRAILING_MARKER = /(\s*\[[^\p{L}\p{N}\s\]]{1,3}\]\([^)\s]+\))+\s*$/u;
+const TRAILING_MARKER = new RegExp(String.raw`(\s*(?:\[[^\p{L}\p{N}\s\]]{1,3}\]\([^)\s]+\)|${CALENDAR_ID_SOURCE}))+\s*$`, 'u');
 
 /**
  * Set, change or remove a task's date inside its text.

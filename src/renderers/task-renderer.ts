@@ -1,5 +1,6 @@
 import type { Task } from '../../main';
 import { stripTasksPluginMetadata } from '../utils/task-metadata';
+import { stripCalendarRef } from '../calendar/ids';
 import { parseColorMarker } from '../utils/note-colors';
 import type HighlightCommentsPlugin from '../../main';
 
@@ -13,7 +14,7 @@ export class TaskRenderer {
      * rewrites all continue to work against the real line.
      */
     private getDisplayText(task: Task): string {
-        let displayText = task.text;
+        let displayText = stripCalendarRef(task.text);
 
         if (task.dateText) {
             // Remove the date text and trim any extra whitespace
