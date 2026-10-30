@@ -16,6 +16,8 @@ export interface CalendarConnection {
     calendarName: string;
     /** CalDAV only: the server the account is on. */
     server?: string;
+    /** Just connected: tasks whose IDs came from an earlier calendar get new events in this one. */
+    adopt?: boolean;
 }
 
 /** An event as the plugin writes it. */

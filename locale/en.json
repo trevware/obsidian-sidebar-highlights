@@ -215,7 +215,7 @@
       },
       "taskReminderLead": {
         "name": "When to remind me",
-        "desc": "How long before a task's time its reminder shows.",
+        "desc": "How long before a task's time its reminder shows, here and in your calendar.",
         "m0": "At the time",
         "m5": "5 minutes before",
         "m10": "10 minutes before",
@@ -227,6 +227,78 @@
         "name": "Test reminder",
         "desc": "Shows a sample reminder now. If nothing appears, allow notifications for Obsidian in your computer's settings.",
         "button": "Send"
+      }
+    },
+    "plus": {
+      "heading": "Trevware Plus",
+      "license": {
+        "name": "License key",
+        "desc": "Unlocks calendar sync. One subscription covers Sidebar Highlights and Oriko, so a key you already use in Oriko works here too.",
+        "placeholder": "Paste your license key"
+      },
+      "states": {
+        "none": "No license key yet.",
+        "checking": "Checking…",
+        "active": "Active on this device.",
+        "unknown": "That key isn't recognized. Check that it was copied whole.",
+        "inactive": "This subscription has ended.",
+        "device-limit": "This key is already in use on five devices. Remove one from your Polar account page.",
+        "offline": "Couldn't reach Trevware Plus. Calendar sync keeps going for a week while it's out of reach."
+      },
+      "subscribe": {
+        "name": "Subscribe",
+        "desc": "Calendar sync puts your dated tasks in Google Calendar, Outlook or iCloud, so your phone reminds you even when Obsidian is closed.",
+        "button": "Subscribe",
+        "learnMore": "Learn more"
+      }
+    },
+    "calendar": {
+      "heading": "Calendar",
+      "connect": {
+        "name": "Connect a calendar",
+        "desc": "Dated tasks become events in a calendar of their own, with an alert at the task's time, so your phone reminds you even with Obsidian closed. Moving an event moves its task.",
+        "google": "Google",
+        "outlook": "Outlook",
+        "icloud": "iCloud",
+        "other": "Other",
+        "waiting": "Finish signing in, in your browser…"
+      },
+      "connected": {
+        "name": "Connected",
+        "signInHere": "Sign in on this device",
+        "syncNow": "Sync now",
+        "disconnect": "Disconnect",
+        "notHere": "This device isn't signed in yet, so it doesn't sync. Other devices that are keep the calendar up to date."
+      },
+      "disconnectConfirm": {
+        "title": "Disconnect the calendar?",
+        "body": "Syncing stops on every device. The calendar and its events stay where they are, and no task changes.",
+        "confirm": "Disconnect",
+        "cancel": "Cancel"
+      },
+      "timedOnly": {
+        "name": "Only tasks with a time",
+        "desc": "Leave tasks with just a date out of the calendar. Otherwise they show as all-day events."
+      },
+      "eventLength": {
+        "name": "Event length",
+        "desc": "How long a task with a time lasts in the calendar.",
+        "m15": "15 minutes",
+        "m30": "30 minutes",
+        "m45": "45 minutes",
+        "m60": "1 hour",
+        "m90": "1.5 hours",
+        "m120": "2 hours"
+      },
+      "onDelete": {
+        "name": "When an event is deleted",
+        "desc": "What happens to a task when you delete its event in the calendar.",
+        "clear": "Clear the task's date",
+        "restore": "Put the event back"
+      },
+      "showIds": {
+        "name": "Show calendar IDs",
+        "desc": "Each synced task carries a short ID at the end of its line, which is how it finds its event. It's hidden unless this is on. Removing it stops that task from syncing."
       }
     },
     "backupRestore": {
@@ -721,6 +793,43 @@
     "test": {
       "title": "Reminders are working",
       "body": "Tasks with a time will remind you like this."
+    }
+  },
+  "calendar": {
+    "status": {
+      "never": "Not synced yet.",
+      "syncing": "Syncing…",
+      "synced": "Synced {{when}}."
+    },
+    "calendarName": "{{vault}} tasks",
+    "clearedNote": "{{today}}: the calendar event was deleted, so the date {{date}} was cleared.",
+    "providers": {
+      "google": "Google Calendar",
+      "microsoft": "Outlook",
+      "icloud": "iCloud",
+      "caldav": "CalDAV"
+    },
+    "errors": {
+      "signInHere": "Sign in to the calendar on this device.",
+      "signedOut": "The calendar signed this device out. Sign in again.",
+      "noPlus": "Calendar sync needs an active Trevware Plus subscription.",
+      "emptied": "{{count}} events disappeared from the calendar at once, so nothing was changed. If you emptied the calendar on purpose, disconnect and connect again.",
+      "gone": "The calendar was deleted. Connect again to make a new one. Your tasks weren't changed.",
+      "signInFailed": "Signing in didn't finish. Try again."
+    },
+    "caldav": {
+      "icloudTitle": "Connect iCloud",
+      "otherTitle": "Connect a CalDAV calendar",
+      "server": "Server address",
+      "serverPlaceholder": "https://dav.example.com/",
+      "appleId": "Apple ID",
+      "username": "User name",
+      "appPassword": "App-specific password",
+      "password": "Password",
+      "icloudHelp": "Make an app-specific password at account.apple.com, under Sign-In and Security. Your Apple ID password won't work here.",
+      "privacy": "Your password stays on this device. Trevware never sees it or your calendar.",
+      "connect": "Connect",
+      "connecting": "Connecting…"
     }
   }
 }

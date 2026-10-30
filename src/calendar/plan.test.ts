@@ -91,6 +91,11 @@ describe('planSync: deleted events', () => {
     it('only unlinks a done task whose event is gone', () => {
         expect(steps([synced({ open: false })], [])).toEqual(['unlink Call Mom']);
     });
+    it('gives tasks from an old calendar new events in a calendar just connected', () => {
+        const tasks = ['a', 'b', 'c', 'd', 'e'].map((c, i) => synced({ line: i, title: c, ref: { id: c.repeat(12), rev: 3 } }));
+        expect(steps(tasks, [], { ...options, adopt: true })).toEqual(['create a', 'create b', 'create c', 'create d', 'create e']);
+    });
+
     it('stops when too many events vanish at once', () => {
         const tasks = ['a', 'b', 'c', 'd', 'e'].map((c, i) => synced({ line: i, title: c, ref: { id: c.repeat(12), rev: 0 } }));
         expect(planSync(tasks, [], options, notes(), NOW)).toEqual({ ok: false, reason: 'calendar-emptied', missing: 5 });

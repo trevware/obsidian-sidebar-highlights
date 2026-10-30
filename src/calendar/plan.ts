@@ -70,6 +70,12 @@ export interface SyncOptions {
     timedOnly: boolean;
     /** An event deleted in the calendar clears its task's date and time; otherwise the event comes back. */
     clearOnDelete: boolean;
+    /**
+     * The calendar was just connected: a task whose event isn't in it gets a
+     * new one. Its ID came from a calendar the vault used before, so the
+     * missing event says nothing about the user deleting it.
+     */
+    adopt?: boolean;
 }
 
 export interface NoteInfo {
@@ -141,7 +147,7 @@ export function planSync(tasks: readonly SyncTask[], events: readonly CalendarEv
 
     const synced = seen.filter(task => task.ref);
     const missing = synced.filter(task => !byId.has(task.ref!.id) && eligible(task, options));
-    if (missing.length > MISSING_LIMIT && missing.length > synced.length * MISSING_SHARE) {
+    if (!options.adopt && missing.length > MISSING_LIMIT && missing.length > synced.length * MISSING_SHARE) {
         return { ok: false, reason: 'calendar-emptied', missing: missing.length };
     }
 
@@ -154,6 +160,7 @@ export function planSync(tasks: readonly SyncTask[], events: readonly CalendarEv
         const event = byId.get(task.ref.id);
         if (!event || event.cancelled) {
             if (!wanted) steps.push({ kind: 'unlink', task });
+            else if (options.adopt && !event) steps.push({ kind: 'create', task });
             else if (options.clearOnDelete) steps.push({ kind: 'clear', task, event });
             // Back under a new ID: Google never reuses a deleted event's.
             else steps.push({ kind: 'create', task });

@@ -200,7 +200,7 @@
       },
       "taskReminderLead": {
         "name": "提醒时间",
-        "desc": "在任务时间之前多久显示提醒。",
+        "desc": "在任务时间之前多久显示提醒，包括此处和你的日历。",
         "m0": "准时",
         "m5": "提前 5 分钟",
         "m10": "提前 10 分钟",
@@ -212,6 +212,78 @@
         "name": "测试提醒",
         "desc": "立即显示一条示例提醒。如果没有出现，请在电脑的系统设置中允许 Obsidian 发送通知。",
         "button": "发送"
+      }
+    },
+    "plus": {
+      "heading": "Trevware Plus",
+      "license": {
+        "name": "许可证密钥",
+        "desc": "解锁日历同步。一个订阅同时适用于 Sidebar Highlights 和 Oriko，所以你在 Oriko 中使用的密钥在这里也有效。",
+        "placeholder": "粘贴你的许可证密钥"
+      },
+      "states": {
+        "none": "还没有许可证密钥。",
+        "checking": "正在检查…",
+        "active": "已在此设备上激活。",
+        "unknown": "无法识别该密钥。请确认已完整复制。",
+        "inactive": "此订阅已结束。",
+        "device-limit": "此密钥已在五台设备上使用。请在 Polar 账户页面移除一台。",
+        "offline": "无法连接 Trevware Plus。在无法连接期间，日历同步会继续运行一周。"
+      },
+      "subscribe": {
+        "name": "订阅",
+        "desc": "日历同步会把带日期的任务放进 Google 日历、Outlook 或 iCloud，即使 Obsidian 关闭，手机也会提醒你。",
+        "button": "订阅",
+        "learnMore": "了解更多"
+      }
+    },
+    "calendar": {
+      "heading": "日历",
+      "connect": {
+        "name": "连接日历",
+        "desc": "带日期的任务会成为一个独立日历中的事件，并在任务时间提醒，即使 Obsidian 关闭，手机也会提醒你。移动事件会同时移动任务。",
+        "google": "Google",
+        "outlook": "Outlook",
+        "icloud": "iCloud",
+        "other": "其他",
+        "waiting": "请在浏览器中完成登录…"
+      },
+      "connected": {
+        "name": "已连接",
+        "signInHere": "在此设备上登录",
+        "syncNow": "立即同步",
+        "disconnect": "断开连接",
+        "notHere": "此设备尚未登录，因此不会同步。已登录的其他设备会保持日历更新。"
+      },
+      "disconnectConfirm": {
+        "title": "断开日历连接？",
+        "body": "所有设备都会停止同步。日历和其中的事件会保留，任务不会改变。",
+        "confirm": "断开连接",
+        "cancel": "取消"
+      },
+      "timedOnly": {
+        "name": "仅限有时间的任务",
+        "desc": "只有日期的任务不放进日历。否则它们会显示为全天事件。"
+      },
+      "eventLength": {
+        "name": "事件时长",
+        "desc": "有时间的任务在日历中持续多久。",
+        "m15": "15 分钟",
+        "m30": "30 分钟",
+        "m45": "45 分钟",
+        "m60": "1 小时",
+        "m90": "1.5 小时",
+        "m120": "2 小时"
+      },
+      "onDelete": {
+        "name": "删除事件时",
+        "desc": "在日历中删除事件时，任务会怎样。",
+        "clear": "清除任务的日期",
+        "restore": "恢复该事件"
+      },
+      "showIds": {
+        "name": "显示日历 ID",
+        "desc": "每个已同步的任务在行尾带有一个简短 ID，用来找到对应的事件。除非开启此项，否则它是隐藏的。删除它会让该任务停止同步。"
       }
     },
     "backupRestore": {
@@ -459,6 +531,43 @@
     "test": {
       "title": "提醒功能正常",
       "body": "带时间的任务会这样提醒你。"
+    }
+  },
+  "calendar": {
+    "status": {
+      "never": "尚未同步。",
+      "syncing": "正在同步…",
+      "synced": "{{when}}已同步。"
+    },
+    "calendarName": "{{vault}} 任务",
+    "clearedNote": "{{today}}：日历事件已被删除，因此清除了日期 {{date}}。",
+    "providers": {
+      "google": "Google 日历",
+      "microsoft": "Outlook",
+      "icloud": "iCloud",
+      "caldav": "CalDAV"
+    },
+    "errors": {
+      "signInHere": "请在此设备上登录日历。",
+      "signedOut": "日历已将此设备登出。请重新登录。",
+      "noPlus": "日历同步需要有效的 Trevware Plus 订阅。",
+      "emptied": "日历中一次消失了 {{count}} 个事件，因此没有做任何更改。如果你是有意清空日历，请断开后重新连接。",
+      "gone": "日历已被删除。重新连接即可新建一个。你的任务没有改变。",
+      "signInFailed": "登录未完成。请重试。"
+    },
+    "caldav": {
+      "icloudTitle": "连接 iCloud",
+      "otherTitle": "连接 CalDAV 日历",
+      "server": "服务器地址",
+      "serverPlaceholder": "https://dav.example.com/",
+      "appleId": "Apple ID",
+      "username": "用户名",
+      "appPassword": "App 专用密码",
+      "password": "密码",
+      "icloudHelp": "请在 account.apple.com 的“登录与安全”中创建 App 专用密码。Apple ID 密码在这里无效。",
+      "privacy": "你的密码只保存在此设备上。Trevware 不会看到它或你的日历。",
+      "connect": "连接",
+      "connecting": "正在连接…"
     }
   }
 }

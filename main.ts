@@ -24,6 +24,9 @@ import { REMINDER_LEADS } from './src/tasks-view/reminders';
 import { isCalendarComment } from './src/calendar/ids';
 import { hideCalendarIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
+import { CalendarSync } from './src/calendar/calendar-sync';
+import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
+import type { PlusStatus } from './src/plus/plus-client';
 import type { Extension } from '@codemirror/state';
 import type { TimeFormat } from './src/tasks-view/times';
 import { i18n, t } from './src/i18n';
@@ -297,6 +300,9 @@ export default class HighlightCommentsPlugin extends Plugin {
     private sidebarViews: Set<HighlightsSidebarView> = new Set();
     private statusBarCounter: StatusBarCounter | null = null;
     taskIndex: TaskIndex;
+    calendarSync: CalendarSync;
+    /** Trevware Plus as the server last described it, for the settings tab. */
+    plusStatus: PlusStatus | null = null;
     /** The editor extensions that hide calendar IDs, emptied while Show calendar IDs is on. */
     private calendarIdExtension: Extension[] = [];
     reminders: ReminderManager;
@@ -343,8 +349,9 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.collections = new Map(Object.entries(this.settings.collections || {}));
         this.collectionsManager = new CollectionsManager(this);
         this.inlineFootnoteManager = new InlineFootnoteManager();
-        this.taskIndex = new TaskIndex(this, () => this.settings.taskReminders);
+        this.taskIndex = new TaskIndex(this, () => this.settings.taskReminders || Boolean(this.settings.calendar));
         this.reminders = new ReminderManager(this, this.taskIndex);
+        this.calendarSync = new CalendarSync(this, this.taskIndex);
         
         // Register hover source for link previews
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
@@ -462,6 +469,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
             this.taskIndex.start();
             this.reminders.start();
+            this.calendarSync.start();
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
@@ -516,6 +524,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.statusBarCounter?.destroy();
 
         this.reminders?.stop();
+        this.calendarSync?.stop();
         this.taskIndex?.stop();
 
         // Write anything still waiting for its quiet spell.
@@ -797,10 +806,17 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.app.workspace.updateOptions();
     }
 
-    /** Brings reminders and the task index they read up to date with the settings. */
+    /** Brings reminders, calendar sync and the task index they read up to date with the settings. */
     taskSettingsChanged(): void {
         this.taskIndex.settingsChanged();
         this.reminders.settingsChanged();
+        this.calendarSync.settingsChanged();
+    }
+
+    /** Asks Trevware Plus about the license again (the client answers from its cache unless `fresh`). */
+    async refreshPlusStatus(fresh = false): Promise<PlusStatus> {
+        this.plusStatus = await this.calendarSync.plus.status(fresh);
+        return this.plusStatus;
     }
 
     /** Redraws every open Tasks tab, for a setting that changes how its rows read. */
@@ -3562,6 +3578,24 @@ class HighlightSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: HighlightCommentsPlugin) {
         super(app, plugin);
         this.plugin = plugin;
+        // The sync line follows along while the tab is open.
+        plugin.calendarSync.onStatus(() => {
+            if (this.containerEl.isShown()) this.update();
+        });
+    }
+
+    /** A license check is on its way, so a redraw doesn't start another. */
+    private checkingPlus = false;
+
+    /** Asks about the license once per redraw at most, and redraws if the answer changed. */
+    private checkPlus(): void {
+        if (this.checkingPlus) return;
+        this.checkingPlus = true;
+        const before = JSON.stringify(this.plugin.plusStatus);
+        void this.plugin.refreshPlusStatus().then((status) => {
+            this.checkingPlus = false;
+            if (JSON.stringify(status) !== before) this.update();
+        });
     }
 
     hide(): void {
@@ -3578,6 +3612,7 @@ class HighlightSettingTab extends PluginSettingTab {
      * setControlValue below; rows with buttons draw their own controls.
      */
     getSettingDefinitions(): SettingDefinitionItem[] {
+        this.checkPlus();
         return [
             {
                 type: 'group',
@@ -3796,7 +3831,7 @@ class HighlightSettingTab extends PluginSettingTab {
                             type: 'dropdown',
                             key: 'taskReminderLead',
                             options: Object.fromEntries(REMINDER_LEADS.map(lead => [String(lead), t(`settings.reminders.taskReminderLead.m${lead}`)])),
-                            disabled: () => !this.plugin.settings.taskReminders,
+                            disabled: () => !this.plugin.settings.taskReminders && !this.plugin.settings.calendar,
                         },
                     },
                     {
@@ -3809,6 +3844,7 @@ class HighlightSettingTab extends PluginSettingTab {
                     },
                 ],
             },
+            ...plusAndCalendarGroups(this, this.plugin, this.plugin.plusStatus),
             {
                 type: 'group',
                 heading: t('settings.backupRestore.heading'),
@@ -3876,6 +3912,8 @@ class HighlightSettingTab extends PluginSettingTab {
         // The dropdown offers its weights as text
         if (key === 'highlightFontWeight') return String(this.plugin.settings.highlightFontWeight);
         if (key === 'taskReminderLead') return String(this.plugin.settings.taskReminderLead);
+        if (key === 'calendarEventMinutes') return String(this.plugin.settings.calendarEventMinutes);
+        if (key === 'calendarClearOnDelete') return this.plugin.settings.calendarClearOnDelete ? 'clear' : 'restore';
         return (this.plugin.settings as unknown as Record<string, unknown>)[key];
     }
 
@@ -3885,6 +3923,10 @@ class HighlightSettingTab extends PluginSettingTab {
             this.plugin.settings.highlightFontWeight = parseInt(String(value), 10);
         } else if (key === 'taskReminderLead') {
             this.plugin.settings.taskReminderLead = Number(value) || 0;
+        } else if (key === 'calendarEventMinutes') {
+            this.plugin.settings.calendarEventMinutes = EVENT_LENGTHS.includes(Number(value)) ? Number(value) : 30;
+        } else if (key === 'calendarClearOnDelete') {
+            this.plugin.settings.calendarClearOnDelete = value !== 'restore';
         } else if (key === 'taskDateFormat') {
             this.plugin.settings.taskDateFormat = String(value) || DEFAULT_SETTINGS.taskDateFormat;
         } else if (WHOLE_NUMBER_SETTINGS.has(key)) {
@@ -3895,6 +3937,7 @@ class HighlightSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
         this.plugin.taskSettingsChanged();
         if (key === 'taskReminders') this.update();
+        if (key === 'showCalendarIds') this.plugin.applyCalendarIdVisibility();
 
         switch (SETTING_EFFECTS[key as keyof CommentPluginSettings]) {
             case 'styles':
@@ -3917,7 +3960,7 @@ class HighlightSettingTab extends PluginSettingTab {
     }
 
     /** A setting's name and description, from the locale entry they share. */
-    private label(path: string): { name: string; desc: string } {
+    label(path: string): { name: string; desc: string } {
         return { name: t(`${path}.name`), desc: t(`${path}.desc`) };
     }
 

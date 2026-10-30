@@ -3966,3 +3966,13 @@
     font-size: var(--font-ui-smaller, 12px);
     opacity: 0.75;
 }
+
+/* Calendar sign-in dialog: what went wrong, under the fields */
+.sh-calendar-error {
+    color: var(--text-error);
+    font-size: var(--font-ui-small, 13px);
+}
+
+.sh-calendar-error:empty {
+    display: none;
+}
