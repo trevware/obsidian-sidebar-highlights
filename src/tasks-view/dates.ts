@@ -7,6 +7,8 @@
  * Obsidian imports so it can be unit tested directly.
  */
 
+import { displayTime } from './times';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function toUtc(iso: string): number {
@@ -32,6 +34,11 @@ export function isoToday(now: Date = new Date()): string {
 
 export function addDays(iso: string, days: number): string {
     return fromUtc(toUtc(iso) + days * DAY_MS);
+}
+
+/** The time on the device's own clock, as 24-hour HH:mm. */
+export function nowTime(now: Date = new Date()): string {
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
 /** Whole days from `from` to `to`: positive when `to` is later. */
@@ -105,4 +112,31 @@ export function rowDateLabel(iso: string, today: string, words: DateWords, local
     if (diff < 0) return { text: shortDate(iso, today, locale), tone: 'overdue' };
     if (diff < 7) return { text: weekdayName(iso, 'long', locale), tone: 'soon' };
     return { text: shortDate(iso, today, locale), tone: 'later' };
+}
+
+export interface DueLabelOptions {
+    today: string;
+    /** The clock now, as 24-hour HH:mm. */
+    now: string;
+    words: DateWords;
+    hour12: boolean;
+    /** False inside a group that is itself the day, where only the time is worth showing. */
+    showDay: boolean;
+    locale?: string;
+}
+
+/**
+ * A row's date with its time: "Today 15:00", "Fri 3 PM", or just "15:00"
+ * inside the day's own group. A time today that has gone by reads as overdue,
+ * while the task stays in Today.
+ */
+export function dueLabel(iso: string, time: string | undefined, options: DueLabelOptions): DateLabel {
+    const { today, now, words, hour12, showDay, locale } = options;
+    const day = rowDateLabel(iso, today, words, locale);
+    if (!time) return day;
+    const clock = displayTime(time, hour12, locale);
+    return {
+        text: showDay ? `${day.text} ${clock}` : clock,
+        tone: iso === today && time < now ? 'overdue' : day.tone
+    };
 }

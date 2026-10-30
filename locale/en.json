@@ -199,6 +199,12 @@
         "name": "Due date format",
         "desc": "Date format for parsing due dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Due dates matching this format will be displayed as badges.",
         "placeholder": "YYYY-MM-DD"
+      },
+      "taskTimeFormat": {
+        "name": "Time format",
+        "desc": "How times are written into tasks and shown in the Tasks tab. Either form is read.",
+        "h24": "24-hour (15:00)",
+        "h12": "12-hour (3pm)"
       }
     },
     "backupRestore": {

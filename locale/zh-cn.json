@@ -184,6 +184,12 @@
         "name": "截止日期格式",
         "desc": "用于解析任务中截止日期的日期格式（例如：YYYY-MM-DD、MM/DD/YYYY）。匹配此格式的截止日期将显示为徽章。",
         "placeholder": "YYYY-MM-DD"
+      },
+      "taskTimeFormat": {
+        "name": "时间格式",
+        "desc": "时间写入任务以及在任务标签页中显示的方式。两种格式都能识别。",
+        "h24": "24 小时制（15:00）",
+        "h12": "12 小时制（3pm）"
       }
     },
     "backupRestore": {

@@ -18,6 +18,7 @@ import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
 import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from './src/utils/note-colors';
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
+import type { TimeFormat } from './src/tasks-view/times';
 import { i18n, t } from './src/i18n';
 import { confirmAction } from './src/modals/confirm-modal';
 
@@ -166,6 +167,7 @@ export interface CommentPluginSettings {
     showCollectionsTab: boolean; // Show/hide Collections tab
     showStatusBarCounts: boolean; // Show the sidebar's counts in Obsidian's status bar
     taskDateFormat: string; // Date format for parsing dates in tasks (e.g., YYYY-MM-DD)
+    taskTimeFormat: TimeFormat; // How times are written into tasks and shown in the Tasks tab; either form is read
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
@@ -224,6 +226,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     showCollectionsTab: true, // Show Collections tab by default
     showStatusBarCounts: true, // Status bar counter on by default
     taskDateFormat: 'YYYY-MM-DD', // Default task date format
+    taskTimeFormat: 'HH:mm', // 24-hour times by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     capitalizeTasks: false,
     collapsedGroups: [], // Nothing collapsed by default
@@ -3455,6 +3458,7 @@ const SETTING_EFFECTS: Partial<Record<keyof CommentPluginSettings, SettingEffect
     showCollectionsTab: 'sidebar',
     hideTasksPluginMetadata: 'sidebar',
     taskDateFormat: 'sidebar',
+    taskTimeFormat: 'sidebar',
     highlightFontSize: 'styles',
     detailsFontSize: 'styles',
     commentFontSize: 'styles',
@@ -3704,6 +3708,17 @@ class HighlightSettingTab extends PluginSettingTab {
                     {
                         ...this.label('settings.tasks.taskDateFormat'),
                         control: { type: 'text', key: 'taskDateFormat', placeholder: t('settings.tasks.taskDateFormat.placeholder') },
+                    },
+                    {
+                        ...this.label('settings.tasks.taskTimeFormat'),
+                        control: {
+                            type: 'dropdown',
+                            key: 'taskTimeFormat',
+                            options: {
+                                'HH:mm': t('settings.tasks.taskTimeFormat.h24'),
+                                'h:mma': t('settings.tasks.taskTimeFormat.h12'),
+                            },
+                        },
                     },
                 ],
             },

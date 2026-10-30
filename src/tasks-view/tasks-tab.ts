@@ -23,8 +23,9 @@ import { statusToCheckboxState } from '../utils/task-status';
 import { SQUIRCLE_PATH } from '../utils/squircle-icon';
 import { t } from '../i18n';
 import { onLongPress } from '../utils/long-press';
-import { addDays, isoToday, rowDateLabel, startOfWeek, weekday } from './dates';
-import type { DateLabel } from './dates';
+import { addDays, dueLabel, isoToday, nowTime, rowDateLabel, startOfWeek, weekday } from './dates';
+import type { DateLabel, DateWords } from './dates';
+import { displayTime, formatTime } from './times';
 import {
     breadcrumbFor,
     buildGroups,
@@ -76,6 +77,11 @@ function shortcut(keys: string | undefined): string | undefined {
 
 function withShortcut(label: string, keys: string): string {
     return Platform.isMobile ? label : `${label} (${keys})`;
+}
+
+/** A group that is itself one day (Today, or a day in Upcoming), so its rows don't repeat the day. */
+function datesShared(group: TaskGroup): boolean {
+    return group.kind === 'date' && (group.key === 'today' || group.key.startsWith('day:'));
 }
 
 const STORAGE = {
@@ -172,6 +178,8 @@ export class TasksTabView extends ItemView {
     /** The row element and task for every drawn row, by task key. */
     private rowEls = new Map<string, HTMLElement>();
     private rowTasks = new Map<string, Task>();
+    /** The minute the clock last showed, so a tick only redraws when it moves on. */
+    private clock = nowTime();
     /** The group each group element draws, so a drag knows the note and heading under it. */
     private groupEls = new WeakMap<HTMLElement, TaskGroup>();
     private drag!: TaskDrag;
@@ -380,6 +388,8 @@ export class TasksTabView extends ItemView {
         }));
 
         this.registerDomEvent(document, 'keydown', (event) => this.handleKey(event), true);
+        // A time due today turns overdue once it has gone by, with nothing else changing.
+        this.registerInterval(window.setInterval(() => this.onClockTick(), 30_000));
 
         this.resizer = new ResizeObserver(() => this.applyWidth());
         this.resizer.observe(this.shell);
@@ -610,12 +620,51 @@ export class TasksTabView extends ItemView {
         };
     }
 
-    private dateLabel(iso: string): DateLabel {
-        return rowDateLabel(iso, isoToday(), {
+    private dateWords(): DateWords {
+        return {
             today: t('tasksTab.dates.today'),
             tomorrow: t('tasksTab.dates.tomorrow'),
             yesterday: t('tasksTab.dates.yesterday')
+        };
+    }
+
+    private dateLabel(iso: string): DateLabel {
+        return rowDateLabel(iso, isoToday(), this.dateWords());
+    }
+
+    /**
+     * A task's date and time as its row shows them, or null when there's
+     * nothing to show: inside a day's own group only a time is worth showing.
+     */
+    private rowDue(task: Task, showDay: boolean): DateLabel | null {
+        if (!task.date || (!showDay && !task.time)) return null;
+        return dueLabel(task.date, task.time, {
+            today: isoToday(),
+            now: nowTime(),
+            words: this.dateWords(),
+            hour12: this.plugin.settings.taskTimeFormat === 'h:mma',
+            showDay
         });
+    }
+
+    /** A time as rows and chips show it. */
+    private timeLabel(time: string): string {
+        return displayTime(time, this.plugin.settings.taskTimeFormat === 'h:mma');
+    }
+
+    /** A time as it's written into a note. */
+    private formatTime(time: string): string {
+        return formatTime(time, this.plugin.settings.taskTimeFormat);
+    }
+
+    /** Redraws the rows whose time today has just gone by. */
+    private onClockTick(): void {
+        const now = nowTime();
+        if (now === this.clock) return;
+        this.clock = now;
+        if (!this.contentEl.isShown()) return;
+        const today = isoToday();
+        if ([...this.rowTasks.values()].some(task => task.date === today && task.time)) this.update();
     }
 
     private formatDate(iso: string): string {
@@ -1113,8 +1162,9 @@ export class TasksTabView extends ItemView {
     private rowSignature(task: Task, group: TaskGroup, progress: Map<string, { done: number; total: number }>): string {
         const key = taskKey(task);
         const kids = progress.get(key);
+        const due = this.rowDue(task, !datesShared(group));
         return [task.text, task.status, task.marker, task.priority, task.date, task.indentLevel, task.section,
-            task.context.join('\u0001'), kids ? `${kids.done}/${kids.total}` : '', group.key].join('\u0002');
+            task.context.join('\u0001'), kids ? `${kids.done}/${kids.total}` : '', group.key, due ? `${due.text}\u0001${due.tone}` : ''].join('\u0002');
     }
 
     /** Draws a row's contents into its element, the first time or again in place. */
@@ -1155,16 +1205,13 @@ export class TasksTabView extends ItemView {
         const body = line.createDiv({ cls: 'sh-task-body' });
         this.paintTitle(body.createDiv({ cls: 'sh-task-title task-text-content' }), task);
 
-        const datesShared = group.kind === 'date' && (group.key === 'today' || group.key.startsWith('day:'));
+        const due = this.rowDue(task, !datesShared(group));
         const kids = progress.get(key);
         const crumb = breadcrumbFor(task, group.kind, this.noteInfo);
         const contextHint = task.context.length > 0 && !display.showContext;
-        if ((task.date && !datesShared) || kids || crumb || contextHint) {
+        if (due || kids || crumb || contextHint) {
             const meta = body.createDiv({ cls: 'sh-task-meta' });
-            if (task.date && !datesShared) {
-                const label = this.dateLabel(task.date);
-                meta.createSpan({ cls: `sh-meta-date is-${label.tone}`, text: label.text });
-            }
+            if (due) meta.createSpan({ cls: `sh-meta-date is-${due.tone}`, text: due.text });
             if (kids) meta.createSpan({ cls: 'sh-meta-item is-progress', text: `${kids.done}/${kids.total}` });
             if (contextHint) meta.createSpan({ cls: 'sh-meta-item is-context' });
             if (crumb) meta.createSpan({ cls: 'sh-meta-crumb', text: crumb });
@@ -1345,7 +1392,7 @@ export class TasksTabView extends ItemView {
         this.paintNotes(notes, task);
 
         const fields = card.createDiv({ cls: 'sh-card-fields' });
-        const date = task.date ? this.dateLabel(task.date) : null;
+        const date = this.rowDue(task, true);
         this.cardField(fields, 'calendar', date ? date.text : t('tasksTab.actions.addDate'), date?.tone, () => this.openPalette(this.dateStage([task])));
         this.cardField(fields, 'flag', task.priority ? `P${task.priority}` : t('tasksTab.quickAdd.priority'), undefined, () => this.openPalette(this.priorityStage([task])))
             .dataset.priority = task.priority ? String(task.priority) : '';

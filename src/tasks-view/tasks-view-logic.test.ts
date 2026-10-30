@@ -1,4 +1,4 @@
-import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
+import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
@@ -63,6 +63,30 @@ describe('dates', () => {
         expect(rowDateLabel('2026-11-03', TODAY, words, 'en-GB')).toEqual({ text: '3 Nov', tone: 'later' });
         expect(rowDateLabel('2027-01-03', TODAY, words, 'en-GB').text).toBe('3 Jan 2027');
         expect(rowDateLabel('2026-10-01', TODAY, words, 'en-GB')).toEqual({ text: '1 Oct', tone: 'overdue' });
+    });
+});
+
+describe('due labels', () => {
+    const base = { today: TODAY, now: '14:00', words, hour12: false, showDay: true, locale: 'en-US' };
+
+    it('adds the time to a row\'s date', () => {
+        expect(dueLabel(TODAY, '15:00', base)).toEqual({ text: 'Today 15:00', tone: 'today' });
+        expect(dueLabel(addDays(TODAY, 1), '09:30', base)).toEqual({ text: 'Tomorrow 09:30', tone: 'soon' });
+        expect(dueLabel(TODAY, undefined, base)).toEqual(rowDateLabel(TODAY, TODAY, words, 'en-US'));
+    });
+
+    it('shows only the time inside a day\'s own group', () => {
+        expect(dueLabel(TODAY, '15:00', { ...base, showDay: false })).toEqual({ text: '15:00', tone: 'today' });
+    });
+
+    it('turns a time that has passed today to overdue, and only today', () => {
+        expect(dueLabel(TODAY, '13:59', base).tone).toBe('overdue');
+        expect(dueLabel(TODAY, '14:00', base).tone).toBe('today');
+        expect(dueLabel(addDays(TODAY, 1), '13:59', base).tone).toBe('soon');
+    });
+
+    it('follows a 12-hour setting', () => {
+        expect(dueLabel(TODAY, '15:00', { ...base, hour12: true }).text.replace(/\s/g, ' ')).toBe('Today 3 PM');
     });
 });
 
