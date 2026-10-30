@@ -33,7 +33,7 @@ function syncLine(plugin: HighlightCommentsPlugin): string {
     return t('calendar.status.never');
 }
 
-/** The Trevware Plus and Calendar groups of the settings tab. */
+/** The Power-Up and Calendar groups of the settings tab. */
 export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin, plusStatus: PlusStatus | null): SettingDefinitionItem[] {
     if (!calendarAvailable(tab.app)) return [];
     const sync = plugin.calendarSync;

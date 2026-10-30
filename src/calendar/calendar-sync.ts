@@ -34,7 +34,7 @@ export interface SyncStatus {
     result?: RoundResult;
 }
 
-/** Hands out access tokens for Google and Outlook, refreshed through Trevware Plus. */
+/** Hands out access tokens for Google and Outlook, refreshed through Power-Up. */
 class PlusTokens implements TokenSource {
     private token: { value: string; expiresAt: number } | null = null;
 

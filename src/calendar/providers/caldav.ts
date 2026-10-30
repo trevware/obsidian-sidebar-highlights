@@ -8,7 +8,7 @@ import type { CalendarProvider, EventDraft } from './types';
 /**
  * iCloud and any other CalDAV server. Sign-in is a user name and password
  * (for iCloud, an app-specific password), which stay on this device; the
- * Trevware Plus server never sees them or the calendar.
+ * Power-Up server never sees them or the calendar.
  *
  * Each event is a file named for the task's calendar ID. iCloud answers
  * some requests with links on a different host than the one asked, so every

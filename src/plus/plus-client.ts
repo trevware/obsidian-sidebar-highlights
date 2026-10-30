@@ -2,7 +2,7 @@ import { Platform, requestUrl } from 'obsidian';
 import type { App, RequestUrlParam, RequestUrlResponse } from 'obsidian';
 
 /**
- * Trevware Plus, the subscription that unlocks calendar sync here and hosted
+ * Power-Up, the subscription that unlocks calendar sync here and hosted
  * Describe in Oriko. One license key covers both: Sidebar Highlights reads
  * it from the same keychain entry Oriko uses, and the two plugins share one
  * install id per device and vault, so using both takes one activation.
@@ -11,17 +11,17 @@ import type { App, RequestUrlParam, RequestUrlResponse } from 'obsidian';
  * refreshes their tokens. It never sees a task or a calendar's contents.
  */
 
-export const PLUS_BASE = 'https://plus.trevware.com';
+export const PLUS_BASE = 'https://powerup.trevware.com';
 /**
  * Calendar sync shows in settings once the server, Google's and Microsoft's
- * sign-in apps and Trevware Plus are live. Until then a vault can preview it
+ * sign-in apps and Power-Up are live. Until then a vault can preview it
  * by setting the local storage key `sidebar-highlights-calendar-preview` to
  * "true" (from the developer console: app.saveLocalStorage(key, 'true')).
  */
 export const CALENDAR_LAUNCHED = false;
 export const CALENDAR_PREVIEW_KEY = 'sidebar-highlights-calendar-preview';
 
-/** Whether calendar sync, and with it any call to the Trevware Plus server, is on in this vault. */
+/** Whether calendar sync, and with it any call to the Power-Up server, is on in this vault. */
 export function calendarAvailable(app: App): boolean {
     return CALENDAR_LAUNCHED || app.loadLocalStorage(CALENDAR_PREVIEW_KEY) === 'true';
 }
@@ -33,7 +33,7 @@ export const INSTALL_KEY = 'trevware-plus-install';
 const ORIKO_INSTALL_KEY = 'oriko-plus-install';
 const FROM_SETTINGS = 'utm_source=sidebar-highlights&utm_medium=settings';
 export const PLUS_CHECKOUT = `https://buy.polar.sh/polar_cl_pzcr2OMDKqtA0UBKHdiRqnI6h68WBHNIrLOst49JIJi?${FROM_SETTINGS}`;
-export const PLUS_PAGE = `https://trevware.com/plus/?${FROM_SETTINGS}`;
+export const PLUS_PAGE = `https://trevware.com/power-up/?${FROM_SETTINGS}`;
 /** Where this device keeps when the server last said the license was active. */
 const LAST_ACTIVE_KEY = 'sidebar-highlights-plus-active';
 /** How long a license last seen active keeps calendar sync going while the server can't be reached. */
@@ -122,7 +122,7 @@ export class PlusClient {
     /** One call to the server, read as JSON. Errors come back as PlusError. */
     private async call(method: 'GET' | 'POST', path: string, body?: unknown, withKey = true): Promise<{ status: number; json: Record<string, unknown> }> {
         const key = this.licenseKey();
-        if (withKey && !key) throw new PlusError('license-unknown', 'Enter your Trevware Plus license key first.', 401);
+        if (withKey && !key) throw new PlusError('license-unknown', 'Enter your Power-Up license key first.', 401);
         const headers: Record<string, string> = { 'X-Trevware-Install': this.installId() };
         if (withKey && key) headers.Authorization = `Bearer ${key}`;
         let response: RequestUrlResponse;
@@ -147,7 +147,7 @@ export class PlusClient {
         }
         if (response.status >= 400) {
             const code = typeof json.error === 'string' ? json.error : 'upstream';
-            const message = typeof json.message === 'string' ? json.message : `Trevware Plus answered ${response.status}.`;
+            const message = typeof json.message === 'string' ? json.message : `Power-Up answered ${response.status}.`;
             throw new PlusError(code, message, response.status);
         }
         return { status: response.status, json };
@@ -165,7 +165,7 @@ export class PlusClient {
     }
 
     /**
-     * Whether Trevware Plus is active on this device, asked of the server at
+     * Whether Power-Up is active on this device, asked of the server at
      * most once an hour. While the server can't be reached, a license seen
      * active in the last week still counts.
      */
@@ -195,7 +195,7 @@ export class PlusClient {
     /** Starts a calendar sign-in: the page to open in the browser, and the ticket to collect the result with. */
     async beginSignIn(provider: CalendarSignInProvider): Promise<{ ticket: string; url: string }> {
         const { json } = await this.paid('POST', `/v1/calendar/${provider}/begin`, {});
-        if (typeof json.ticket !== 'string' || typeof json.url !== 'string') throw new PlusError('upstream', 'Trevware Plus sent an unexpected answer.', 200);
+        if (typeof json.ticket !== 'string' || typeof json.url !== 'string') throw new PlusError('upstream', 'Power-Up sent an unexpected answer.', 200);
         return { ticket: json.ticket, url: json.url };
     }
 
@@ -205,7 +205,7 @@ export class PlusClient {
         if (status === 202) return null;
         const provider = json.provider === 'google' || json.provider === 'microsoft' ? json.provider : null;
         if (!provider || typeof json.refreshToken !== 'string' || typeof json.accessToken !== 'string') {
-            throw new PlusError('upstream', 'Trevware Plus sent an unexpected answer.', status);
+            throw new PlusError('upstream', 'Power-Up sent an unexpected answer.', status);
         }
         return {
             provider,
@@ -219,7 +219,7 @@ export class PlusClient {
     /** A fresh access token. Outlook may hand back a new refresh token with it. */
     async refresh(provider: CalendarSignInProvider, refreshToken: string): Promise<{ accessToken: string; expiresAt: number; refreshToken?: string }> {
         const { json } = await this.paid('POST', `/v1/calendar/${provider}/token`, { refreshToken });
-        if (typeof json.accessToken !== 'string') throw new PlusError('upstream', 'Trevware Plus sent an unexpected answer.', 200);
+        if (typeof json.accessToken !== 'string') throw new PlusError('upstream', 'Power-Up sent an unexpected answer.', 200);
         return {
             accessToken: json.accessToken,
             expiresAt: Number(json.expiresAt) || Date.now() + 30 * 60 * 1000,

@@ -303,7 +303,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     taskIndex: TaskIndex;
     calendarSync: CalendarSync;
     private settingTab: HighlightSettingTab | null = null;
-    /** Trevware Plus as the server last described it, for the settings tab. */
+    /** Power-Up as the server last described it, for the settings tab. */
     plusStatus: PlusStatus | null = null;
     /** The editor extensions that hide calendar IDs, emptied while Show calendar IDs is on. */
     private calendarIdExtension: Extension[] = [];
@@ -817,7 +817,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.calendarSync.settingsChanged();
     }
 
-    /** Asks Trevware Plus about the license again (the client answers from its cache unless `fresh`). */
+    /** Asks Power-Up about the license again (the client answers from its cache unless `fresh`). */
     async refreshPlusStatus(fresh = false): Promise<PlusStatus> {
         const status = await this.calendarSync.plus.status(fresh);
         const changed = JSON.stringify(status) !== JSON.stringify(this.plusStatus);

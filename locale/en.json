@@ -230,7 +230,7 @@
       }
     },
     "plus": {
-      "heading": "Trevware Plus",
+      "heading": "Power-Up",
       "license": {
         "name": "License key",
         "desc": "Unlocks calendar sync. One subscription covers Sidebar Highlights and Oriko, so a key you already use in Oriko works here too.",
@@ -243,7 +243,7 @@
         "unknown": "That key isn't recognized. Check that it was copied whole.",
         "inactive": "This subscription has ended.",
         "device-limit": "This key is already in use on five devices. Remove one from your Polar account page.",
-        "offline": "Couldn't reach Trevware Plus. Calendar sync keeps going for a week while it's out of reach."
+        "offline": "Couldn't reach Power-Up. Calendar sync keeps going for a week while it's out of reach."
       },
       "subscribe": {
         "name": "Subscribe",
@@ -812,7 +812,7 @@
     "errors": {
       "signInHere": "Sign in to the calendar on this device.",
       "signedOut": "The calendar signed this device out. Sign in again.",
-      "noPlus": "Calendar sync needs an active Trevware Plus subscription.",
+      "noPlus": "Calendar sync needs an active Power-Up subscription.",
       "emptied": "{{count}} events disappeared from the calendar at once, so nothing was changed. If you emptied the calendar on purpose, disconnect and connect again.",
       "gone": "The calendar was deleted. Connect again to make a new one. Your tasks weren't changed.",
       "signInFailed": "Signing in didn't finish. Try again."

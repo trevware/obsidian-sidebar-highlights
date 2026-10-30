@@ -215,7 +215,7 @@
       }
     },
     "plus": {
-      "heading": "Trevware Plus",
+      "heading": "Power-Up",
       "license": {
         "name": "许可证密钥",
         "desc": "解锁日历同步。一个订阅同时适用于 Sidebar Highlights 和 Oriko，所以你在 Oriko 中使用的密钥在这里也有效。",
@@ -228,7 +228,7 @@
         "unknown": "无法识别该密钥。请确认已完整复制。",
         "inactive": "此订阅已结束。",
         "device-limit": "此密钥已在五台设备上使用。请在 Polar 账户页面移除一台。",
-        "offline": "无法连接 Trevware Plus。在无法连接期间，日历同步会继续运行一周。"
+        "offline": "无法连接 Power-Up。在无法连接期间，日历同步会继续运行一周。"
       },
       "subscribe": {
         "name": "订阅",
@@ -550,7 +550,7 @@
     "errors": {
       "signInHere": "请在此设备上登录日历。",
       "signedOut": "日历已将此设备登出。请重新登录。",
-      "noPlus": "日历同步需要有效的 Trevware Plus 订阅。",
+      "noPlus": "日历同步需要有效的 Power-Up 订阅。",
       "emptied": "日历中一次消失了 {{count}} 个事件，因此没有做任何更改。如果你是有意清空日历，请断开后重新连接。",
       "gone": "日历已被删除。重新连接即可新建一个。你的任务没有改变。",
       "signInFailed": "登录未完成。请重试。"

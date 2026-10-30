@@ -42,7 +42,7 @@ export interface EventDraft {
 
 export class ProviderError extends Error {
     constructor(
-        /** signed-out: sign in again; gone: the calendar was deleted; license: Trevware Plus isn't active; other: try later. */
+        /** signed-out: sign in again; gone: the calendar was deleted; license: Power-Up isn't active; other: try later. */
         readonly kind: 'signed-out' | 'gone' | 'license' | 'other',
         message: string
     ) {
