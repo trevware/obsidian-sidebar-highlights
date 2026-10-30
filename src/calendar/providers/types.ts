@@ -24,6 +24,8 @@ export interface EventDraft {
     title: string;
     /** The note's name and a link that opens it. */
     description: string;
+    /** The obsidian:// link that opens the task's note. */
+    link: string;
     date: string;
     /** Absent for an all-day event. */
     time?: string;

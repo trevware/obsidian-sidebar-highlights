@@ -70,7 +70,7 @@ class Device {
             options,
             notes: { exists: (path) => this.notes.has(path), mtime: (path) => this.notes.get(path)?.mtime ?? 0 },
             now: this.clock.now,
-            draft: (id, fields, written) => ({ id, ...fields, description: '', minutes: 30, timeZone: 'UTC', written }),
+            draft: (id, fields, written) => ({ id, ...fields, description: '', link: 'obsidian://open', minutes: 30, timeZone: 'UTC', written }),
             formatDate: (iso) => iso,
             formatTime: (time) => time,
             clearedNote: (date) => `2026-10-30: the calendar event was deleted, so the date ${date} was cleared.`,
