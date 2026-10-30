@@ -160,16 +160,31 @@ describe('saving from quick add', () => {
         expect(submit.mock.calls[0][0][0]).toMatch(/^- \[ \] Call the dentist /);
     });
 
-    it('capitalizes the field itself once the first word is typed', () => {
+    it('capitalizes the field itself as the first letter is typed', () => {
         const { quickAdd, container } = setup(undefined, { capitalize: () => true });
         quickAdd.open();
-        type(container, 'call');
-        expect(field(container).value).toBe('call');
-        type(container, 'call ');
-        expect(field(container).value).toBe('Call ');
-        expect(field(container).selectionStart).toBe(5);
+        type(container, 'c');
+        expect(field(container).value).toBe('C');
+        expect(field(container).selectionStart).toBe(1);
+        type(container, 'Call mom');
+        expect(field(container).value).toBe('Call mom');
+    });
+
+    it('gives the capital back when the word turns out to be an iPhone or a web address', () => {
+        const { quickAdd, container } = setup(undefined, { capitalize: () => true });
+        quickAdd.open();
+        type(container, 'i');
+        expect(field(container).value).toBe('I');
+        type(container, 'IP');
+        expect(field(container).value).toBe('iP');
         type(container, 'iPhone backup');
         expect(field(container).value).toBe('iPhone backup');
+
+        type(container, '');
+        type(container, 'h');
+        expect(field(container).value).toBe('H');
+        type(container, 'Https://');
+        expect(field(container).value).toBe('https://');
     });
 
     it('writes the task as typed when Capitalize tasks is off', async () => {

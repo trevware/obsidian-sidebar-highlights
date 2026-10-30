@@ -54,10 +54,10 @@ const key = (name: string) => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('typing subtasks in the card', () => {
-    it('capitalizes the field once the first word is typed, when Capitalize tasks is on', () => {
+    it('capitalizes the field as the first letter is typed, when Capitalize tasks is on', () => {
         setup(undefined, true);
-        type('ask ');
-        expect(input().value).toBe('Ask ');
+        type('a');
+        expect(input().value).toBe('A');
     });
 
     it('adds on Enter, reading the date, and stays open for the next one', async () => {
