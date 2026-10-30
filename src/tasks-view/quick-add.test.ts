@@ -278,6 +278,51 @@ describe('the day a task starts on', () => {
     });
 });
 
+describe('the date chip\'s menu', () => {
+    const pick = (container: HTMLElement, label: string) => {
+        const row = [...container.querySelectorAll<HTMLElement>('.sh-menu-item')].find(el => el.querySelector('.sh-menu-label')?.textContent === label);
+        if (!row) throw new Error(`No menu row "${label}"`);
+        row.click();
+    };
+    const preview = (container: HTMLElement) => container.querySelector('.sh-quickadd-preview code')?.textContent;
+
+    it('takes the day and the time out with No date, leaving the words', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call fri 3pm about the bill');
+        chips(container)[0].click();
+        pick(container, 'tasksTab.dates.noDate');
+        expect(field(container).value).toBe('Call about the bill');
+        expect(preview(container)).toBe('- [ ] Call about the bill');
+    });
+
+    it('keeps a typed 24-hour time when another day is picked', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call fri 15:00');
+        chips(container)[0].click();
+        pick(container, 'tasksTab.dates.tomorrow');
+        expect(preview(container)).toBe('- [ ] Call 2026-10-26 15:00');
+        expect(chips(container)[0].textContent).toBe('2026-10-26 15:00');
+    });
+
+    it('forgets a picked time when an empty draft is put away', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        chips(container)[0].click();
+        pick(container, 'tasksTab.actions.addTime');
+        pick(container, '09:00');
+        expect(chips(container)[0].textContent).toBe('2026-10-25 09:00');
+        escape();
+        quickAdd.open();
+        type(container, 'Buy milk');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Buy milk'], { path: 'Inbox.md' });
+    });
+});
+
 describe('where quick add writes', () => {
     it('takes the note of the list it opens on, after an earlier add went elsewhere', async () => {
         let place = 'Inbox.md';

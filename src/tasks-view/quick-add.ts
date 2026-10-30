@@ -2,7 +2,7 @@ import { Platform, setIcon } from 'obsidian';
 import { GlassMenu } from './glass-menu';
 import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
-import type { QuickParse } from './quick-parse';
+import type { QuickParse, TokenKind } from './quick-parse';
 import { buildTaskLine } from './task-line';
 import { titleCase, titleCaseTyped } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
@@ -133,7 +133,10 @@ export class QuickAdd {
         }
         // An empty draft takes the list's day the same way, so a task added
         // in Today is due today and stays in sight.
-        if (!prefill.date && this.draft.text.trim() === '') this.draft.date = this.host.defaultDate();
+        if (!prefill.date && this.draft.text.trim() === '') {
+            this.draft.date = this.host.defaultDate();
+            this.draft.time = undefined;
+        }
 
         this.panel = this.container.createDiv({ cls: 'sh-glass sh-quickadd' });
         const field = this.panel.createDiv({ cls: 'sh-quickadd-field' });
@@ -324,12 +327,15 @@ export class QuickAdd {
         this.draft.ignored.add(text.toLowerCase());
     }
 
-    /** Picking a chip value replaces a typed phrase for the same thing. */
-    private removeToken(kind: 'date' | 'time' | 'priority'): void {
-        const token = this.parsed.tokens.find(candidate => candidate.kind === kind);
-        if (!token || !this.input) return;
-        const text = this.draft.text;
-        this.draft.text = (text.slice(0, token.start) + text.slice(token.end)).replace(/\s{2,}/g, ' ');
+    /** Picking a chip value replaces typed phrases for the same things. */
+    private removeTokens(...kinds: TokenKind[]): void {
+        if (!this.input) return;
+        // From the end of the line back, so each cut leaves the earlier spans where they were.
+        const tokens = this.parsed.tokens.filter(token => kinds.includes(token.kind)).sort((a, b) => b.start - a.start);
+        if (tokens.length === 0) return;
+        let text = this.draft.text;
+        for (const token of tokens) text = text.slice(0, token.start) + text.slice(token.end);
+        this.draft.text = text.replace(/\s{2,}/g, ' ');
         this.input.value = this.draft.text;
     }
 
@@ -352,10 +358,13 @@ export class QuickAdd {
             checked: current === iso,
             divider: index === options.length - 1,
             run: () => {
-                // A new day keeps the time; no day takes the time with it.
-                this.removeToken('date');
+                // A new day keeps the time, which moves to the chip, since a
+                // typed 15:00 only counts beside the day it was typed with.
+                // No day takes the time with it.
+                const time = this.effectiveTime();
+                this.removeTokens('date', 'time');
                 this.draft.date = iso;
-                if (!iso) this.clearTime();
+                this.draft.time = iso ? time : undefined;
                 this.refresh();
             }
         }));
@@ -377,7 +386,7 @@ export class QuickAdd {
             icon: 'clock',
             checked: current === time,
             run: () => {
-                this.removeToken('time');
+                this.removeTokens('time');
                 this.draft.time = time;
                 this.refresh();
             }
@@ -386,7 +395,7 @@ export class QuickAdd {
     }
 
     private clearTime(): void {
-        this.removeToken('time');
+        this.removeTokens('time');
         this.draft.time = undefined;
     }
 
@@ -404,7 +413,7 @@ export class QuickAdd {
             checked: current === level,
             divider: level === undefined,
             run: () => {
-                this.removeToken('priority');
+                this.removeTokens('priority');
                 this.draft.priority = level;
                 this.refresh();
             }
