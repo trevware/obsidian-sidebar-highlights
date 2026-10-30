@@ -200,8 +200,20 @@ export class TaskManager {
         showCompleted: boolean = true,
         showContext: boolean = true
     ): Promise<Task[]> {
+        return this.tasksInContent(file.path, await this.vault.read(file), showCompleted, showContext);
+    }
+
+    /**
+     * The checkbox tasks in a note's text, for a caller that already has it
+     * (reminders read it from the metadata cache's change event).
+     */
+    tasksInContent(
+        path: string,
+        content: string,
+        showCompleted: boolean = true,
+        showContext: boolean = true
+    ): Task[] {
         const tasks: Task[] = [];
-        const content = await this.vault.read(file);
         const lines = content.split('\n');
 
         const checkboxRegex = CHECKBOX_REGEX;
@@ -301,13 +313,13 @@ export class TaskManager {
 
                 // Create task object
                 const task: Task = {
-                    id: `${file.path}:${i}:${taskText}`, // Unique ID based on file, line, and text
+                    id: `${path}:${i}:${taskText}`, // Unique ID based on file, line, and text
                     text: taskText,
                     completed: isCompleted,
                     status: status,
                     flagged: isFlagged,
                     priority: priority,
-                    filePath: file.path,
+                    filePath: path,
                     lineNumber: i,
                     context: contextLines,
                     indentLevel: indentLevel,

@@ -3,7 +3,6 @@ import {
     Component,
     ItemView,
     MarkdownRenderer,
-    MarkdownView,
     Notice,
     Platform,
     Scope,
@@ -26,6 +25,7 @@ import { onLongPress } from '../utils/long-press';
 import { addDays, dueLabel, isoToday, nowTime, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel, DateWords } from './dates';
 import { TIME_PRESETS, displayTime, formatTime, parseTime } from './times';
+import { openNoteAt } from './open-note';
 import {
     breadcrumbFor,
     buildGroups,
@@ -2499,31 +2499,8 @@ export class TasksTabView extends ItemView {
 
     // ── Opening notes ───────────────────────────────────────────────────
 
-    private async openPath(path: string, line?: number, split = false): Promise<void> {
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (!(file instanceof TFile)) return;
-
-        let leaf: WorkspaceLeaf | null = null;
-        if (!split) {
-            leaf = this.app.workspace.getLeavesOfType('markdown')
-                .find(candidate => (candidate.view as MarkdownView).file?.path === path) ?? null;
-        }
-        if (!leaf) leaf = split ? this.app.workspace.getLeaf('split', 'vertical') : this.app.workspace.getLeaf('tab');
-
-        await leaf.openFile(file, { active: true });
-        this.app.workspace.setActiveLeaf(leaf, { focus: true });
-
-        const view = leaf.view;
-        if (line === undefined || !(view instanceof MarkdownView)) return;
-        if (view.getMode() === 'preview') {
-            view.setEphemeralState({ line });
-            return;
-        }
-        const editor = view.editor;
-        const safeLine = Math.min(line, editor.lineCount() - 1);
-        const ch = editor.getLine(safeLine).length;
-        editor.setCursor({ line: safeLine, ch });
-        editor.scrollIntoView({ from: { line: safeLine, ch: 0 }, to: { line: safeLine, ch } }, true);
+    private openPath(path: string, line?: number, split = false): Promise<void> {
+        return openNoteAt(this.app, path, line, split);
     }
 
     private async openTask(task: Task, split = false): Promise<void> {
