@@ -1271,8 +1271,12 @@ export class TasksTabView extends ItemView {
             if (!row) return;
             row.toggleClass('is-lingering', this.lingering.has(key));
             const signature = this.rowSignature(task, group, progress);
-            // A name being edited keeps its field; the save finds the line again.
-            if ((signature === this.rowSigs.get(key) && !this.justChanged.has(key)) || row.querySelector('.sh-title-editor')) {
+            // A name or notes being edited keep their field; the save finds the
+            // line again. Notes count only while focused, since a save runs
+            // with the blurred editor still on the page.
+            const notesEditor = row.querySelector('.sh-card-editor');
+            const editing = row.querySelector('.sh-title-editor') !== null || (notesEditor !== null && notesEditor === document.activeElement);
+            if ((signature === this.rowSigs.get(key) && !this.justChanged.has(key)) || editing) {
                 this.rowTasks.set(key, task);
                 return;
             }
@@ -2351,10 +2355,12 @@ export class TasksTabView extends ItemView {
     private async setTimes(tasks: Task[], time: string | null): Promise<void> {
         const today = isoToday();
         const timeText = time ? this.formatTime(time) : null;
-        await this.write(tasks, this.countLabel(time ? 'timeSet' : 'timeRemoved', tasks), (line, task) => {
+        // Removing only touches, and only counts, the tasks that had a time.
+        const targets = time ? tasks : tasks.filter(task => task.time);
+        if (targets.length === 0) return;
+        await this.write(targets, this.countLabel(time ? 'timeSet' : 'timeRemoved', targets), (line, task) => {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
-            if (!time && !task.time) return line;
             return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, this.formatDate(task.date ?? today), timeText)}`;
         });
     }
