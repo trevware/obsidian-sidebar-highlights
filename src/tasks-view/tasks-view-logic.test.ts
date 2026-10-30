@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
+import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseDateQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
@@ -67,6 +67,23 @@ describe('dates', () => {
 });
 
 describe('task-line', () => {
+    it('keeps a date and its time together through renames', () => {
+        const dateText = '2026-10-30 15:00';
+        expect(editableTitle('Call mom 2026-10-30 15:00', dateText)).toBe('Call mom');
+        expect(withTitle('Call mom 2026-10-30 15:00', dateText, 'Phone mom')).toBe('Phone mom 2026-10-30 15:00');
+        expect(withTitle('2026-10-30 3pm Call mom', '2026-10-30 3pm', 'Phone mom')).toBe('2026-10-30 3pm Phone mom');
+    });
+
+    it('clears a date and its time, keeping a marker last', () => {
+        expect(setDateInText('Call 2026-10-30 15:00 [↗](https://x.y)', '2026-10-30 15:00', null)).toBe('Call [↗](https://x.y)');
+    });
+
+    it('writes a new task with a time', () => {
+        expect(dateTimeText('2026-10-30', '15:00')).toBe('2026-10-30 15:00');
+        expect(dateTimeText('2026-10-30')).toBe('2026-10-30');
+        expect(buildTaskLine({ text: 'Call mom', date: '2026-10-30', time: '3pm' })).toBe('- [ ] Call mom 2026-10-30 3pm');
+    });
+
     it('swaps the checkbox state and keeps callout prefix and indent', () => {
         expect(withState('> \t- [ ] Ship it', 'x')).toBe('> \t- [x] Ship it');
         expect(withState('- [!1] Ship it', '/')).toBe('- [/] Ship it');

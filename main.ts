@@ -76,7 +76,9 @@ export interface Task {
     section?: string; // Markdown header above the task (if any)
     sectionLine?: number; // The line that header is on, which tells apart two headers with the same name
     date?: string; // Date extracted from task text in ISO format (YYYY-MM-DD)
-    dateText?: string; // Original date text from task (to strip from display)
+    dateText?: string; // Original date text from task, with the time after it when there is one (to strip from display)
+    time?: string; // Time of day written right after the date, as 24-hour HH:mm
+    timeText?: string; // That time exactly as written, e.g. '3pm'
     marker?: string; // The raw checkbox character, e.g. '>' for an alternate checkbox
 }
 

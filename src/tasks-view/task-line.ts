@@ -132,12 +132,19 @@ export interface NewTaskLine {
     priority?: 1 | 2 | 3;
     /** Already formatted in the vault's date format. */
     date?: string;
+    /** Already formatted in the vault's time format; written right after the date. */
+    time?: string;
+}
+
+/** A date with its time after it, as a task line carries them. */
+export function dateTimeText(date: string, time?: string): string {
+    return time ? `${date} ${time}` : date;
 }
 
 /** The exact Markdown line quick add writes. */
 export function buildTaskLine(task: NewTaskLine): string {
     const state = task.priority ? `!${task.priority}` : ' ';
-    const text = task.date ? setDateInText(task.text.trim(), undefined, task.date) : task.text.trim();
+    const text = task.date ? setDateInText(task.text.trim(), undefined, dateTimeText(task.date, task.time)) : task.text.trim();
     return `- [${state}] ${text}`;
 }
 

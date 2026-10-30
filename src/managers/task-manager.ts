@@ -1,5 +1,6 @@
 import { TFile, Vault, moment } from 'obsidian';
 import { Task } from '../../main';
+import { readTimeAfter } from '../tasks-view/times';
 import type HighlightCommentsPlugin from '../../main';
 import {
     CHECKBOX_REGEX,
@@ -112,9 +113,11 @@ export class TaskManager {
     /**
      * Extract date from task text based on configured format
      * @param text Task text to parse
-     * @returns Object with ISO date and original text if found, undefined otherwise
+     * @returns Object with ISO date and original text if found, undefined otherwise.
+     * A time written right after the date comes with it, and `dateText` then
+     * covers both, so everything that moves or strips the date takes the time too.
      */
-    private parseDateFromText(text: string): { date: string; dateText: string } | undefined {
+    private parseDateFromText(text: string): { date: string; dateText: string; time?: string; timeText?: string } | undefined {
         const dateFormat = this.plugin.settings.taskDateFormat || 'YYYY-MM-DD';
 
         // Create regex pattern to find dates in the configured format
@@ -147,9 +150,13 @@ export class TaskManager {
             const parsedDate = moment(dateStr, dateFormat, true);
 
             if (parsedDate.isValid()) {
+                const start = match.index ?? text.indexOf(dateStr);
+                const time = readTimeAfter(text, start + dateStr.length);
                 return {
                     date: parsedDate.format('YYYY-MM-DD'),
-                    dateText: dateStr
+                    dateText: time ? text.slice(start, time.end) : dateStr,
+                    time: time?.time,
+                    timeText: time?.text
                 };
             }
         }
@@ -309,6 +316,8 @@ export class TaskManager {
                     sectionLine: currentSectionLine,
                     date: parsedDate?.date,
                     dateText: parsedDate?.dateText,
+                    time: parsedDate?.time,
+                    timeText: parsedDate?.timeText,
                     marker: checkboxState
                 };
 
