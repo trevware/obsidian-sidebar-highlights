@@ -754,6 +754,13 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.requestStatusBarUpdate();
     }
 
+    /** Redraws every open Tasks tab, for a setting that changes how its rows read. */
+    refreshTasksTabs(): void {
+        for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TASKS)) {
+            if (leaf.view instanceof TasksTabView) leaf.view.redraw();
+        }
+    }
+
     // Anything that can change what the counter shows asks for a recount here.
     requestStatusBarUpdate(): void {
         this.statusBarCounter?.requestUpdate();
@@ -3443,7 +3450,7 @@ class DisplayModeNameModal extends Modal {
 }
 
 /** What a setting redraws once it's saved, past the save itself. */
-type SettingEffect = 'sidebar' | 'styles' | 'statusBar' | 'rescan';
+type SettingEffect = 'sidebar' | 'tasks' | 'styles' | 'statusBar' | 'rescan';
 
 const SETTING_EFFECTS: Partial<Record<keyof CommentPluginSettings, SettingEffect>> = {
     showFilenames: 'sidebar',
@@ -3458,7 +3465,7 @@ const SETTING_EFFECTS: Partial<Record<keyof CommentPluginSettings, SettingEffect
     showCollectionsTab: 'sidebar',
     hideTasksPluginMetadata: 'sidebar',
     taskDateFormat: 'sidebar',
-    taskTimeFormat: 'sidebar',
+    taskTimeFormat: 'tasks',
     highlightFontSize: 'styles',
     detailsFontSize: 'styles',
     commentFontSize: 'styles',
@@ -3811,6 +3818,9 @@ class HighlightSettingTab extends PluginSettingTab {
                 break;
             case 'sidebar':
                 this.plugin.refreshSidebar();
+                break;
+            case 'tasks':
+                this.plugin.refreshTasksTabs();
                 break;
             case 'statusBar':
                 this.plugin.requestStatusBarUpdate();

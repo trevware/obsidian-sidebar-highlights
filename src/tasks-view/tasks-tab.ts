@@ -449,6 +449,12 @@ export class TasksTabView extends ItemView {
         this.quickAdd.open(prefill);
     }
 
+    /** Draws the list again, for a setting that changes how its rows read. */
+    redraw(): void {
+        if (this.contentEl.isShown()) this.render();
+        else this.dirty = true;
+    }
+
     hasTargets(): boolean {
         return this.targets().length > 0;
     }
