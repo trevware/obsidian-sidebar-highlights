@@ -1,7 +1,7 @@
 import { Notice, TFile, moment, requestUrl } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import type { TaskIndex } from '../managers/task-index';
-import { PlusClient, PlusError } from '../plus/plus-client';
+import { PlusClient, PlusError, calendarAvailable } from '../plus/plus-client';
 import type { CalendarSignInProvider } from '../plus/plus-client';
 import { applyNoteEdits } from './note-edits';
 import type { NoteEdit } from './note-edits';
@@ -146,7 +146,7 @@ export class CalendarSync {
     }
 
     private schedule(delay: number): void {
-        if (!this.connection() || !this.signedInHere()) {
+        if (!calendarAvailable(this.plugin.app) || !this.connection() || !this.signedInHere()) {
             if (this.status.state !== 'off' && !this.connection()) this.setStatus({ state: 'off' });
             return;
         }
@@ -178,17 +178,15 @@ export class CalendarSync {
     private async round(): Promise<void> {
         const connection = this.connection();
         if (!connection || !this.signedInHere()) return;
-        if (!this.index.isReady()) {
-            this.again = true;
-            return;
-        }
-        const plus = await this.plus.status();
+        // Every note must have been read, or tasks not read yet would look deleted.
+        await this.index.whenReady();
+        if (!this.index.isReady()) return;
+        const plus = await this.plugin.refreshPlusStatus();
         if (plus.state !== 'active') {
             this.setStatus({ state: 'problem', message: plus.message ?? t('calendar.errors.noPlus'), at: this.status.at });
             return;
         }
         this.setStatus({ ...this.status, state: 'syncing' });
-        const signature = this.signature();
         try {
             const settings = this.plugin.settings;
             const result = await runRound({
@@ -227,7 +225,8 @@ export class CalendarSync {
                 this.plugin.settings.calendar = { ...connection, adopt: false };
                 await this.plugin.saveSettings();
             }
-            this.lastSignature = signature;
+            // Taken after the round's own note writes, so they don't set off another round.
+            this.lastSignature = this.signature();
             this.setStatus({ state: 'idle', at: Date.now(), result });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -243,11 +242,13 @@ export class CalendarSync {
         const file = this.plugin.app.vault.getAbstractFileByPath(path);
         if (!(file instanceof TFile)) return edits.length;
         let missed = 0;
-        await this.plugin.app.vault.process(file, (content) => {
+        const written = await this.plugin.app.vault.process(file, (content) => {
             const result = applyNoteEdits(content.split('\n'), edits);
             missed = result.missed;
             return result.lines.join('\n');
         });
+        // The next round must see the IDs just written, or it would make their events again.
+        this.index.noteWritten(path, written);
         return missed;
     }
 
@@ -289,6 +290,8 @@ export class CalendarSync {
         await this.plugin.saveSettings();
         this.lastSignature = '';
         this.setStatus({ state: 'idle' });
+        // The task index may have been idle with nothing wanting it.
+        this.plugin.taskSettingsChanged();
         void this.syncNow();
     }
 
@@ -390,6 +393,7 @@ export class CalendarSync {
         this.tokens = null;
         this.plugin.settings.calendar = null;
         await this.plugin.saveSettings();
+        this.plugin.taskSettingsChanged();
         this.setStatus({ state: 'off' });
     }
 }

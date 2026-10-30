@@ -30,6 +30,8 @@ export class TaskIndex {
     private started = false;
     /** The settings that decide which notes are read and how dates are found, as last read. */
     private readWith = '';
+    /** Waiting for the notes to be read. */
+    private waiters: Array<() => void> = [];
 
     constructor(plugin: HighlightCommentsPlugin, private wanted: () => boolean) {
         this.plugin = plugin;
@@ -53,6 +55,7 @@ export class TaskIndex {
     stop(): void {
         this.generation++;
         this.listeners.clear();
+        for (const resolve of this.waiters.splice(0)) resolve();
     }
 
     /** Every note has been read, so the index is complete. */
@@ -60,8 +63,24 @@ export class TaskIndex {
         return this.ready;
     }
 
+    /** Settles once every note has been read; at once when they have, or when nothing wants the index. */
+    whenReady(): Promise<void> {
+        if (this.ready || !this.wanted()) return Promise.resolve();
+        return new Promise(resolve => this.waiters.push(resolve));
+    }
+
     tasks(): Task[] {
         return [...this.byFile.values()].flat();
+    }
+
+    /**
+     * Takes a note's new text at once, for a write the plugin made itself,
+     * so the next thing to read the index sees it before Obsidian reports
+     * the change.
+     */
+    noteWritten(path: string, content: string): void {
+        if (!this.ready) return;
+        if (this.index(path, content)) this.emit({ paths: [path], deleted: [] });
     }
 
     onChange(listener: (change: IndexChange) => void): () => void {
@@ -115,6 +134,7 @@ export class TaskIndex {
             this.index(file.path, content);
         }
         this.ready = true;
+        for (const resolve of this.waiters.splice(0)) resolve();
         this.emit({ paths: [], deleted: [] });
     }
 

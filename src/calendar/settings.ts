@@ -1,7 +1,7 @@
 import { App, Notice, moment } from 'obsidian';
 import type { Setting, SettingDefinitionItem, SettingGroupItem } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
-import { PLUS_CHECKOUT, PLUS_PAGE } from '../plus/plus-client';
+import { PLUS_CHECKOUT, PLUS_PAGE, calendarAvailable } from '../plus/plus-client';
 import type { PlusStatus } from '../plus/plus-client';
 import { CalDavModal } from './caldav-modal';
 import { providerName } from './calendar-sync';
@@ -35,6 +35,7 @@ function syncLine(plugin: HighlightCommentsPlugin): string {
 
 /** The Trevware Plus and Calendar groups of the settings tab. */
 export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin, plusStatus: PlusStatus | null): SettingDefinitionItem[] {
+    if (!calendarAvailable(tab.app)) return [];
     const sync = plugin.calendarSync;
     const plus = sync.plus;
     const connection = sync.connection();

@@ -24,6 +24,7 @@ describe('eventToIcs', () => {
         const stamp = start.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
         expect(ics).toContain(`DTSTART:${stamp}`);
         expect(ics).toContain('TRIGGER:-PT10M');
+        expect(eventToIcs(draft({ alert: 0 }), NOW)).toContain('TRIGGER:PT0S');
         expect(ics).toContain('SUMMARY:Call Mom\\, then\\; the bank\\\\');
         expect(ics).toContain(`${WRITTEN_PROPERTY}:`);
         expect(ics.split('\r\n').every(line => Buffer.byteLength(line, 'utf8') <= 75)).toBe(true);

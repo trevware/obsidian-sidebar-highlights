@@ -12,6 +12,19 @@ import type { App, RequestUrlParam, RequestUrlResponse } from 'obsidian';
  */
 
 export const PLUS_BASE = 'https://plus.trevware.com';
+/**
+ * Calendar sync shows in settings once the server, Google's and Microsoft's
+ * sign-in apps and Trevware Plus are live. Until then a vault can preview it
+ * by setting the local storage key `sidebar-highlights-calendar-preview` to
+ * "true" (from the developer console: app.saveLocalStorage(key, 'true')).
+ */
+export const CALENDAR_LAUNCHED = false;
+export const CALENDAR_PREVIEW_KEY = 'sidebar-highlights-calendar-preview';
+
+/** Whether calendar sync, and with it any call to the Trevware Plus server, is on in this vault. */
+export function calendarAvailable(app: App): boolean {
+    return CALENDAR_LAUNCHED || app.loadLocalStorage(CALENDAR_PREVIEW_KEY) === 'true';
+}
 /** Obsidian keychain id for the license key, shared with Oriko. */
 export const LICENSE_SECRET = 'oriko-plus-license';
 /** Obsidian local storage key for this device's install id, shared with Oriko. */

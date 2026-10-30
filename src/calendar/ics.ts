@@ -127,7 +127,8 @@ export function eventToIcs(draft: EventDraft, now: number): string {
         const start = localMs(draft.date, draft.time);
         lines.push(`DTSTART:${utcStamp(start)}`, `DTEND:${utcStamp(start + draft.minutes * 60_000)}`);
         if (draft.alert !== undefined) {
-            lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeText(draft.title)}`, `TRIGGER:-PT${draft.alert}M`, 'END:VALARM');
+            const trigger = draft.alert === 0 ? 'PT0S' : `-PT${draft.alert}M`;
+            lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeText(draft.title)}`, `TRIGGER:${trigger}`, 'END:VALARM');
         }
     } else {
         lines.push(`DTSTART;VALUE=DATE:${compactDate(draft.date)}`, `DTEND;VALUE=DATE:${nextDay(draft.date)}`, 'TRANSP:TRANSPARENT');

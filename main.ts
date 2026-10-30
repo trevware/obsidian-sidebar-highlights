@@ -26,6 +26,7 @@ import { hideCalendarIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
 import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
+import { calendarAvailable } from './src/plus/plus-client';
 import type { PlusStatus } from './src/plus/plus-client';
 import type { Extension } from '@codemirror/state';
 import type { TimeFormat } from './src/tasks-view/times';
@@ -301,6 +302,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private statusBarCounter: StatusBarCounter | null = null;
     taskIndex: TaskIndex;
     calendarSync: CalendarSync;
+    private settingTab: HighlightSettingTab | null = null;
     /** Trevware Plus as the server last described it, for the settings tab. */
     plusStatus: PlusStatus | null = null;
     /** The editor extensions that hide calendar IDs, emptied while Show calendar IDs is on. */
@@ -448,7 +450,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         );
 
 
-        this.addSettingTab(new HighlightSettingTab(this.app, this));
+        this.settingTab = new HighlightSettingTab(this.app, this);
+        this.addSettingTab(this.settingTab);
         this.updateCustomColorStyles();
 
         this.registerEditorExtension(this.calendarIdExtension);
@@ -470,6 +473,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.taskIndex.start();
             this.reminders.start();
             this.calendarSync.start();
+            if (calendarAvailable(this.app) && this.calendarSync.plus.licenseKey()) void this.refreshPlusStatus();
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
@@ -815,8 +819,11 @@ export default class HighlightCommentsPlugin extends Plugin {
 
     /** Asks Trevware Plus about the license again (the client answers from its cache unless `fresh`). */
     async refreshPlusStatus(fresh = false): Promise<PlusStatus> {
-        this.plusStatus = await this.calendarSync.plus.status(fresh);
-        return this.plusStatus;
+        const status = await this.calendarSync.plus.status(fresh);
+        const changed = JSON.stringify(status) !== JSON.stringify(this.plusStatus);
+        this.plusStatus = status;
+        if (changed) this.settingTab?.update();
+        return status;
     }
 
     /** Redraws every open Tasks tab, for a setting that changes how its rows read. */
@@ -3578,23 +3585,19 @@ class HighlightSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: HighlightCommentsPlugin) {
         super(app, plugin);
         this.plugin = plugin;
-        // The sync line follows along while the tab is open.
-        plugin.calendarSync.onStatus(() => {
-            if (this.containerEl.isShown()) this.update();
-        });
+        // Obsidian keeps the tab's rows between visits, so they're redrawn whenever sync's state moves.
+        plugin.calendarSync.onStatus(() => this.update());
     }
 
     /** A license check is on its way, so a redraw doesn't start another. */
     private checkingPlus = false;
 
-    /** Asks about the license once per redraw at most, and redraws if the answer changed. */
+    /** Asks about the license once per redraw at most; a changed answer redraws the tab. */
     private checkPlus(): void {
-        if (this.checkingPlus) return;
+        if (this.checkingPlus || !calendarAvailable(this.app)) return;
         this.checkingPlus = true;
-        const before = JSON.stringify(this.plugin.plusStatus);
-        void this.plugin.refreshPlusStatus().then((status) => {
+        void this.plugin.refreshPlusStatus().finally(() => {
             this.checkingPlus = false;
-            if (JSON.stringify(status) !== before) this.update();
         });
     }
 
