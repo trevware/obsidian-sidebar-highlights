@@ -8,8 +8,9 @@
  */
 
 import { addDays, addMonths, startOfWeek, weekday } from './dates';
+import { parseTime } from './times';
 
-export type TokenKind = 'date' | 'priority';
+export type TokenKind = 'date' | 'priority' | 'time';
 
 export interface ParsedToken {
     kind: TokenKind;
@@ -23,6 +24,8 @@ export interface QuickParse {
     /** The task text with every recognised token taken out. */
     title: string;
     date?: string;
+    /** A time of day as 24-hour HH:mm. Typed on its own it has no date here; quick add puts it on a day. */
+    time?: string;
     priority?: 1 | 2 | 3;
     tokens: ParsedToken[];
 }
@@ -129,6 +132,21 @@ const DATE_RULES: DateRule[] = [
     } }
 ];
 
+const AT = String.raw`(?:at|@)\s*`;
+const MERIDIEM_TIME = String.raw`\d{1,2}(?::\d{2})?\s?[ap](?:m|\.m\.)`;
+const COLON_TIME = String.raw`\d{1,2}:\d{2}`;
+
+/**
+ * Where a time may stand in quick add. One with am/pm, or noon and midnight,
+ * reads anywhere, as date words do. A bare colon time needs "at" in front of
+ * it or a date phrase right before it, so a verse like "John 3:16" stays words.
+ */
+const TIME_RULES: Array<{ pattern: string; afterDate?: boolean }> = [
+    { pattern: String.raw`(?:${AT})?(${MERIDIEM_TIME}|noon|midnight)` },
+    { pattern: String.raw`${AT}(${COLON_TIME})` },
+    { pattern: String.raw`(${COLON_TIME})`, afterDate: true }
+];
+
 // Word edges that understand letters beyond ASCII, so "fri" inside "Friedrich"
 // or "tom" inside "tomato" is never read as a date.
 const EDGE_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
@@ -176,13 +194,29 @@ export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet
     }
     const dateToken = dateTokens.sort((a, b) => b.start - a.start)[0];
 
+    // The last time wins, like the date.
+    let timeToken: (ParsedToken & { time: string }) | undefined;
+    for (const rule of TIME_RULES) {
+        for (const match of findAll(input, rule.pattern)) {
+            const span = { start: match.index, end: match.index + match[0].length };
+            if (isIgnored(match[0]) || (dateToken && overlaps(dateToken, span))) continue;
+            if (rule.afterDate && !(dateToken && /^\s+$/u.test(input.slice(dateToken.end, span.start)))) continue;
+            const time = parseTime(match[1]);
+            if (!time) continue;
+            if (!timeToken || span.start > timeToken.start || (span.start === timeToken.start && span.end > timeToken.end)) {
+                timeToken = { kind: 'time', ...span, text: match[0], time };
+            }
+        }
+    }
+
     const priorityMatches = findAll(input, String.raw`p([123])`)
         .filter(match => !isIgnored(match[0]))
-        .filter(match => !dateToken || !overlaps(dateToken, { start: match.index, end: match.index + match[0].length }));
+        .filter(match => ![dateToken, timeToken].some(token => token && overlaps(token, { start: match.index, end: match.index + match[0].length })));
     const priorityMatch = priorityMatches[priorityMatches.length - 1];
 
     const tokens: ParsedToken[] = [];
     if (dateToken) tokens.push({ kind: 'date', start: dateToken.start, end: dateToken.end, text: dateToken.text });
+    if (timeToken) tokens.push({ kind: 'time', start: timeToken.start, end: timeToken.end, text: timeToken.text });
     if (priorityMatch) {
         tokens.push({ kind: 'priority', start: priorityMatch.index, end: priorityMatch.index + priorityMatch[0].length, text: priorityMatch[0] });
     }
@@ -200,6 +234,7 @@ export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet
     return {
         title,
         date: dateToken?.date,
+        time: timeToken?.time,
         priority: priorityMatch ? (Number(priorityMatch[1]) as 1 | 2 | 3) : undefined,
         tokens
     };
@@ -234,4 +269,19 @@ export function parseDateQuery(query: string, today: string): string | undefined
     }
 
     return undefined;
+}
+
+/**
+ * Read a whole query as a day, a time, or both, for the date page: "fri 3pm",
+ * "15:00", or a day as `parseDateQuery` reads it.
+ */
+export function parseDateTimeQuery(query: string, today: string): { date?: string; time?: string } | undefined {
+    const trimmed = query.trim();
+    if (trimmed === '') return undefined;
+    const time = parseTime(trimmed);
+    if (time) return { time };
+    const whole = parseQuickAdd(trimmed.toLowerCase(), today);
+    if ((whole.date || whole.time) && whole.title === '') return { date: whole.date, time: whole.time };
+    const date = parseDateQuery(trimmed, today);
+    return date ? { date } : undefined;
 }

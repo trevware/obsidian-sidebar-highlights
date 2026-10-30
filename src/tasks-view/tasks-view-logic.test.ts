@@ -1,7 +1,7 @@
 import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
 import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
 import { titleCase } from './capitalize';
-import { parseDateQuery, parseQuickAdd } from './quick-parse';
+import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
@@ -258,6 +258,33 @@ describe('title case', () => {
 });
 
 describe('quick-parse', () => {
+    it('reads times next to dates and on their own', () => {
+        expect(parseQuickAdd('Call mom 3pm', TODAY)).toMatchObject({ title: 'Call mom', time: '15:00', date: undefined });
+        expect(parseQuickAdd('Dentist fri 9am', TODAY)).toMatchObject({ title: 'Dentist', date: '2026-10-30', time: '09:00' });
+        expect(parseQuickAdd('Dentist 9am fri', TODAY)).toMatchObject({ title: 'Dentist', date: '2026-10-30', time: '09:00' });
+        expect(parseQuickAdd('Standup tomorrow at 15:30', TODAY)).toMatchObject({ title: 'Standup', date: '2026-10-26', time: '15:30' });
+        expect(parseQuickAdd('Ship oct 30 3pm', TODAY)).toMatchObject({ title: 'Ship', date: '2026-10-30', time: '15:00' });
+        expect(parseQuickAdd('Lunch @ noon', TODAY)).toMatchObject({ title: 'Lunch', time: '12:00' });
+        expect(parseQuickAdd('Plan 2026-10-30 15:00', TODAY)).toMatchObject({ title: 'Plan', date: '2026-10-30', time: '15:00' });
+    });
+
+    it('leaves numbers that are not times as words', () => {
+        expect(parseQuickAdd('Read John 3:16', TODAY)).toMatchObject({ title: 'Read John 3:16', time: undefined });
+        expect(parseQuickAdd('Read John 3:16 fri', TODAY)).toMatchObject({ title: 'Read John 3:16', time: undefined });
+        expect(parseQuickAdd('Call at 3', TODAY)).toMatchObject({ title: 'Call at 3', time: undefined });
+        // Tinted and undoable in quick add: Backspace turns it back into words.
+        expect(parseQuickAdd('Discuss the 3pm slot', TODAY).time).toBe('15:00');
+        expect(parseQuickAdd('Discuss the 3pm slot', TODAY, new Set(['3pm'])).time).toBeUndefined();
+    });
+
+    it('reads a date and time for the date page', () => {
+        expect(parseDateTimeQuery('3pm', TODAY)).toEqual({ time: '15:00' });
+        expect(parseDateTimeQuery('15:00', TODAY)).toEqual({ time: '15:00' });
+        expect(parseDateTimeQuery('fri 3pm', TODAY)).toEqual({ date: '2026-10-30', time: '15:00' });
+        expect(parseDateTimeQuery('we', TODAY)).toEqual({ date: parseDateQuery('we', TODAY) });
+        expect(parseDateTimeQuery('soon', TODAY)).toBeUndefined();
+    });
+
     it('reads a weekday and a priority, and leaves the title clean', () => {
         const parsed = parseQuickAdd('Call the dentist fri p1', TODAY);
         expect(parsed).toMatchObject({ title: 'Call the dentist', date: '2026-10-30', priority: 1 });
