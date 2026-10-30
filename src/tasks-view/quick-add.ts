@@ -539,7 +539,7 @@ export class QuickAdd {
         if (!destination) return;
         const today = this.host.today();
         const lines = pasted
-            .map(entry => this.lineFor(parseQuickAdd(entry, today), this.draft))
+            .map(entry => this.lineFor(parseQuickAdd(entry, today, new Set(), { timesNeedADate: true }), this.draft))
             .filter((line): line is string => line !== null);
         void this.host.submit(lines, destination).then(ok => {
             if (ok) this.close(false);

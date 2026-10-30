@@ -288,6 +288,14 @@ describe('quick-parse', () => {
         expect(parseQuickAdd('Plan 2026-10-30 15:00', TODAY)).toMatchObject({ title: 'Plan', date: '2026-10-30', time: '15:00' });
     });
 
+    it('reads a pasted line\'s time only beside its day', () => {
+        const pasted = { timesNeedADate: true };
+        expect(parseQuickAdd('Discuss the 3pm slot', TODAY, new Set(), pasted)).toMatchObject({ title: 'Discuss the 3pm slot', time: undefined });
+        expect(parseQuickAdd('Call fri 3pm', TODAY, new Set(), pasted)).toMatchObject({ title: 'Call', date: '2026-10-30', time: '15:00' });
+        expect(parseQuickAdd('Call fri at 3pm', TODAY, new Set(), pasted)).toMatchObject({ title: 'Call', time: '15:00' });
+        expect(parseQuickAdd('Call 9am fri', TODAY, new Set(), pasted)).toMatchObject({ title: 'Call', time: '09:00' });
+    });
+
     it('reads exactly the times the note reader reads', () => {
         for (const phrase of ['15:00', '9:05', '3pm', '3:30 PM', '9 a.m.', '12am', 'noon', 'midnight', '24:00', '13pm', '3:5pm', '3:60', '0pm', '3']) {
             expect([phrase, parseQuickAdd(`Call at ${phrase}`, TODAY).time]).toEqual([phrase, parseTime(phrase)]);

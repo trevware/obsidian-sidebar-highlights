@@ -168,7 +168,7 @@ export class SubtaskField {
         event.preventDefault();
         const today = this.host.today();
         const lines = pasted
-            .map(entry => taskLineFor(parseQuickAdd(entry, today), this.host))
+            .map(entry => taskLineFor(parseQuickAdd(entry, today, new Set(), { timesNeedADate: true }), this.host))
             .filter((line): line is string => line !== null);
         if (lines.length > 0) void this.host.submit(lines);
     }

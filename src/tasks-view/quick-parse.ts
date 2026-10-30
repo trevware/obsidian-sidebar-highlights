@@ -174,7 +174,16 @@ function overlaps(a: { start: number; end: number }, b: { start: number; end: nu
  * `ignored` holds phrases the user clicked to turn back into text, matched
  * case-insensitively, so they stay plain for the rest of the draft.
  */
-export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet<string> = new Set()): QuickParse {
+export interface QuickParseOptions {
+    /**
+     * Read a time only right beside the day it goes with. For pasted lines,
+     * which arrive without the tint and the Backspace that let a typed
+     * "the 3pm slot" be turned back into words.
+     */
+    timesNeedADate?: boolean;
+}
+
+export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet<string> = new Set(), options: QuickParseOptions = {}): QuickParse {
     const isIgnored = (text: string) => ignored.has(text.toLowerCase());
 
     // Longest first at each position: "next fri" should beat "fri".
@@ -200,7 +209,9 @@ export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet
         for (const match of findAll(input, rule.pattern)) {
             const span = { start: match.index, end: match.index + match[0].length };
             if (isIgnored(match[0]) || (dateToken && overlaps(dateToken, span))) continue;
+            const besideDate = !!dateToken && (/^\s+$/u.test(input.slice(dateToken.end, span.start)) || /^\s+$/u.test(input.slice(span.end, dateToken.start)));
             if (rule.afterDate && !(dateToken && /^\s+$/u.test(input.slice(dateToken.end, span.start)))) continue;
+            if (options.timesNeedADate && !besideDate) continue;
             const time = parseTime(match[1]);
             if (!time) continue;
             if (!timeToken || span.start > timeToken.start || (span.start === timeToken.start && span.end > timeToken.end)) {

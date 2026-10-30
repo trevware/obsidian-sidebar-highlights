@@ -159,6 +159,16 @@ describe('typing subtasks in the card', () => {
         expect(field.el.isConnected).toBe(true);
     });
 
+    it('reads a pasted line\'s time only beside its day', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        setup(submit);
+        const paste = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent;
+        Object.defineProperty(paste, 'clipboardData', { value: { getData: () => 'Discuss the 3pm slot\nCall fri 3pm\n' } });
+        input().dispatchEvent(paste);
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Discuss the 3pm slot', '- [ ] Call 2026-10-30 15:00']);
+    });
+
     it('adds one subtask per pasted line', () => {
         const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
         setup(submit);
