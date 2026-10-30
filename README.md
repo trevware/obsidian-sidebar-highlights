@@ -177,7 +177,7 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 
 ### What Counts as a Task
 
-Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. Metadata written by the Tasks plugin is hidden by default.
+Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. A time written right after that date, like `2026-10-30 15:00` or `2026-10-30 3pm`, is the task's time: it shows on the row, sorts the day, and turns red once it has gone by. Metadata written by the Tasks plugin is hidden by default.
 
 ## On Your Phone
 
@@ -204,7 +204,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - **Detection**: whether HTML comments and adjacent native comments are picked up
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
-- **Tasks**: the date format your tasks use, and whether Tasks plugin metadata is hidden
+- **Tasks**: the date and time formats your tasks use, and whether Tasks plugin metadata is hidden
 - **Typography** and **Styling**: font sizes and weights per element
 - **Backup and restore**: automatic backups of your collections and highlight metadata, with a retention limit
 
