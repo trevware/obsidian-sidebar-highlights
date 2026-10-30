@@ -4,7 +4,7 @@ import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
 import type { QuickParse } from './quick-parse';
 import { buildTaskLine } from './task-line';
-import { capitalizeFirst } from './capitalize';
+import { capitalizeFirst, capitalizeTyped } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
 import { hint } from './glass-palette';
 import { t } from '../i18n';
@@ -32,6 +32,8 @@ export interface QuickAddHost {
     dateLabel: (iso: string) => string;
     destinationLabel: (destination: Destination) => string;
     defaultDestination: () => Destination | null;
+    /** The day a new task starts on in the list on screen: today, in Today. */
+    defaultDate: () => string | undefined;
     chooseDestination: (done: (destination: Destination) => void) => void;
     /** Writes the lines; resolves false when nothing could be written. */
     submit: (lines: string[], destination: Destination) => Promise<boolean>;
@@ -121,6 +123,9 @@ export class QuickAdd {
         if (!this.draft.destination || (!prefill.destination && this.draft.text.trim() === '')) {
             this.draft.destination = this.host.defaultDestination() ?? undefined;
         }
+        // An empty draft takes the list's day the same way, so a task added
+        // in Today is due today and stays in sight.
+        if (!prefill.date && this.draft.text.trim() === '') this.draft.date = this.host.defaultDate();
 
         this.panel = this.container.createDiv({ cls: 'sh-glass sh-quickadd' });
         const field = this.panel.createDiv({ cls: 'sh-quickadd-field' });
@@ -129,8 +134,10 @@ export class QuickAdd {
         this.input.placeholder = t('tasksTab.quickAdd.placeholder');
         if (this.host.capitalize()) this.input.setAttr('autocapitalize', 'sentences');
         this.input.value = this.draft.text;
-        this.input.addEventListener('input', () => {
-            this.draft.text = this.input?.value ?? '';
+        this.input.addEventListener('input', (event) => {
+            if (!this.input) return;
+            if (this.host.capitalize() && !(event as InputEvent).isComposing) capitalizeTyped(this.input);
+            this.draft.text = this.input.value;
             this.refresh();
         });
         this.input.addEventListener('scroll', () => this.syncScroll());

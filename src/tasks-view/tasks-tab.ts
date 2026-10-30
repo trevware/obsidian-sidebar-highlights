@@ -44,7 +44,7 @@ import {
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
 import { editableTitle, notesText, parseTaskLine, setDateInText, withState, withText, withTitle } from './task-line';
-import { capitalizeFirst } from './capitalize';
+import { capitalizeFirst, capitalizeTyped } from './capitalize';
 import { parseDateQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
@@ -289,6 +289,7 @@ export class TasksTabView extends ItemView {
             dateLabel: (iso) => this.dateLabel(iso).text,
             destinationLabel: (destination) => this.destinationLabel(destination),
             defaultDestination: () => this.defaultDestination(),
+            defaultDate: () => this.list.kind === 'smart' && this.list.id === 'today' ? isoToday() : undefined,
             chooseDestination: (done) => this.pickDestination(done),
             submit: (lines, destination) => this.addLines(lines, destination),
             capitalize: () => this.plugin.settings.capitalizeTasks,
@@ -1531,7 +1532,10 @@ export class TasksTabView extends ItemView {
             if (changed) await this.renameTask(task, words);
         };
 
-        editor.addEventListener('input', fit);
+        editor.addEventListener('input', (event) => {
+            if (this.plugin.settings.capitalizeTasks && !(event as InputEvent).isComposing) capitalizeTyped(editor);
+            fit();
+        });
         editor.addEventListener('blur', () => void finish(true));
         editor.focus();
         editor.select();

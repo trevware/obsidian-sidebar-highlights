@@ -54,6 +54,12 @@ const key = (name: string) => {
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
 describe('typing subtasks in the card', () => {
+    it('capitalizes the field once the first word is typed, when Capitalize tasks is on', () => {
+        setup(undefined, true);
+        type('ask ');
+        expect(input().value).toBe('Ask ');
+    });
+
     it('adds on Enter, reading the date, and stays open for the next one', async () => {
         const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
         const { field, closes } = setup(submit, true);

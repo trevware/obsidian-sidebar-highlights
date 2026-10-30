@@ -40,6 +40,7 @@ function setup(submit: QuickAddHost['submit'] = () => Promise.resolve(true), ove
         dateLabel: (iso) => iso,
         destinationLabel: (destination) => destination.path,
         defaultDestination: () => ({ path: 'Inbox.md' }),
+        defaultDate: () => undefined,
         chooseDestination: () => undefined,
         submit,
         capitalize: () => false,
@@ -159,6 +160,18 @@ describe('saving from quick add', () => {
         expect(submit.mock.calls[0][0][0]).toMatch(/^- \[ \] Call the dentist /);
     });
 
+    it('capitalizes the field itself once the first word is typed', () => {
+        const { quickAdd, container } = setup(undefined, { capitalize: () => true });
+        quickAdd.open();
+        type(container, 'call');
+        expect(field(container).value).toBe('call');
+        type(container, 'call ');
+        expect(field(container).value).toBe('Call ');
+        expect(field(container).selectionStart).toBe(5);
+        type(container, 'iPhone backup');
+        expect(field(container).value).toBe('iPhone backup');
+    });
+
     it('writes the task as typed when Capitalize tasks is off', async () => {
         const submit = jest.fn(() => Promise.resolve(true));
         const { quickAdd, container } = setup(submit);
@@ -168,6 +181,41 @@ describe('saving from quick add', () => {
         enter();
         await settle();
         expect(submit).toHaveBeenCalledWith(['- [ ] call the dentist'], { path: 'Inbox.md' });
+    });
+});
+
+describe('the day a task starts on', () => {
+    it('starts on the list\'s day, so a task added in Today is due today', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { defaultDate: () => '2026-10-25' });
+        quickAdd.open();
+        expect(chips(container)[0].textContent).toBe('2026-10-25');
+        expect(chips(container)[0].classList.contains('is-set')).toBe(true);
+        type(container, 'Call the dentist');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist 2026-10-25'], { path: 'Inbox.md' });
+    });
+
+    it('lets a typed day win over the list\'s', async () => {
+        const submit = jest.fn((_lines: string[]) => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { defaultDate: () => '2026-10-25' });
+        quickAdd.open();
+        type(container, 'Call the dentist tomorrow');
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist 2026-10-26'], { path: 'Inbox.md' });
+    });
+
+    it('keeps a draft with words in it as it was left', () => {
+        let today: string | undefined;
+        const { quickAdd, container } = setup(undefined, { defaultDate: () => today });
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        escape();
+        today = '2026-10-25';
+        quickAdd.open();
+        expect(chips(container)[0].classList.contains('is-set')).toBe(false);
     });
 });
 
