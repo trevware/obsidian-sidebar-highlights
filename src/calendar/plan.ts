@@ -33,6 +33,9 @@ export interface SyncTask {
     title: string;
     date?: string;
     time?: string;
+    /** The date and time exactly as written in the line, to rewrite them in place. */
+    dateText?: string;
+    timeText?: string;
     /** Still to do: not done and not cancelled. */
     open: boolean;
 }
