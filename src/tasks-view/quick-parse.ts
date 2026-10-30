@@ -283,5 +283,17 @@ export function parseDateTimeQuery(query: string, today: string): { date?: strin
     const whole = parseQuickAdd(trimmed.toLowerCase(), today);
     if ((whole.date || whole.time) && whole.title === '') return { date: whole.date, time: whole.time };
     const date = parseDateQuery(trimmed, today);
-    return date ? { date } : undefined;
+    if (date) return { date };
+
+    // A day the picker reads by its first letters ("we", "tom") with a time
+    // at either end: "we 3pm", "3pm we", "nov 3 at 9am".
+    const words = trimmed.split(/\s+/u);
+    for (let n = 1; n <= 2 && n < words.length; n++) {
+        for (const [timeWords, dayWords] of [[words.slice(-n), words.slice(0, -n)], [words.slice(0, n), words.slice(n)]]) {
+            const time = parseTime(timeWords.join(' ').replace(/^(?:at|@)\s*/iu, ''));
+            const day = time ? parseDateQuery(dayWords.join(' ').replace(/\s+(?:at|@)$/iu, ''), today) : undefined;
+            if (time && day) return { date: day, time };
+        }
+    }
+    return undefined;
 }

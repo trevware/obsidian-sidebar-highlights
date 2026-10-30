@@ -296,6 +296,14 @@ describe('quick-parse', () => {
         expect(parseQuickAdd('Discuss the 3pm slot', TODAY, new Set(['3pm'])).time).toBeUndefined();
     });
 
+    it('reads a shortened day with a time on the date page', () => {
+        expect(parseDateTimeQuery('we 3pm', TODAY)).toEqual({ date: parseDateQuery('we', TODAY), time: '15:00' });
+        expect(parseDateTimeQuery('tom 15:00', TODAY)).toEqual({ date: '2026-10-26', time: '15:00' });
+        expect(parseDateTimeQuery('nov 3 at 9am', TODAY)).toEqual({ date: '2026-11-03', time: '09:00' });
+        expect(parseDateTimeQuery('3pm we', TODAY)).toEqual({ date: parseDateQuery('we', TODAY), time: '15:00' });
+        expect(parseDateTimeQuery('soon 3pm', TODAY)).toBeUndefined();
+    });
+
     it('reads a date and time for the date page', () => {
         expect(parseDateTimeQuery('3pm', TODAY)).toEqual({ time: '15:00' });
         expect(parseDateTimeQuery('15:00', TODAY)).toEqual({ time: '15:00' });
