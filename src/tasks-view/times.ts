@@ -8,6 +8,8 @@
  * directly.
  */
 
+import { dateTimeFormat } from './formatters';
+
 /** How times are written: 24-hour `15:00`, or 12-hour `3pm`. */
 export type TimeFormat = 'HH:mm' | 'h:mma';
 
@@ -84,5 +86,5 @@ export function displayTime(time: string, hour12: boolean, locale?: string): str
     const options: Intl.DateTimeFormatOptions = hour12
         ? { hour: 'numeric', ...(minutes ? { minute: '2-digit' } : {}), hourCycle: 'h12' }
         : { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
-    return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(Date.UTC(1970, 0, 1, hour, minutes)));
+    return dateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(Date.UTC(1970, 0, 1, hour, minutes)));
 }

@@ -7,6 +7,7 @@
  * Obsidian imports so it can be unit tested directly.
  */
 
+import { dateTimeFormat } from './formatters';
 import { displayTime } from './times';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -67,7 +68,7 @@ export function addMonths(iso: string, months: number): string {
 }
 
 function format(iso: string, options: Intl.DateTimeFormatOptions, locale?: string): string {
-    return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(toUtc(iso)));
+    return dateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(new Date(toUtc(iso)));
 }
 
 export function weekdayName(iso: string, style: 'long' | 'short' = 'long', locale?: string): string {

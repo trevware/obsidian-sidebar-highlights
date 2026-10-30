@@ -85,6 +85,16 @@ describe('due labels', () => {
         expect(dueLabel(addDays(TODAY, 1), '13:59', base).tone).toBe('soon');
     });
 
+    it('reuses its formatters from row to row', () => {
+        const spy = jest.spyOn(Intl, 'DateTimeFormat');
+        for (let i = 0; i < 50; i++) {
+            dueLabel('2026-11-03', '15:00', { ...base, hour12: true });
+            dueLabel('2026-10-28', '09:30', base);
+        }
+        expect(spy.mock.calls.length).toBeLessThanOrEqual(4);
+        spy.mockRestore();
+    });
+
     it('follows a 12-hour setting', () => {
         expect(dueLabel(TODAY, '15:00', { ...base, hour12: true }).text.replace(/\s/g, ' ')).toBe('Today 3 PM');
     });
