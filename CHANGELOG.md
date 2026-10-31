@@ -5,6 +5,11 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-10-31
+
+### Added
+- **You can give a note an icon in the Tasks tab.** Right-click a note in the sidebar, a note's group in All Open, or the title of a note's list (or press and hold on a phone) and choose **Choose icon…**. Browse by category, like Work, Home and Travel, or type to search every icon Obsidian has. The icon shows next to the note in the sidebar, beside its title, and in ⌘K and quick add, and **Remove icon** puts the page back. Icons are saved with your settings, so they follow a note you rename and show up on your other devices.
+
 ## [2.3.0] - 2026-10-31
 
 ### Added

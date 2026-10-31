@@ -142,6 +142,7 @@ Collections gather related highlights from anywhere in the vault.
 - **All Open**, **In Progress**, **Questions** and **Done**
 - Every note with open tasks, grouped by folder, with its tasks under their headings
 - Notes you pin, above the folders in the order you choose. Right-click a note (or press and hold) and choose **Pin**, then drag pinned notes to reorder them
+- Give any note an icon: right-click it, or its title, and choose **Choose icon…**
 
 Each list keeps its own grouping and sorting, and whether it shows completed tasks, under **Display**.
 
