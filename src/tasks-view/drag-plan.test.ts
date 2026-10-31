@@ -1,4 +1,4 @@
-import { nearestGap, planDrag, planHeadingDrag, shiftFor } from './drag-plan';
+import { nearestGap, planDrag, planHeadingDrag, planReorder, shiftFor } from './drag-plan';
 import type { DragItem, HeadingDragItem } from './drag-plan';
 
 // A note's list as laid out: 30px rows, 40px headings.
@@ -184,5 +184,25 @@ describe('planHeadingDrag', () => {
         expect(shiftFor(plan, 2, gap)).toBe(70);
         expect(shiftFor(plan, 3, gap)).toBe(70);
         expect(nearestGap(plan, 150)).toBe(gap);
+    });
+});
+
+describe('planReorder', () => {
+    // Pinned notes in the rail: 34px rows.
+    const rows = [0, 34, 68, 102].map(top => ({ top, height: 34 }));
+
+    it('offers every place in the list, aimed at the row it would sit in front of', () => {
+        const plan = planReorder(rows, 1);
+        // null is the end of the list; the gap at 1 is where it already sits.
+        expect(plan.gaps.map(gap => [gap.at, gap.target])).toEqual([[0, 0], [1, 2], [3, 3], [4, null]]);
+    });
+
+    it('measures each gap with the dragged row taken out', () => {
+        const plan = planReorder(rows, 0);
+        expect(plan.span).toBe(34);
+        expect(plan.gaps.map(gap => gap.y)).toEqual([0, 34, 68, 102]);
+        expect(shiftFor(plan, 2, plan.gaps[1])).toBe(0);
+        expect(shiftFor(plan, 3, plan.gaps[1])).toBe(0);
+        expect(shiftFor(plan, 1, plan.gaps[1])).toBe(-34);
     });
 });

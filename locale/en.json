@@ -640,6 +640,8 @@
       "unpin": "Unpin",
       "pinNote": "Pin this note",
       "unpinNote": "Unpin this note",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
       "copy": "Copy as Markdown",
       "openInNote": "Open in note",
       "openToSide": "Open to the side",

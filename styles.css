@@ -1995,6 +1995,35 @@
     background-color: var(--sh-inner-hover);
 }
 
+/* Dragging a pinned note: it lifts and follows the pointer, and the other
+   pinned notes slide apart to show where it will land. */
+.sh-tasks-rail.has-drag {
+    cursor: grabbing;
+}
+
+.sh-tasks-rail.has-drag .sh-rail-item.is-pinned {
+    transition: transform 160ms cubic-bezier(0.22, 0.9, 0.28, 1);
+}
+
+.sh-tasks-rail .sh-rail-item.is-pinned.is-dragging {
+    position: relative;
+    z-index: 2;
+    background-color: var(--sh-glass-base);
+    box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.35);
+    transition: none;
+    pointer-events: none;
+}
+
+.sh-tasks-rail.has-drag .sh-rail-indicator {
+    opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sh-tasks-rail.has-drag .sh-rail-item.is-pinned {
+        transition: none;
+    }
+}
+
 .sh-rail-item:focus-visible,
 .sh-rail-area:focus-visible {
     outline: 2px solid var(--sh-accent);

@@ -3,7 +3,7 @@ import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, railPinned, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, movePin, railPinned, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -473,6 +473,13 @@ describe('task-views', () => {
     it('pins a note at the end of the list, and unpins it again', () => {
         expect(togglePin(['A.md'], 'B.md')).toEqual(['A.md', 'B.md']);
         expect(togglePin(['A.md', 'B.md'], 'A.md')).toEqual(['B.md']);
+    });
+
+    it('moves a pin in front of another, or to the end', () => {
+        expect(movePin(['A.md', 'B.md', 'C.md'], 'C.md', 'A.md')).toEqual(['C.md', 'A.md', 'B.md']);
+        expect(movePin(['A.md', 'B.md', 'C.md'], 'A.md', 'C.md')).toEqual(['B.md', 'A.md', 'C.md']);
+        expect(movePin(['A.md', 'B.md', 'C.md'], 'A.md', null)).toEqual(['B.md', 'C.md', 'A.md']);
+        expect(movePin(['A.md', 'B.md'], 'Gone.md', 'A.md')).toEqual(['A.md', 'B.md']);
     });
 
     it('follows a pinned note when it is renamed or moved', () => {

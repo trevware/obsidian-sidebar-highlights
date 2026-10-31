@@ -551,6 +551,14 @@ export function togglePin(pins: readonly string[], path: string): string[] {
     return pins.includes(path) ? pins.filter(pin => pin !== path) : [...pins, path];
 }
 
+/** The pins with one moved in front of another, or to the end when `before` is null. */
+export function movePin(pins: readonly string[], path: string, before: string | null): string[] {
+    if (!pins.includes(path) || path === before) return [...pins];
+    const rest = pins.filter(pin => pin !== path);
+    const at = before === null ? -1 : rest.indexOf(before);
+    return at === -1 ? [...rest, path] : [...rest.slice(0, at), path, ...rest.slice(at)];
+}
+
 /** The pins after a note moved from `from` to `to`, or null when it wasn't pinned. */
 export function renamedPins(pins: readonly string[], from: string, to: string): string[] | null {
     return pins.includes(from) ? pins.map(pin => (pin === from ? to : pin)) : null;

@@ -44,6 +44,7 @@ import {
     statusOf,
     taskKey,
     tasksForList,
+    movePin,
     togglePin
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
@@ -55,6 +56,7 @@ import { TaskWriter } from './task-writer';
 import type { LineChange, RangeChange } from './task-writer';
 import { headingSectionEnd, newHeadingLevel, titleOf } from './task-move';
 import { TaskDrag } from './task-drag';
+import { RailDrag } from './rail-drag';
 import { NoteRefresher } from './note-refresh';
 import { paintRun } from './row-runs';
 import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-move';
@@ -186,6 +188,7 @@ export class TasksTabView extends ItemView {
     /** The group each group element draws, so a drag knows the note and heading under it. */
     private groupEls = new WeakMap<HTMLElement, TaskGroup>();
     private drag!: TaskDrag;
+    private railDrag!: RailDrag;
     private rowGroups = new Map<string, TaskGroup>();
     private rowSigs = new Map<string, string>();
     private groupSignature = '';
@@ -358,6 +361,12 @@ export class TasksTabView extends ItemView {
         onLongPress(this.column, (event) => this.onListContextMenu(event));
         this.rail.addEventListener('contextmenu', (event) => this.onRailContextMenu(event));
         onLongPress(this.rail, (event) => this.onRailContextMenu(event));
+        this.railDrag = new RailDrag(this.rail, {
+            canDrag: () => !this.palette.isOpen && !this.quickAdd.isOpen && !this.glassMenu.isOpen,
+            reorder: (path, before) => this.reorderPin(path, before)
+        });
+        this.registerDomEvent(this.rail, 'pointerdown', (event) => this.railDrag.down(event));
+        this.registerDomEvent(this.rail, 'click', (event) => this.railDrag.click(event), true);
         // Clicking anywhere outside an open card closes it. Surfaces the card
         // opens (the palette, menus, quick add) don't count as outside.
         root.addEventListener('mousedown', (event) => {
@@ -441,6 +450,7 @@ export class TasksTabView extends ItemView {
     async onClose(): Promise<void> {
         this.cancelSettling();
         this.drag?.destroy();
+        this.railDrag?.destroy();
         this.palette?.close();
         this.glassMenu?.close();
         this.quickAdd?.close(true);
@@ -877,8 +887,8 @@ export class TasksTabView extends ItemView {
 
         // A folder path never starts with a slash, so this key is the pins' own.
         const sections = [
-            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned }] : []),
-            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes }))
+            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned, pinned: true }] : []),
+            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes, pinned: false }))
         ];
         for (const section of sections) {
             const areaKey = section.key;
@@ -899,6 +909,7 @@ export class TasksTabView extends ItemView {
                 const ref: ListRef = { kind: 'note', path: note.path };
                 const row = rail.createDiv({ cls: 'sh-rail-item is-note' });
                 row.dataset.path = note.path;
+                row.toggleClass('is-pinned', section.pinned);
                 row.toggleClass('is-active', sameList(ref, this.list));
                 row.createDiv({ cls: 'sh-rail-icon is-note' });
                 row.createDiv({ cls: 'sh-rail-label', text: note.name });
@@ -1403,16 +1414,32 @@ export class TasksTabView extends ItemView {
         if (task) this.toggleExpanded(task);
     }
 
-    /** A note in the rail pins to the top of it, or unpins. */
+    /**
+     * A note in the rail pins to the top of it, or unpins. A pinned note
+     * also moves up or down, for reordering without dragging.
+     */
     private onRailContextMenu(event: MouseEvent): void {
         const path = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-item.is-note')?.dataset.path;
         if (!path) return;
         event.preventDefault();
         const pinned = this.plugin.settings.pinnedNotes.includes(path);
+        const items: GlassMenuItem[] = [];
+        if (pinned) {
+            const shown = Array.from(this.rail.querySelectorAll<HTMLElement>('.sh-rail-item.is-pinned')).map(row => row.dataset.path ?? '');
+            const index = shown.indexOf(path);
+            if (index > 0) items.push({ label: t('tasksTab.actions.moveUp'), icon: 'arrow-up', run: () => this.reorderPin(path, shown[index - 1]) });
+            if (index !== -1 && index < shown.length - 1) items.push({ label: t('tasksTab.actions.moveDown'), icon: 'arrow-down', run: () => this.reorderPin(path, shown[index + 2] ?? null) });
+        }
+        items.push({ label: t(pinned ? 'tasksTab.actions.unpin' : 'tasksTab.actions.pin'), icon: pinned ? 'pin-off' : 'pin', divider: items.length > 0, run: () => void this.togglePinned(path) });
         this.closeMenu();
-        this.glassMenu.showAtEvent(event, [
-            { label: t(pinned ? 'tasksTab.actions.unpin' : 'tasksTab.actions.pin'), icon: pinned ? 'pin-off' : 'pin', run: () => void this.togglePinned(path) }
-        ], () => this.focusList());
+        this.glassMenu.showAtEvent(event, items, () => this.focusList());
+    }
+
+    /** Moves a pinned note in front of another, or to the end of the pins. */
+    private reorderPin(path: string, before: string | null): void {
+        this.plugin.settings.pinnedNotes = movePin(this.plugin.settings.pinnedNotes, path, before);
+        this.renderRail(isoToday());
+        void this.plugin.saveSettings();
     }
 
     /** Pins a note to the top of the rail, or unpins it. */

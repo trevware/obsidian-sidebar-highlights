@@ -155,6 +155,28 @@ export function planHeadingDrag(items: readonly HeadingDragItem[], grabbed: numb
     return { blockStart: grabbed, blockEnd, span, gaps };
 }
 
+/**
+ * Dragging one row through a short list of equals, such as the rail's
+ * pinned notes. It can drop into any gap; each gap's target is the index of
+ * the row it would land in front of, or null for the end of the list.
+ */
+export function planReorder(items: ReadonlyArray<{ top: number; height: number }>, grabbed: number): DragPlan<number | null> {
+    const blockEnd = grabbed + 1;
+    const last = items[items.length - 1];
+    const span = (blockEnd < items.length ? items[blockEnd].top : last.top + last.height) - items[grabbed].top;
+    const collapsed = (index: number) => items[index].top - (index >= blockEnd ? span : 0);
+    const gaps: Array<DragGap<number | null>> = [];
+    for (let at = 0; at <= items.length; at++) {
+        if (at === blockEnd) continue;
+        const nextIndex = at === grabbed ? blockEnd : at;
+        const next = nextIndex < items.length ? nextIndex : null;
+        const before = items[at - 1];
+        const y = next !== null ? collapsed(next) : before ? collapsed(at - 1) + before.height : 0;
+        gaps.push({ at, y, target: next, heading: '' });
+    }
+    return { blockStart: grabbed, blockEnd, span, gaps };
+}
+
 /** The gap nearest to where the top of the dragged rows is now. */
 export function nearestGap<T>(plan: DragPlan<T>, blockTop: number): DragGap<T> | null {
     let best: DragGap<T> | null = null;
