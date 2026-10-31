@@ -144,7 +144,7 @@ Collections gather related highlights from anywhere in the vault.
 - Notes you pin, above the folders in the order you choose. Right-click a note (or press and hold) and choose **Pin**, then drag pinned notes to reorder them
 - Give any note an icon: right-click it, or its title, and choose **Choose icon…**
 
-Each list keeps its own grouping and sorting, and whether it shows completed tasks, under **Display**.
+Each list keeps its own grouping and sorting, and whether it shows completed tasks (and gathers them at the bottom), under **Display**.
 
 ### Adding Tasks
 
@@ -160,7 +160,7 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 ### Working With Tasks
 
 - Click the box to complete a task, or ⌥-click it to cancel
-- Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status
+- Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status. Click the task's name in the card to rename it (or press **R**), and **Add subtask** adds subtasks right there
 - Right-click it (or press and hold on a phone) for everything else: move it under another heading, copy it as Markdown, open it beside the note, delete it
 - Drag tasks to reorder them, or onto another heading to move them there
 - In a note's list, drag a heading to move it with everything under it, or right-click it for **Move heading**
@@ -219,7 +219,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - **Detection**: whether HTML comments and adjacent native comments are picked up
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
-- **Tasks**: the date and time formats your tasks use, and whether Tasks plugin metadata is hidden
+- **Tasks**: the date and time formats your tasks use, whether tasks start with a capital (**Capitalize tasks**), and whether Tasks plugin metadata is hidden
 - **Reminders**: whether tasks with a time remind you, and how long before
 - **Power-Up** and **Calendar**: your license key, the calendar you've connected, and how events are made
 - **Typography** and **Styling**: font sizes and weights per element
