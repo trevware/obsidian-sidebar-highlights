@@ -559,6 +559,14 @@ export function movePin(pins: readonly string[], path: string, before: string | 
     return at === -1 ? [...rest, path] : [...rest.slice(0, at), path, ...rest.slice(at)];
 }
 
+/** The note icons after a note moved from `from` to `to`, or null when it had none. */
+export function renamedIcons(icons: Readonly<Record<string, string>>, from: string, to: string): Record<string, string> | null {
+    if (!(from in icons)) return null;
+    const next: Record<string, string> = {};
+    for (const [path, icon] of Object.entries(icons)) next[path === from ? to : path] = icon;
+    return next;
+}
+
 /** The pins after a note moved from `from` to `to`, or null when it wasn't pinned. */
 export function renamedPins(pins: readonly string[], from: string, to: string): string[] | null {
     return pins.includes(from) ? pins.map(pin => (pin === from ? to : pin)) : null;

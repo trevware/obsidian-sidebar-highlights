@@ -38,6 +38,8 @@ export interface QuickAddHost {
     /** A 24-hour HH:mm time as the chip shows it. */
     timeLabel: (time: string) => string;
     destinationLabel: (destination: Destination) => string;
+    /** The icon chosen for the destination's note, when it has one. */
+    destinationIcon?: (destination: Destination) => string | undefined;
     defaultDestination: () => Destination | null;
     /** The day a new task starts on in the list on screen: today, in Today. */
     defaultDate: () => string | undefined;
@@ -286,7 +288,8 @@ export class QuickAdd {
         if (priority) priorityChip.dataset.priority = String(priority);
 
         const destination = this.draft.destination;
-        this.chip(chips, 'file-text', destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
+        const noteIcon = (destination && this.host.destinationIcon?.(destination)) || 'file-text';
+        this.chip(chips, noteIcon, destination ? this.host.destinationLabel(destination) : t('tasksTab.quickAdd.chooseNote'), !!destination,
             () => this.chooseNote());
     }
 

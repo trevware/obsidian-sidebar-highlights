@@ -9,6 +9,7 @@ import {
     TFile,
     WorkspaceLeaf,
     getIcon,
+    getIconIds,
     moment,
     normalizePath,
     setIcon,
@@ -57,6 +58,8 @@ import type { LineChange, RangeChange } from './task-writer';
 import { headingSectionEnd, newHeadingLevel, titleOf } from './task-move';
 import { TaskDrag } from './task-drag';
 import { RailDrag } from './rail-drag';
+import { IconPicker } from './icon-picker';
+import { lucideIds } from './icon-sets';
 import { NoteRefresher } from './note-refresh';
 import { paintRun } from './row-runs';
 import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-move';
@@ -189,6 +192,9 @@ export class TasksTabView extends ItemView {
     private groupEls = new WeakMap<HTMLElement, TaskGroup>();
     private drag!: TaskDrag;
     private railDrag!: RailDrag;
+    private iconPicker!: IconPicker;
+    /** The Lucide icons this Obsidian has, read once. */
+    private lucideCache: string[] | null = null;
     private rowGroups = new Map<string, TaskGroup>();
     private rowSigs = new Map<string, string>();
     private groupSignature = '';
@@ -254,7 +260,7 @@ export class TasksTabView extends ItemView {
         // the tab's own listener sees it, so search takes it in the tab's scope.
         this.scope = new Scope(this.app.scope);
         this.scope.register(['Mod'], 'k', () => {
-            if (this.quickAdd.isOpen || this.glassMenu.isOpen || this.menuEl) return true;
+            if (this.quickAdd.isOpen || this.glassMenu.isOpen || this.menuEl || this.iconPicker.isOpen) return true;
             this.togglePalette();
             return false;
         });
@@ -303,6 +309,7 @@ export class TasksTabView extends ItemView {
         this.bulkbar = this.main.createDiv({ cls: 'sh-glass sh-bulkbar' });
 
         this.palette = new GlassPalette(this.main, this.shell);
+        this.iconPicker = new IconPicker(this.main, this.shell, () => (this.lucideCache ??= lucideIds(getIconIds())));
         // On the shell, so it can open over the rail as well as the list.
         this.glassMenu = new GlassMenu(this.shell);
         this.quickAdd = new QuickAdd(this.main, {
@@ -312,6 +319,7 @@ export class TasksTabView extends ItemView {
             formatTime: (time) => this.formatTime(time),
             timeLabel: (time) => this.timeLabel(time),
             destinationLabel: (destination) => this.destinationLabel(destination),
+            destinationIcon: (destination) => this.noteIcon(destination.path),
             defaultDestination: () => this.defaultDestination(),
             defaultDate: () => this.list.kind === 'smart' && this.list.id === 'today' ? isoToday() : undefined,
             chooseDestination: (done, current) => this.pickDestination(done, current),
@@ -335,7 +343,7 @@ export class TasksTabView extends ItemView {
                 }
                 return [task];
             },
-            canDrag: () => this.expandedKey === null && !this.palette.isOpen,
+            canDrag: () => this.expandedKey === null && !this.palette.isOpen && !this.iconPicker.isOpen,
             inNoteOrder: () => this.display().sort === 'file',
             completedLast: () => this.display().showCompleted && this.display().completedLast,
             drop: (tasks, target, heading, from) => {
@@ -362,7 +370,7 @@ export class TasksTabView extends ItemView {
         this.rail.addEventListener('contextmenu', (event) => this.onRailContextMenu(event));
         onLongPress(this.rail, (event) => this.onRailContextMenu(event));
         this.railDrag = new RailDrag(this.rail, {
-            canDrag: () => !this.palette.isOpen && !this.quickAdd.isOpen && !this.glassMenu.isOpen,
+            canDrag: () => !this.palette.isOpen && !this.quickAdd.isOpen && !this.glassMenu.isOpen && !this.iconPicker.isOpen,
             reorder: (path, before) => this.reorderPin(path, before)
         });
         this.registerDomEvent(this.rail, 'pointerdown', (event) => this.railDrag.down(event));
@@ -452,6 +460,7 @@ export class TasksTabView extends ItemView {
         this.drag?.destroy();
         this.railDrag?.destroy();
         this.palette?.close();
+        this.iconPicker?.close();
         this.glassMenu?.close();
         this.quickAdd?.close(true);
         this.subtaskField?.close(false);
@@ -833,7 +842,7 @@ export class TasksTabView extends ItemView {
 
     private renderRail(today: string): void {
         // The rail only changes with the data, the list, or a fold.
-        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.inSidebar() ? this.thisNote().path : 'away'}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}|${this.plugin.settings.pinnedNotes.join('\u0001')}`;
+        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.inSidebar() ? this.thisNote().path : 'away'}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}|${this.plugin.settings.pinnedNotes.join('\u0001')}|${JSON.stringify(this.plugin.settings.noteIcons)}`;
         if (signature === this.railSignature) return;
         this.railSignature = signature;
 
@@ -911,7 +920,9 @@ export class TasksTabView extends ItemView {
                 row.dataset.path = note.path;
                 row.toggleClass('is-pinned', section.pinned);
                 row.toggleClass('is-active', sameList(ref, this.list));
-                row.createDiv({ cls: 'sh-rail-icon is-note' });
+                const icon = this.noteIcon(note.path);
+                if (icon) setIcon(row.createDiv({ cls: 'sh-rail-icon' }), icon);
+                else row.createDiv({ cls: 'sh-rail-icon is-note' });
                 row.createDiv({ cls: 'sh-rail-label', text: note.name });
                 if (note.open > 0) row.createDiv({ cls: 'sh-rail-count is-quiet', text: String(note.open) });
                 row.addEventListener('click', () => this.setList(ref));
@@ -1100,7 +1111,10 @@ export class TasksTabView extends ItemView {
         }
         if (eyebrow.textContent === '') eyebrow.remove();
 
-        const title = header.createEl('h1', { cls: 'sh-tasks-title', text: this.listTitle(this.list) });
+        const title = header.createEl('h1', { cls: 'sh-tasks-title' });
+        const titleIcon = this.list.kind === 'note' && this.list.path ? this.noteIcon(this.list.path) : undefined;
+        if (titleIcon) setIcon(title.createSpan({ cls: 'sh-title-icon' }), titleIcon);
+        title.createSpan({ text: this.listTitle(this.list) });
         // A note's title opens the note; an arrow shows on hover to say so.
         if (this.list.kind === 'note' && this.list.path) {
             const path = this.list.path;
@@ -1125,6 +1139,8 @@ export class TasksTabView extends ItemView {
         }
 
         const label = header.createDiv({ cls: 'sh-group-label' });
+        const groupIcon = group.kind === 'note' ? this.noteIcon(group.key.slice('note:'.length)) : undefined;
+        if (groupIcon) setIcon(label.createDiv({ cls: 'sh-group-icon' }), groupIcon);
         label.createDiv({ cls: 'sh-group-title', text: group.title });
         if (group.subtitle) label.createDiv({ cls: 'sh-group-subtitle', text: group.subtitle });
         if (group.count > 0) label.createDiv({ cls: 'sh-group-count', text: String(group.count) });
@@ -1430,9 +1446,44 @@ export class TasksTabView extends ItemView {
             if (index > 0) items.push({ label: t('tasksTab.actions.moveUp'), icon: 'arrow-up', run: () => this.reorderPin(path, shown[index - 1]) });
             if (index !== -1 && index < shown.length - 1) items.push({ label: t('tasksTab.actions.moveDown'), icon: 'arrow-down', run: () => this.reorderPin(path, shown[index + 2] ?? null) });
         }
-        items.push({ label: t(pinned ? 'tasksTab.actions.unpin' : 'tasksTab.actions.pin'), icon: pinned ? 'pin-off' : 'pin', divider: items.length > 0, run: () => void this.togglePinned(path) });
+        const noteItems = this.noteMenuItems(path);
+        if (items.length > 0) noteItems[0] = { ...noteItems[0], divider: true };
         this.closeMenu();
-        this.glassMenu.showAtEvent(event, items, () => this.focusList());
+        this.glassMenu.showAtEvent(event, [...items, ...noteItems], () => this.focusList());
+    }
+
+    /** What a note's menu offers wherever the tab shows the note: pin it, and give it an icon. */
+    private noteMenuItems(path: string): GlassMenuItem[] {
+        const pinned = this.plugin.settings.pinnedNotes.includes(path);
+        const icon = this.noteIcon(path);
+        const items: GlassMenuItem[] = [
+            { label: t(pinned ? 'tasksTab.actions.unpin' : 'tasksTab.actions.pin'), icon: pinned ? 'pin-off' : 'pin', run: () => void this.togglePinned(path) },
+            { label: t('tasksTab.actions.chooseIcon'), icon: icon ?? 'smile-plus', run: () => this.chooseNoteIcon(path) }
+        ];
+        if (icon) items.push({ label: t('tasksTab.actions.removeIcon'), icon: 'x', run: () => void this.setNoteIcon(path, null) });
+        return items;
+    }
+
+    /** The icon chosen for a note, if any. */
+    private noteIcon(path: string): string | undefined {
+        return this.plugin.settings.noteIcons[path];
+    }
+
+    /** Opens the icon picker for a note. */
+    private chooseNoteIcon(path: string): void {
+        this.closeMenu();
+        this.palette.close();
+        this.iconPicker.open(this.noteInfo.basename(path), this.noteIcon(path), (icon) => void this.setNoteIcon(path, icon), () => this.focusList());
+    }
+
+    /** Gives a note an icon, or takes it away with null, and redraws everywhere it shows. */
+    private async setNoteIcon(path: string, icon: string | null): Promise<void> {
+        const icons = { ...this.plugin.settings.noteIcons };
+        if (icon) icons[path] = icon;
+        else delete icons[path];
+        this.plugin.settings.noteIcons = icons;
+        this.render();
+        await this.plugin.saveSettings();
     }
 
     /** Moves a pinned note in front of another, or to the end of the pins. */
@@ -1452,6 +1503,13 @@ export class TasksTabView extends ItemView {
     private onListContextMenu(event: MouseEvent): void {
         const target = event.target as HTMLElement;
         if (target.closest('input, textarea')) return;
+        const note = this.noteAt(target);
+        if (note) {
+            event.preventDefault();
+            this.closeMenu();
+            this.glassMenu.showAtEvent(event, this.noteMenuItems(note), () => this.focusList());
+            return;
+        }
         const heading = this.headingAt(target);
         if (heading) {
             event.preventDefault();
@@ -1933,7 +1991,7 @@ export class TasksTabView extends ItemView {
 
     private handleKey(event: KeyboardEvent): void {
         if (this.app.workspace.getActiveViewOfType(TasksTabView) !== this) return;
-        if (this.palette.isOpen || this.quickAdd.isOpen || this.glassMenu.isOpen) return;
+        if (this.palette.isOpen || this.quickAdd.isOpen || this.glassMenu.isOpen || this.iconPicker.isOpen) return;
         if (event.isComposing) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -2681,7 +2739,7 @@ export class TasksTabView extends ItemView {
                 return {
                     id: `dest:${choice.path}#${choice.heading ?? ''}#${choice.headingLine ?? ''}`,
                     section: '',
-                    icon: choice.heading ? 'heading' : 'file-text',
+                    icon: choice.heading ? 'heading' : this.noteIcon(choice.path) ?? 'file-text',
                     label: choice.heading ?? name,
                     sublabel: choice.heading ? name : this.noteInfo.folder(choice.path) || undefined,
                     keywords: `${name} ${choice.heading ?? ''}`,
@@ -2811,6 +2869,7 @@ export class TasksTabView extends ItemView {
             const path = this.list.path;
             const pinned = this.plugin.settings.pinnedNotes.includes(path);
             items.push({ id: 'pin', section: sections.actions, icon: pinned ? 'pin-off' : 'pin', label: t(pinned ? 'tasksTab.actions.unpinNote' : 'tasksTab.actions.pinNote'), keywords: 'pinned sidebar favorite star', run: () => void this.togglePinned(path) });
+            items.push({ id: 'icon', section: sections.actions, icon: this.noteIcon(path) ?? 'smile-plus', label: t('tasksTab.actions.chooseIconNote'), keywords: 'icon emoji symbol picture', run: () => this.chooseNoteIcon(path) });
         }
         // A list of keyboard shortcuts is no use without a keyboard.
         if (!Platform.isMobile) {
@@ -2828,7 +2887,7 @@ export class TasksTabView extends ItemView {
                 items.push({
                     id: `note:${note.path}`,
                     section: sections.notes,
-                    icon: 'file-text',
+                    icon: this.noteIcon(note.path) ?? 'file-text',
                     label: note.name,
                     sublabel: area.folder || undefined,
                     detail: String(note.open),
@@ -3157,6 +3216,14 @@ export class TasksTabView extends ItemView {
         if (!add.heading || add.headingLine === undefined) return { path: add.path, pinned: true };
         const title = titleOf(this.headingsOf(add.path));
         return { path: add.path, line: add.headingLine, title: add.heading, pinned: title?.line === add.headingLine };
+    }
+
+    /** The note a right-click landed on: a note's group header, or the title of a note's list. */
+    private noteAt(target: HTMLElement): string | null {
+        if (target.closest('.sh-tasks-title') && this.list.kind === 'note' && this.list.path) return this.list.path;
+        const header = target.closest<HTMLElement>('.sh-group-header');
+        const group = header?.parentElement ? this.groupEls.get(header.parentElement) : undefined;
+        return group?.kind === 'note' ? group.key.slice('note:'.length) : null;
     }
 
     /**

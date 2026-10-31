@@ -640,6 +640,9 @@
       "unpin": "Unpin",
       "pinNote": "Pin this note",
       "unpinNote": "Unpin this note",
+      "chooseIcon": "Choose icon…",
+      "removeIcon": "Remove icon",
+      "chooseIconNote": "Choose an icon for this note",
       "moveUp": "Move up",
       "moveDown": "Move down",
       "copy": "Copy as Markdown",
@@ -693,6 +696,11 @@
       "showContext": "Show notes under tasks",
       "reset": "Reset to default",
       "completedLast": "Completed at the bottom"
+    },
+    "iconPicker": {
+      "placeholder": "Search icons…",
+      "remove": "Remove icon",
+      "empty": "No icons match"
     },
     "quickAdd": {
       "placeholder": "Task name, e.g. Call the dentist fri p1",

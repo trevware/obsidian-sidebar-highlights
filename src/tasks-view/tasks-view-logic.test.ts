@@ -3,7 +3,7 @@ import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, movePin, railPinned, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, movePin, railPinned, renamedIcons, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -480,6 +480,11 @@ describe('task-views', () => {
         expect(movePin(['A.md', 'B.md', 'C.md'], 'A.md', 'C.md')).toEqual(['B.md', 'A.md', 'C.md']);
         expect(movePin(['A.md', 'B.md', 'C.md'], 'A.md', null)).toEqual(['B.md', 'C.md', 'A.md']);
         expect(movePin(['A.md', 'B.md'], 'Gone.md', 'A.md')).toEqual(['A.md', 'B.md']);
+    });
+
+    it('moves a note\'s icon with the note when it is renamed or moved', () => {
+        expect(renamedIcons({ 'A.md': 'plane', 'B.md': 'star' }, 'A.md', 'Trips/A.md')).toEqual({ 'Trips/A.md': 'plane', 'B.md': 'star' });
+        expect(renamedIcons({ 'A.md': 'plane' }, 'C.md', 'D.md')).toBeNull();
     });
 
     it('follows a pinned note when it is renamed or moved', () => {
