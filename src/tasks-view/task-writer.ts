@@ -1,8 +1,8 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
 import { contextRange, insertionLine, locateTaskLine, notesLines, subtaskLines, taskBlockEnd } from './task-line';
-import { moveTasks } from './task-move';
-import type { MoveTarget } from './task-move';
+import { addUnderNewHeading, moveHeading, moveTasks } from './task-move';
+import type { HeadingRef, HeadingTarget, MoveTarget } from './task-move';
 
 /** One line the Tasks tab changed, kept so the change can be undone. */
 export interface LineChange {
@@ -298,6 +298,42 @@ export class TaskWriter {
             return plan.lines.join('\n');
         });
         return result;
+    }
+
+    /**
+     * Moves a heading, with everything under it, above another heading or to
+     * the bottom of its note. Returns null when the note is gone or nothing
+     * moved.
+     */
+    async moveHeading(path: string, heading: HeadingRef, target: HeadingTarget): Promise<MoveResult | null> {
+        const file = this.file(path);
+        if (!file) return null;
+        let result: MoveResult | null = null;
+        await this.app.vault.process(file, (data) => {
+            const plan = moveHeading(data.split('\n'), heading, target);
+            if (!plan) return data;
+            result = { change: { path, ...plan.change }, lineMap: plan.lineMap, landed: plan.landed };
+            return plan.lines.join('\n');
+        });
+        return result;
+    }
+
+    /**
+     * Adds lines under a new heading at the top or bottom of a note, or under
+     * the heading of that name when the note has one by now. Returns the run
+     * of lines added (for undo) and the line of the first new one, or null
+     * when the note is missing.
+     */
+    async insertUnderNewHeading(path: string, heading: string, level: number, where: 'top' | 'bottom', newLines: readonly string[]): Promise<{ at: number; added: string[]; first: number } | null> {
+        const file = this.file(path);
+        if (!file || newLines.length === 0) return null;
+        let placed: { at: number; added: string[]; first: number } | null = null;
+        await this.app.vault.process(file, (data) => {
+            const result = addUnderNewHeading(data.length === 0 ? [] : data.split('\n'), heading, level, where, newLines);
+            placed = { at: result.at, added: result.added, first: result.first };
+            return result.lines.join('\n');
+        });
+        return placed;
     }
 
     /** Puts a replaced run of lines back, finding it by what it was changed to. */

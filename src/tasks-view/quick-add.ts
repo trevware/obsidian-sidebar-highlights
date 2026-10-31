@@ -17,6 +17,8 @@ export interface Destination {
     headingLine?: number;
     /** A task to add under, as a subtask. */
     parent?: { line: number; text: string; title: string };
+    /** `heading` doesn't exist yet: it's written with the first task, at this level, at the top or bottom of the note. */
+    create?: { level: number; where: 'top' | 'bottom' };
 }
 
 export interface QuickAddPrefill {
@@ -39,7 +41,8 @@ export interface QuickAddHost {
     defaultDestination: () => Destination | null;
     /** The day a new task starts on in the list on screen: today, in Today. */
     defaultDate: () => string | undefined;
-    chooseDestination: (done: (destination: Destination) => void) => void;
+    /** Opens the note picker; `current` is the place on the chip, where a new heading would go. */
+    chooseDestination: (done: (destination: Destination) => void, current?: Destination) => void;
     /** Writes the lines; resolves false when nothing could be written. */
     submit: (lines: string[], destination: Destination) => Promise<boolean>;
     /** Whether tasks are written in Title Case. */
@@ -292,7 +295,7 @@ export class QuickAdd {
             this.draft.destination = chosen;
             this.refresh();
             this.input?.focus({ preventScroll: true });
-        });
+        }, this.draft.destination);
     }
 
     private chip(parent: HTMLElement, icon: string, label: string, set: boolean, onClick: (chip: HTMLElement) => void, onClear?: () => void): HTMLElement {

@@ -8,15 +8,19 @@
  * anything other than the note's own order the rows stay put and the task
  * drops onto a heading instead. Escape puts everything back.
  *
+ * In a note's own list, a heading's title drags the same way: its group
+ * lifts with the groups of the smaller headings under it, and drops above
+ * another heading or at the bottom, moving the section in the note.
+ *
  * Positions are measured once, when the drag starts, and everything after
  * that is arithmetic on them (drag-plan.ts), so a long note stays smooth.
  */
 
 import type { Task } from '../../main';
-import type { MoveTarget } from './task-move';
+import type { HeadingRef, HeadingTarget, MoveTarget } from './task-move';
 import { isOpenTask } from './task-views';
-import { nearestGap, planDrag, shiftFor } from './drag-plan';
-import type { DragGap, DragItem, DragPlan } from './drag-plan';
+import { nearestGap, planDrag, planHeadingDrag, shiftFor } from './drag-plan';
+import type { DragGap, DragItem, DragPlan, HeadingDragItem } from './drag-plan';
 import { paintRun } from './row-runs';
 
 export interface DragHost {
@@ -32,6 +36,16 @@ export interface DragHost {
     completedLast(): boolean;
     /** Moves the tasks. False when nothing moved, so the rows go back. */
     drop(tasks: Task[], target: MoveTarget, heading: string, from: Task): Promise<boolean>;
+    /**
+     * A heading's group in a note's list: its note, and its heading's line
+     * and text (neither for the loose tasks). A pinned group stays put. Null
+     * for any other group.
+     */
+    headingOf(group: HTMLElement): { path: string; line?: number; title?: string; pinned: boolean } | null;
+    /** Where a heading's section ends in its note: the line of the next heading as big as it, or Infinity. */
+    sectionEnd(path: string, line: number): number;
+    /** Moves a heading with its section. False when nothing moved, so the groups go back. */
+    dropHeading(path: string, heading: HeadingRef, target: HeadingTarget): Promise<boolean>;
 }
 
 /** How far the pointer moves before a press becomes a drag. */
@@ -43,24 +57,31 @@ const MAX_SPEED = 16;
 
 interface Lift {
     elements: HTMLElement[];
-    items: DragItem[];
+    /** Where each element sat, measured when the drag started. */
+    tops: number[];
+    /** A task drag's rows and headings, to light up the heading it would land under. Null for a heading drag. */
+    items: DragItem[] | null;
     grabbed: number;
-    plan: DragPlan;
+    plan: DragPlan<unknown>;
     tasks: Task[];
     /** The pointer's height in the list when the row lifted. */
     startY: number;
-    gap: DragGap | null;
+    gap: DragGap<unknown> | null;
     shifts: number[];
     target: HTMLElement | null;
     frame: number;
+    /** Makes the move for one of the plan's gaps, by its index. False when nothing moved. */
+    land: (gap: number) => Promise<boolean>;
 }
 
 interface Press {
     pointerId: number;
     x: number;
     y: number;
+    /** The row pressed, or the heading's group whose title was pressed. */
     row: HTMLElement;
-    task: Task;
+    /** The pressed row's task; null for a heading. */
+    task: Task | null;
     lift: Lift | null;
 }
 
@@ -80,13 +101,19 @@ export class TaskDrag {
     down(event: PointerEvent): void {
         if (event.button !== 0 || event.pointerType === 'touch' || this.press) return;
         const target = event.target as HTMLElement;
-        const row = target.closest<HTMLElement>('.sh-task-row');
-        if (!row || row.hasClass('is-expanded')) return;
         if (target.closest('button, a, input, textarea, [contenteditable="true"]')) return;
-        if (!this.host.canDrag()) return;
-        const task = this.host.taskOf(row);
-        if (!task) return;
-        this.press = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, row, task, lift: null };
+        const row = target.closest<HTMLElement>('.sh-task-row');
+        let pressed: { row: HTMLElement; task: Task | null } | null = null;
+        if (row) {
+            const task = row.hasClass('is-expanded') ? undefined : this.host.taskOf(row);
+            if (task) pressed = { row, task };
+        } else {
+            const group = target.closest<HTMLElement>('.sh-group-header')?.parentElement;
+            const heading = group ? this.host.headingOf(group) : null;
+            if (group && heading && !heading.pinned) pressed = { row: group, task: null };
+        }
+        if (!pressed || !this.host.canDrag()) return;
+        this.press = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, ...pressed, lift: null };
         window.addEventListener('pointermove', this.onMove, true);
         window.addEventListener('pointerup', this.onUp, true);
         window.addEventListener('pointercancel', this.onCancel, true);
@@ -166,9 +193,42 @@ export class TaskDrag {
         window.removeEventListener('keydown', this.onKey, true);
     }
 
-    /** Measures the note's part of the list and lifts the row, or returns null when it can't be dragged. */
+    /** Measures the note's part of the list and lifts what was pressed, or returns null when it can't be dragged. */
     private lift(press: Press): Lift | null {
-        const path = press.task.filePath;
+        return press.task ? this.liftRows(press, press.task) : this.liftHeading(press);
+    }
+
+    /** Lifts a heading's group, with the groups of the smaller headings under it. */
+    private liftHeading(press: Press): Lift | null {
+        const heading = this.host.headingOf(press.row);
+        if (!heading || heading.line === undefined) return null;
+        const top = this.column.getBoundingClientRect().top;
+        const elements: HTMLElement[] = [];
+        const items: HeadingDragItem[] = [];
+        for (const group of Array.from(this.column.children) as HTMLElement[]) {
+            const info = group.hasClass('sh-group') ? this.host.headingOf(group) : null;
+            if (!info || info.path !== heading.path) continue;
+            const rect = group.getBoundingClientRect();
+            items.push({ top: rect.top - top, height: rect.height, line: info.line, title: info.title, pinned: info.pinned });
+            elements.push(group);
+        }
+        const grabbed = elements.indexOf(press.row);
+        const plan = grabbed === -1 ? null : planHeadingDrag(items, grabbed, this.host.sectionEnd(heading.path, heading.line));
+        if (!plan) return null;
+
+        window.getSelection()?.removeAllRanges();
+        this.column.addClass('has-drag');
+        for (let i = plan.blockStart; i < plan.blockEnd; i++) elements[i].addClass('is-dragging');
+        const ref = { line: heading.line, title: heading.title ?? '' };
+        return this.start({
+            elements, tops: items.map(item => item.top), items: null, grabbed, plan, tasks: [], startY: press.y - top,
+            land: (index) => this.host.dropHeading(heading.path, ref, plan.gaps[index].target)
+        });
+    }
+
+    /** Lifts a task row, with its subtasks and the rest of the selection. */
+    private liftRows(press: Press, task: Task): Lift | null {
+        const path = task.filePath;
         const top = this.column.getBoundingClientRect().top;
         const elements: HTMLElement[] = [];
         const items: DragItem[] = [];
@@ -200,7 +260,7 @@ export class TaskDrag {
 
         const plan = planDrag(items, grabbed, { skipDone: this.host.completedLast() });
         if (!this.host.inNoteOrder()) plan.gaps = [];
-        const tasks = this.host.carried(press.task);
+        const tasks = this.host.carried(task);
 
         window.getSelection()?.removeAllRanges();
         this.column.addClass('has-drag');
@@ -221,7 +281,18 @@ export class TaskDrag {
             });
         }
 
-        const lift: Lift = { elements, items, grabbed, plan, tasks, startY: press.y - top, gap: null, shifts: items.map(() => 0), target: null, frame: 0 };
+        return this.start({
+            elements, tops: items.map(item => item.top), items, grabbed, plan, tasks, startY: press.y - top,
+            land: (index) => {
+                const gap = plan.gaps[index];
+                return this.host.drop(tasks, gap.target, gap.heading, task);
+            }
+        });
+    }
+
+    /** Starts following the pointer with what was lifted. */
+    private start(parts: Pick<Lift, 'elements' | 'tops' | 'items' | 'grabbed' | 'plan' | 'tasks' | 'startY' | 'land'>): Lift {
+        const lift: Lift = { ...parts, gap: null, shifts: parts.elements.map(() => 0), target: null, frame: 0 };
         const tick = () => {
             this.scrollNearEdge();
             this.follow(lift);
@@ -246,14 +317,16 @@ export class TaskDrag {
         for (let i = plan.blockStart; i < plan.blockEnd; i++) elements[i].style.transform = `translateY(${offset}px)`;
 
         if (plan.gaps.length > 0) {
-            const gap = nearestGap(plan, items[lift.grabbed].top + offset);
+            const gap = nearestGap(plan, lift.tops[lift.grabbed] + offset);
             if (gap === lift.gap) return;
             lift.gap = gap;
             // The heading the rows would land under lights up: the last one
             // above the gap.
-            let under = -1;
-            if (gap) for (let i = gap.at - 1; i >= 0 && under === -1; i--) if (items[i].kind === 'heading') under = i;
-            this.paintTarget(lift, under === -1 ? null : elements[under]);
+            if (items) {
+                let under = -1;
+                if (gap) for (let i = gap.at - 1; i >= 0 && under === -1; i--) if (items[i].kind === 'heading') under = i;
+                this.paintTarget(lift, under === -1 ? null : elements[under]);
+            }
             elements.forEach((el, i) => {
                 if (i >= plan.blockStart && i < plan.blockEnd) return;
                 const shift = gap ? shiftFor(plan, i, gap) : 0;
@@ -266,6 +339,7 @@ export class TaskDrag {
         }
 
         // Out of the note's order, the task drops onto a heading.
+        if (!items) return;
         const under = document.elementFromPoint(this.lastX, this.lastY)?.closest<HTMLElement>('.sh-section-title, .sh-group-header') ?? null;
         const index = under ? elements.indexOf(under) : -1;
         this.paintTarget(lift, index !== -1 && items[index].kind === 'heading' ? under : null);
@@ -279,20 +353,18 @@ export class TaskDrag {
     }
 
     private async release(press: Press, lift: Lift): Promise<void> {
-        let target: MoveTarget | null = null;
-        let heading = '';
+        let land: (() => Promise<boolean>) | null = null;
         if (lift.plan.gaps.length > 0) {
             // Back where it started is no move at all.
-            if (lift.gap && lift.gap.at !== lift.plan.blockStart) {
-                target = lift.gap.target;
-                heading = lift.gap.heading;
-            }
-        } else if (lift.target) {
+            const gap = lift.gap;
+            if (gap && gap.at !== lift.plan.blockStart) land = () => lift.land(lift.plan.gaps.indexOf(gap));
+        } else if (lift.target && lift.items && press.task) {
             const item = lift.items[lift.elements.indexOf(lift.target)];
-            heading = item.heading ?? '';
-            target = { kind: 'heading', heading, line: item.headingLine };
+            const heading = item.heading ?? '';
+            const from = press.task;
+            land = () => this.host.drop(lift.tasks, { kind: 'heading', heading, line: item.headingLine }, heading, from);
         }
-        if (!target) {
+        if (!land) {
             this.settle(lift, true);
             return;
         }
@@ -300,7 +372,7 @@ export class TaskDrag {
         // then slide from there to where the move put them.
         this.column.removeClass('has-drag');
         lift.target?.removeClass('is-drop-target');
-        const moved = await this.host.drop(lift.tasks, target, heading, press.task);
+        const moved = await land();
         if (!moved) this.settle(lift, true);
     }
 

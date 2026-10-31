@@ -396,6 +396,14 @@ describe('quick add from the keyboard', () => {
         expect(event.defaultPrevented).toBe(true);
     });
 
+    it('hands the note picker the place on the chip, where a new heading would go', () => {
+        const chooseDestination = jest.fn();
+        const { quickAdd, container } = setup(undefined, { chooseDestination, defaultDestination: () => ({ path: 'Projects.md', heading: 'Now' }) });
+        quickAdd.open();
+        chips(container).find(chip => chip.textContent === 'Projects.md')?.click();
+        expect(chooseDestination).toHaveBeenCalledWith(expect.any(Function), { path: 'Projects.md', heading: 'Now' });
+    });
+
     it('leaves a slash inside a word alone', () => {
         const chooseDestination = jest.fn();
         const { quickAdd, container } = setup(undefined, { chooseDestination });

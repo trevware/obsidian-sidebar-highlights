@@ -50,12 +50,12 @@ import { titleCase, titleCaseTyped } from './capitalize';
 import { parseDateTimeQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
-import type { LineChange } from './task-writer';
-import { newHeadingLevel } from './task-move';
+import type { LineChange, RangeChange } from './task-writer';
+import { headingSectionEnd, newHeadingLevel, titleOf } from './task-move';
 import { TaskDrag } from './task-drag';
 import { NoteRefresher } from './note-refresh';
 import { paintRun } from './row-runs';
-import type { MoveTarget, NoteHeading } from './task-move';
+import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
@@ -301,7 +301,7 @@ export class TasksTabView extends ItemView {
             destinationLabel: (destination) => this.destinationLabel(destination),
             defaultDestination: () => this.defaultDestination(),
             defaultDate: () => this.list.kind === 'smart' && this.list.id === 'today' ? isoToday() : undefined,
-            chooseDestination: (done) => this.pickDestination(done),
+            chooseDestination: (done, current) => this.pickDestination(done, current),
             submit: (lines, destination) => this.addLines(lines, destination),
             capitalize: () => this.plugin.settings.capitalizeTasks,
             onClose: () => this.focusList()
@@ -328,7 +328,10 @@ export class TasksTabView extends ItemView {
             drop: (tasks, target, heading, from) => {
                 const label = heading === (from.section ?? '') ? null : heading || t('tasksTab.palette.noHeading');
                 return this.moveTasksTo(tasks, target, label, false);
-            }
+            },
+            headingOf: (el) => this.headingGroupOf(el),
+            sectionEnd: (path, line) => headingSectionEnd(this.headingsOf(path), line),
+            dropHeading: (path, heading, target) => this.moveHeadingTo(path, heading, target)
         });
         this.registerDomEvent(this.column, 'pointerdown', (event) => this.drag.down(event));
         this.registerDomEvent(this.contentEl, 'pointerdown', () => {
@@ -1382,6 +1385,15 @@ export class TasksTabView extends ItemView {
     private onListContextMenu(event: MouseEvent): void {
         const target = event.target as HTMLElement;
         if (target.closest('input, textarea')) return;
+        const heading = this.headingAt(target);
+        if (heading) {
+            event.preventDefault();
+            this.closeMenu();
+            this.glassMenu.showAtEvent(event, [
+                { label: t('tasksTab.actions.moveHeading'), icon: 'heading', run: () => this.openPalette(this.moveHeadingStage(heading.path, heading)) }
+            ], () => this.focusList());
+            return;
+        }
         const row = target.closest<HTMLElement>('.sh-task-row');
         const key = row?.dataset.key ?? '';
         const task = this.rowTasks.get(key);
@@ -2390,6 +2402,8 @@ export class TasksTabView extends ItemView {
         const parent = destination.parent;
         let at: number;
         let written = lines;
+        // The first task's line: past the new heading, when one was added.
+        let first: number | null = null;
         if (parent) {
             const placed = await this.writer.insertUnder(destination.path, parent, lines);
             if (!placed) {
@@ -2397,6 +2411,16 @@ export class TasksTabView extends ItemView {
                 return false;
             }
             ({ at, lines: written } = placed);
+        } else if (destination.create && destination.heading) {
+            const placed = await this.writer.insertUnderNewHeading(destination.path, destination.heading, destination.create.level, destination.create.where, lines);
+            if (!placed) {
+                new Notice(t('tasksTab.notices.noteMissing'));
+                return false;
+            }
+            // The heading exists now, so the next task simply goes under it.
+            ({ at, added: written } = placed);
+            first = placed.first;
+            this.writeJson(STORAGE.destination, { path: destination.path, heading: destination.heading });
         } else {
             at = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine);
             if (at === -1) {
@@ -2412,12 +2436,12 @@ export class TasksTabView extends ItemView {
         const follow = (key: string) => {
             if (!key.startsWith(`${destination.path}:`)) return key;
             const line = Number(key.slice(destination.path.length + 1));
-            return line >= at ? `${destination.path}:${line + lines.length}` : key;
+            return line >= at ? `${destination.path}:${line + written.length}` : key;
         };
         this.selected = new Set([...this.selected].map(follow));
         if (this.highlightKey) this.highlightKey = follow(this.highlightKey);
         if (this.expandedKey) this.expandedKey = follow(this.expandedKey);
-        const keys = lines.map((_line, i) => `${destination.path}:${at + i}`);
+        const keys = lines.map((_line, i) => `${destination.path}:${(first ?? at) + i}`);
         this.render(true);
         const shown = this.revealAdded(keys);
 
@@ -2568,8 +2592,13 @@ export class TasksTabView extends ItemView {
         return choices;
     }
 
-    /** The note picker for quick add: a palette page over the hidden panel. */
-    private pickDestination(done: (destination: Destination) => void): void {
+    /**
+     * The note picker for quick add: a palette page over the hidden panel.
+     * Typing a name the note on the chip has no heading for offers to
+     * create it there, at the top of the note or the bottom, the one picked
+     * last time first.
+     */
+    private pickDestination(done: (destination: Destination) => void, current?: Destination): void {
         this.quickAdd.setHidden(true);
         const choices = this.destinationChoices();
         this.palette.open({
@@ -2591,8 +2620,44 @@ export class TasksTabView extends ItemView {
                     keywords: `${name} ${choice.heading ?? ''}`,
                     run: () => done(choice)
                 };
-            })
+            }),
+            footer: (query) => this.newHeadingRows(query, current, choices, done)
         });
+    }
+
+    /** The picker's rows for a heading named in the query, in the note on the chip. */
+    private newHeadingRows(query: string, current: Destination | undefined, choices: readonly Destination[], done: (destination: Destination) => void): PaletteItem[] {
+        const name = query.trim();
+        if (!name || !current || !(this.app.vault.getAbstractFileByPath(current.path) instanceof TFile)) return [];
+        const path = current.path;
+        const note = this.noteInfo.basename(path);
+        const headings = this.headingsOf(path);
+        // The note has that heading already: offer it, when the list above doesn't.
+        const existing = headings.find(heading => heading.title.toLowerCase() === name.toLowerCase());
+        if (existing) {
+            if (choices.some(choice => choice.path === path && choice.headingLine === existing.line)) return [];
+            return [{
+                id: `dest:${path}#${existing.title}#${existing.line}`,
+                section: '',
+                icon: 'heading',
+                label: existing.title,
+                sublabel: note,
+                run: () => done({ path, heading: existing.title, headingLine: existing.line })
+            }];
+        }
+        const level = newHeadingLevel(headings, current.heading);
+        const last = this.readJson<'top' | 'bottom'>(STORAGE.newHeading, 'bottom');
+        const order: Array<'top' | 'bottom'> = last === 'top' ? ['top', 'bottom'] : ['bottom', 'top'];
+        return order.map(where => ({
+            id: `new-heading:${where}`,
+            section: '',
+            icon: where === 'top' ? 'arrow-up-to-line' : 'arrow-down-to-line',
+            label: t(where === 'top' ? 'tasksTab.quickAdd.createHeadingTop' : 'tasksTab.quickAdd.createHeadingBottom', { heading: name, note }),
+            run: () => {
+                this.writeJson(STORAGE.newHeading, where);
+                done({ path, heading: name, create: { level, where } });
+            }
+        }));
     }
 
     // ── Palette ─────────────────────────────────────────────────────────
@@ -2953,22 +3018,7 @@ export class TasksTabView extends ItemView {
             return false;
         }
         await this.refreshFile(path);
-
-        // Line numbers are the tasks' identity, so carry everything that
-        // refers to a task in this note over to its new line.
-        const rekey = (key: string) => {
-            if (!key.startsWith(`${path}:`)) return key;
-            const line = result.lineMap.get(Number(key.slice(path.length + 1)));
-            return line === undefined ? key : `${path}:${line}`;
-        };
-        this.selected = new Set([...this.selected].map(rekey));
-        if (this.highlightKey) this.highlightKey = rekey(this.highlightKey);
-        if (this.expandedKey) this.expandedKey = rekey(this.expandedKey);
-        const remap = new Map<string, string>();
-        for (const [from, to] of result.lineMap) {
-            if (from !== to) remap.set(`task:${path}:${from}`, `task:${path}:${to}`);
-        }
-        this.flipRemap = remap;
+        this.followMove(path, result.lineMap);
         this.render(true);
         if (reveal) {
             this.selected.clear();
@@ -2982,7 +3032,33 @@ export class TasksTabView extends ItemView {
             : tasks.length === 1
                 ? t('tasksTab.notices.movedToOne', { task: truncate(this.plainText(tasks[0]), 40), heading })
                 : t('tasksTab.notices.movedToMany', { count: tasks.length, heading });
-        const change = result.change;
+        this.pushRangeUndo(label, result.change);
+        return true;
+    }
+
+    /**
+     * Line numbers are the tasks' identity, so after lines in a note move,
+     * everything that refers to a task there is carried over to its new
+     * line, and its row slides from where it was.
+     */
+    private followMove(path: string, lineMap: Map<number, number>): void {
+        const rekey = (key: string) => {
+            if (!key.startsWith(`${path}:`)) return key;
+            const line = lineMap.get(Number(key.slice(path.length + 1)));
+            return line === undefined ? key : `${path}:${line}`;
+        };
+        this.selected = new Set([...this.selected].map(rekey));
+        if (this.highlightKey) this.highlightKey = rekey(this.highlightKey);
+        if (this.expandedKey) this.expandedKey = rekey(this.expandedKey);
+        const remap = new Map<string, string>();
+        for (const [from, to] of lineMap) {
+            if (from !== to) remap.set(`task:${path}:${from}`, `task:${path}:${to}`);
+        }
+        this.flipRemap = remap;
+    }
+
+    /** Offers to put back a run of replaced lines, in a notice and on the undo stack. */
+    private pushRangeUndo(label: string, change: RangeChange): void {
         this.undoStack.push({
             label,
             undo: async () => {
@@ -2993,6 +3069,102 @@ export class TasksTabView extends ItemView {
         });
         if (this.undoStack.length > 50) this.undoStack.shift();
         this.toast(label, true);
+    }
+
+    // ── Moving headings ─────────────────────────────────────────────────
+
+    /**
+     * A heading's group in a note's list, for dragging it. The loose tasks
+     * above the first heading and the note's title stay pinned. Null for
+     * any other group.
+     */
+    private headingGroupOf(el: HTMLElement): { path: string; line?: number; title?: string; pinned: boolean } | null {
+        const group = this.groupEls.get(el);
+        const add = group?.kind === 'heading' ? group.add : undefined;
+        if (!add?.path) return null;
+        if (!add.heading || add.headingLine === undefined) return { path: add.path, pinned: true };
+        const title = titleOf(this.headingsOf(add.path));
+        return { path: add.path, line: add.headingLine, title: add.heading, pinned: title?.line === add.headingLine };
+    }
+
+    /**
+     * The heading a right-click or long press landed on, when it can move:
+     * a heading's group in a note's list, or a heading inside a note's group
+     * in the other lists.
+     */
+    private headingAt(target: HTMLElement): (HeadingRef & { path: string }) | null {
+        const header = target.closest<HTMLElement>('.sh-group-header');
+        if (header?.parentElement) {
+            const info = this.headingGroupOf(header.parentElement);
+            return info && !info.pinned && info.line !== undefined ? { path: info.path, line: info.line, title: info.title ?? '' } : null;
+        }
+        const section = target.closest<HTMLElement>('.sh-section-title');
+        const group = section?.parentElement ? this.groupEls.get(section.parentElement) : undefined;
+        if (!section || group?.kind !== 'note' || section.dataset.line === undefined) return null;
+        const path = group.key.slice('note:'.length);
+        const line = Number(section.dataset.line);
+        if (titleOf(this.headingsOf(path))?.line === line) return null;
+        return { path, line, title: section.dataset.heading ?? '' };
+    }
+
+    /**
+     * A page of the note's headings to put a heading above, with the bottom
+     * of the note last. The headings inside its own section, and the one
+     * right after it, aren't offered, since moving there changes nothing.
+     */
+    private moveHeadingStage(path: string, heading: HeadingRef): PaletteStage {
+        const headings = this.headingsOf(path);
+        const title = titleOf(headings);
+        const end = headingSectionEnd(headings, heading.line);
+        // Headings that share a name say which is which by the heading above them.
+        const counts = new Map<string, number>();
+        for (const candidate of headings) counts.set(candidate.title, (counts.get(candidate.title) ?? 0) + 1);
+        const parentOf = (index: number) => {
+            for (let i = index - 1; i >= 0; i--) if (headings[i].level < headings[index].level) return headings[i].title;
+            return undefined;
+        };
+        return {
+            title: `${t('tasksTab.actions.moveHeading')} · ${heading.title}`,
+            placeholder: t('tasksTab.palette.moveHeadingPlaceholder'),
+            items: () => headings
+                .map((candidate, index) => ({ candidate, index }))
+                .filter(({ candidate }) => candidate !== title && (candidate.line < heading.line || candidate.line > end))
+                .map(({ candidate, index }) => ({
+                    id: `heading:${candidate.line}`,
+                    section: '',
+                    icon: 'heading',
+                    label: candidate.title,
+                    sublabel: (counts.get(candidate.title) ?? 0) > 1 ? parentOf(index) : undefined,
+                    detail: '#'.repeat(candidate.level),
+                    run: () => void this.moveHeadingTo(path, heading, { kind: 'before', line: candidate.line, title: candidate.title })
+                })),
+            footer: () => end === Infinity ? [] : [{
+                id: 'bottom',
+                section: '',
+                icon: 'arrow-down-to-line',
+                label: t('tasksTab.palette.bottomOfNote'),
+                run: () => void this.moveHeadingTo(path, heading, { kind: 'bottom' })
+            }]
+        };
+    }
+
+    /**
+     * Moves a heading, with everything under it, then slides the list to
+     * match. The notice says where it went and can undo it.
+     */
+    private async moveHeadingTo(path: string, heading: HeadingRef, target: HeadingTarget): Promise<boolean> {
+        const result = await this.writer.moveHeading(path, heading, target);
+        if (!result) {
+            this.toast(t('tasksTab.notices.headingNotMoved'), false);
+            return false;
+        }
+        await this.refreshFile(path);
+        this.followMove(path, result.lineMap);
+        this.render(true);
+        const label = target.kind === 'bottom'
+            ? t('tasksTab.notices.headingMovedBottom', { heading: heading.title })
+            : t('tasksTab.notices.headingMovedAbove', { heading: heading.title, target: target.title });
+        this.pushRangeUndo(label, result.change);
         return true;
     }
 

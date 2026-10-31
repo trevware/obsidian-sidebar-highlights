@@ -36,6 +36,12 @@ export interface PaletteStage {
      * so its rows are shown as given instead of being ranked against it.
      */
     readsQuery?: boolean;
+    /**
+     * Rows that always follow the matches, given what has been typed, such
+     * as an offer to create what was typed. A rule sets them apart when
+     * there are matches above.
+     */
+    footer?: (query: string) => PaletteItem[];
 }
 
 export interface PaletteSource {
@@ -271,10 +277,14 @@ export class GlassPalette {
             // A page can be long (every note in the vault), so it shows the
             // best rows and lets the query narrow the rest.
             const items = this.stage.items(query);
-            if (this.stage.readsQuery || query.trim() === '') return items.slice(0, STAGE_LIMIT).map(item => ({ item, ranges: [] }));
-            return rank(query, items, item => ({ primary: item.label, secondary: item.keywords }))
-                .slice(0, STAGE_LIMIT)
-                .map(hit => ({ item: hit.item, ranges: hit.ranges }));
+            const rows: Row[] = this.stage.readsQuery || query.trim() === ''
+                ? items.slice(0, STAGE_LIMIT).map(item => ({ item, ranges: [] }))
+                : rank(query, items, item => ({ primary: item.label, secondary: item.keywords }))
+                    .slice(0, STAGE_LIMIT)
+                    .map(hit => ({ item: hit.item, ranges: hit.ranges }));
+            const footer = this.stage.footer?.(query) ?? [];
+            footer.forEach((item, index) => rows.push({ item: index === 0 && rows.length > 0 ? { ...item, divider: true } : item, ranges: [] }));
+            return rows;
         }
 
         const items = this.source?.items(query) ?? [];

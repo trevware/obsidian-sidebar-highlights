@@ -634,6 +634,7 @@
       "setPriority": "Set priority",
       "setStatus": "Set status",
       "moveToHeading": "Move to heading",
+      "moveHeading": "Move heading",
       "copy": "Copy as Markdown",
       "openInNote": "Open in note",
       "openToSide": "Open to the side",
@@ -665,6 +666,8 @@
       "noHeading": "No heading",
       "createHeadingTop": "Create “{{heading}}” at the top",
       "createHeadingBottom": "Create “{{heading}}” at the bottom",
+      "moveHeadingPlaceholder": "Find a heading to put it above…",
+      "bottomOfNote": "Bottom of the note",
       "shortcutsPlaceholder": "Filter shortcuts"
     },
     "display": {
@@ -696,6 +699,8 @@
       "close": "close",
       "destinationPlaceholder": "Find a note or heading…",
       "addTo": "Add to",
+      "createHeadingTop": "Create “{{heading}}” at the top of {{note}}",
+      "createHeadingBottom": "Create “{{heading}}” at the bottom of {{note}}",
       "cancelButton": "Cancel",
       "addButton": "Add"
     },
@@ -740,7 +745,10 @@
       "movedToOne": "Moved “{{task}}” to {{heading}}",
       "movedToMany": "Moved {{count}} tasks to {{heading}}",
       "moveOneNote": "Tasks can only move within their own note. Pick tasks from one note.",
-      "notMoved": "Nothing moved. The task may already be there, or the note changed."
+      "notMoved": "Nothing moved. The task may already be there, or the note changed.",
+      "headingMovedAbove": "Moved “{{heading}}” above {{target}}",
+      "headingMovedBottom": "Moved “{{heading}}” to the bottom",
+      "headingNotMoved": "Nothing moved. The heading may already be there, or the note changed."
     },
     "shortcuts": {
       "moveHighlight": "Move up and down",
