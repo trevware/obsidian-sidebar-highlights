@@ -1,5 +1,5 @@
-import { nearestGap, planDrag, shiftFor } from './drag-plan';
-import type { DragItem } from './drag-plan';
+import { nearestGap, planDrag, planHeadingDrag, shiftFor } from './drag-plan';
+import type { DragItem, HeadingDragItem } from './drag-plan';
 
 // A note's list as laid out: 30px rows, 40px headings.
 function layout(spec: Array<string>): DragItem[] {
@@ -130,5 +130,59 @@ describe('shiftFor', () => {
         const up = planDrag(list, 4, { skipDone: false });
         const top = up.gaps.find(candidate => candidate.at === 1)!;
         expect([1, 2, 3, 5].map(index => shiftFor(up, index, top))).toEqual([30, 30, 30, 0]);
+    });
+});
+
+describe('planHeadingDrag', () => {
+    // A note's headings as laid out: the loose tasks first, then each heading's group.
+    const groups: HeadingDragItem[] = [
+        { top: 0, height: 60, pinned: true },
+        { top: 60, height: 100, line: 2, title: 'A' },
+        { top: 160, height: 50, line: 5, title: 'A1' },
+        { top: 210, height: 80, line: 9, title: 'B' },
+        { top: 290, height: 70, line: 12, title: 'C' }
+    ];
+    const targets = (plan: ReturnType<typeof planHeadingDrag>) => plan?.gaps.map(gap => gap.target);
+
+    it('offers a gap above each heading and one at the bottom of the note', () => {
+        expect(targets(planHeadingDrag(groups, 4, Infinity))).toEqual([
+            { kind: 'before', line: 2, title: 'A' },
+            { kind: 'before', line: 5, title: 'A1' },
+            { kind: 'before', line: 9, title: 'B' },
+            // Where it already sits.
+            { kind: 'bottom' }
+        ]);
+    });
+
+    it('carries the smaller headings under it, and offers no gap among them', () => {
+        const plan = planHeadingDrag(groups, 1, 9);
+        expect(plan?.blockEnd).toBe(3);
+        expect(plan?.span).toBe(150);
+        expect(targets(plan)).toEqual([
+            // Where it already sits.
+            { kind: 'before', line: 9, title: 'B' },
+            { kind: 'before', line: 12, title: 'C' },
+            { kind: 'bottom' }
+        ]);
+    });
+
+    it('never lands above the loose tasks or the title', () => {
+        const plan = planHeadingDrag(groups, 3, 12);
+        expect(plan?.gaps.some(gap => gap.at === 0)).toBe(false);
+    });
+
+    it('won\'t lift the loose tasks or the title', () => {
+        expect(planHeadingDrag(groups, 0, Infinity)).toBeNull();
+    });
+
+    it('slides the groups below the gap down to make room', () => {
+        const plan = planHeadingDrag(groups, 4, Infinity);
+        if (!plan) throw new Error('expected a plan');
+        const gap = plan.gaps[1];
+        expect(gap.y).toBe(160);
+        expect(shiftFor(plan, 1, gap)).toBe(0);
+        expect(shiftFor(plan, 2, gap)).toBe(70);
+        expect(shiftFor(plan, 3, gap)).toBe(70);
+        expect(nearestGap(plan, 150)).toBe(gap);
     });
 });

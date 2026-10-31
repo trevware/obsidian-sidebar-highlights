@@ -9,7 +9,7 @@
  * own visible subtasks travel with it.
  */
 
-import type { MoveTarget } from './task-move';
+import type { HeadingTarget, MoveTarget } from './task-move';
 
 export interface DragItem {
     kind: 'row' | 'heading' | 'static';
@@ -27,22 +27,34 @@ export interface DragItem {
     text?: string;
 }
 
-export interface DragGap {
+export interface DragGap<T = MoveTarget> {
     /** Where the dragged rows would go, as an index into the items. */
     at: number;
     /** The gap's height on screen, with the dragged rows taken out. */
     y: number;
-    target: MoveTarget;
+    target: T;
     /** The heading the dragged rows would end up under. */
     heading: string;
 }
 
-export interface DragPlan {
+export interface DragPlan<T = MoveTarget> {
     blockStart: number;
     blockEnd: number;
     /** How much room the dragged rows take up. */
     span: number;
-    gaps: DragGap[];
+    gaps: Array<DragGap<T>>;
+}
+
+/** One heading's group in a note's list, for dragging headings. */
+export interface HeadingDragItem {
+    /** Measured before the drag started, from the top of the list. */
+    top: number;
+    height: number;
+    /** The heading's line and text; neither for the tasks above the first heading. */
+    line?: number;
+    title?: string;
+    /** Stays where it is and nothing lands above it: the loose tasks, and the note's title. */
+    pinned?: boolean;
 }
 
 const isTopRow = (item: DragItem | undefined) => item?.kind === 'row' && (item.indent ?? 0) === 0;
@@ -113,9 +125,39 @@ export function planDrag(items: readonly DragItem[], grabbed: number, options: {
     return { blockStart: grabbed, blockEnd, span, gaps };
 }
 
+/**
+ * Dragging a heading's group through a note's list. The groups of the
+ * smaller headings inside its section (everything before `sectionEnd`, the
+ * line of the next heading as big as it) travel with it. It drops above any
+ * other heading, or at the bottom of the note. Null when the group can't be
+ * lifted.
+ */
+export function planHeadingDrag(items: readonly HeadingDragItem[], grabbed: number, sectionEnd: number): DragPlan<HeadingTarget> | null {
+    const lifted = items[grabbed];
+    if (!lifted || lifted.pinned || lifted.line === undefined) return null;
+    let blockEnd = grabbed + 1;
+    while (blockEnd < items.length && (items[blockEnd].line ?? Infinity) < sectionEnd) blockEnd++;
+    const last = items[blockEnd - 1];
+    const span = (blockEnd < items.length ? items[blockEnd].top : last.top + last.height) - lifted.top;
+    const collapsed = (index: number) => items[index].top - (index >= blockEnd ? span : 0);
+
+    const gaps: Array<DragGap<HeadingTarget>> = [];
+    for (let at = 0; at <= items.length; at++) {
+        if (at > grabbed && at <= blockEnd) continue;
+        const nextIndex = at === grabbed ? blockEnd : at;
+        const next = nextIndex < items.length ? items[nextIndex] : undefined;
+        if (next && (next.pinned || next.line === undefined)) continue;
+        const target: HeadingTarget = next ? { kind: 'before', line: next.line as number, title: next.title ?? '' } : { kind: 'bottom' };
+        const before = items[at - 1];
+        const y = next ? collapsed(nextIndex) : before ? collapsed(at - 1) + before.height : 0;
+        gaps.push({ at, y, target, heading: next?.title ?? '' });
+    }
+    return { blockStart: grabbed, blockEnd, span, gaps };
+}
+
 /** The gap nearest to where the top of the dragged rows is now. */
-export function nearestGap(plan: DragPlan, blockTop: number): DragGap | null {
-    let best: DragGap | null = null;
+export function nearestGap<T>(plan: DragPlan<T>, blockTop: number): DragGap<T> | null {
+    let best: DragGap<T> | null = null;
     for (const gap of plan.gaps) {
         if (!best || Math.abs(gap.y - blockTop) < Math.abs(best.y - blockTop)) best = gap;
     }
@@ -123,6 +165,6 @@ export function nearestGap(plan: DragPlan, blockTop: number): DragGap | null {
 }
 
 /** How far a row that isn't being dragged slides while the rows sit in a gap. */
-export function shiftFor(plan: DragPlan, index: number, gap: DragGap): number {
+export function shiftFor<T>(plan: DragPlan<T>, index: number, gap: DragGap<T>): number {
     return (index >= plan.blockEnd ? -plan.span : 0) + (index >= gap.at ? plan.span : 0);
 }

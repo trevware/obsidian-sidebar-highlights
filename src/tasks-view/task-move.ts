@@ -1,6 +1,8 @@
 /**
  * Moving tasks within a note: next to another task, to the bottom of a
- * heading, or under a heading that doesn't exist yet.
+ * heading, or under a heading that doesn't exist yet. Also moving a whole
+ * heading, with everything under it, above another heading or to the bottom
+ * of the note.
  *
  * A task always travels with its block (its notes and subtasks), the way
  * deleting one does, and lands at the indent of where it goes, so a subtask
@@ -8,7 +10,7 @@
  * can be unit tested directly.
  */
 
-import { locateTaskLine, parseTaskLine, taskBlockEnd } from './task-line';
+import { insertionLine, locateTaskLine, parseTaskLine, taskBlockEnd } from './task-line';
 
 /** A task to move, found again by its text near the line it was read from. */
 export interface MoveSource {
@@ -76,7 +78,7 @@ export function noteHeadings(lines: string[]): NoteHeading[] {
 }
 
 /** The note's title: a first heading at level one, when it's the only one. */
-function titleOf(headings: readonly NoteHeading[]): NoteHeading | null {
+export function titleOf(headings: readonly NoteHeading[]): NoteHeading | null {
     const first = headings[0];
     if (!first || first.level !== 1) return null;
     return headings.filter(heading => heading.level === 1).length === 1 ? first : null;
@@ -92,6 +94,24 @@ export function newHeadingLevel(headings: readonly NoteHeading[], heading: strin
     const current = heading ? headings.find(candidate => candidate.title === heading) : undefined;
     if (current && current !== title) return current.level;
     return headings.find(candidate => candidate !== title)?.level ?? 2;
+}
+
+/**
+ * Where a new heading goes, and the lines that start it: at the end of the
+ * note, or at the top as the note's first section, below its title and any
+ * loose tasks. `lead` ends with the heading line itself.
+ */
+function newHeadingPlace(lines: string[], name: string, level: number, where: 'top' | 'bottom'): { at: number; lead: string[]; trail: string[] } {
+    const headings = noteHeadings(lines);
+    const title = titleOf(headings);
+    const first = headings.find(heading => heading !== title);
+    const heading = `${'#'.repeat(Math.min(6, Math.max(1, level)))} ${name.trim()}`;
+    if (where === 'top' && first) {
+        const at = first.line;
+        return { at, lead: at > 0 && lines[at - 1].trim() !== '' ? ['', heading] : [heading], trail: [''] };
+    }
+    const at = trimBack(lines, lines.length, 0);
+    return { at, lead: at > 0 ? ['', heading] : [heading], trail: [] };
 }
 
 /** Steps back over blank lines, so a task joins the list above it. */
@@ -180,18 +200,7 @@ export function moveTasks(lines: string[], sources: readonly MoveSource[], targe
         if (end === null) return null;
         at = end;
     } else {
-        const headings = noteHeadings(kept);
-        const title = titleOf(headings);
-        const first = headings.find(heading => heading !== title);
-        const heading = `${'#'.repeat(Math.min(6, Math.max(1, target.level)))} ${target.heading.trim()}`;
-        if (target.where === 'top' && first) {
-            at = first.line;
-            lead = at > 0 && kept[at - 1].trim() !== '' ? ['', heading] : [heading];
-            trail = [''];
-        } else {
-            at = trimBack(kept, kept.length, 0);
-            lead = at > 0 ? ['', heading] : [heading];
-        }
+        ({ at, lead, trail } = newHeadingPlace(kept, target.heading, target.level, target.where));
     }
 
     const moved = blocks.flatMap(([start, end]) => reindent(lines.slice(start, end), indent));
@@ -206,4 +215,128 @@ export function moveTasks(lines: string[], sources: readonly MoveSource[], targe
     });
     const landed = blocks.map(([start]) => lineMap.get(start) ?? -1);
     return { lines: next, change: changedRun(lines, next), lineMap, landed };
+}
+
+/** A heading, found again by its text near the line it was read from. */
+export interface HeadingRef {
+    line: number;
+    title: string;
+}
+
+/** Where a moved heading lands: right above another heading, or at the end of the note. */
+export type HeadingTarget =
+    | { kind: 'before'; line: number; title: string }
+    | { kind: 'bottom' };
+
+/** Of the headings with this text, the one nearest the line. */
+function findHeading(headings: readonly NoteHeading[], ref: HeadingRef): number {
+    let found = -1;
+    headings.forEach((heading, index) => {
+        if (heading.title !== ref.title) return;
+        if (found === -1 || Math.abs(heading.line - ref.line) < Math.abs(headings[found].line - ref.line)) found = index;
+    });
+    return found;
+}
+
+/**
+ * The line where a heading's section ends: the next heading as big as it or
+ * bigger, or Infinity when the section runs to the end of the note. Smaller
+ * headings in between belong to it.
+ */
+export function headingSectionEnd(headings: readonly NoteHeading[], line: number): number {
+    const index = headings.findIndex(heading => heading.line === line);
+    if (index === -1) return line + 1;
+    const next = headings.slice(index + 1).find(heading => heading.level <= headings[index].level);
+    return next ? next.line : Infinity;
+}
+
+/**
+ * The note with a heading moved, along with its section: its text, its
+ * tasks and the smaller headings under it. It keeps its own level, the way
+ * cutting and pasting it in the note would. Blank lines between sections
+ * stay as the note had them.
+ *
+ * Null when there's nothing to do: either heading is gone, the heading is
+ * the note's title, the target is the title or sits inside the section
+ * being moved, or the heading is already there.
+ */
+export function moveHeading(lines: string[], source: HeadingRef, target: HeadingTarget): MovePlan | null {
+    const headings = noteHeadings(lines);
+    const title = titleOf(headings);
+    const index = findHeading(headings, source);
+    if (index === -1 || headings[index] === title) return null;
+    const start = headings[index].line;
+    const sectionEnd = Math.min(headingSectionEnd(headings, start), lines.length);
+
+    let destination: number | null = null;
+    if (target.kind === 'before') {
+        const at = findHeading(headings, target);
+        if (at === -1 || headings[at] === title) return null;
+        destination = headings[at].line;
+        if (destination >= start && destination <= sectionEnd) return null;
+    } else if (sectionEnd >= trimBack(lines, lines.length, start + 1)) {
+        return null;
+    }
+
+    const floor = bodyStart(lines);
+    const end = trimBack(lines, sectionEnd, start + 1);
+    // The blank lines on either side of the section, so the gap it leaves
+    // closes up to a single break.
+    const blankBefore = start - trimBack(lines, start, floor);
+    let afterEnd = end;
+    while (afterEnd < lines.length && lines[afterEnd].trim() === '') afterEnd++;
+    const blankAfter = afterEnd - end;
+    const spaced = blankBefore > 0 || (blankAfter > 0 && afterEnd < lines.length);
+
+    let cutStart = start;
+    let cutEnd = end;
+    if (blankBefore > 0 && (blankAfter > 0 || end === lines.length)) cutStart = start - blankBefore;
+    else if (blankBefore === 0 && start === floor) cutEnd = afterEnd;
+
+    const block = lines.slice(start, end);
+    const keptOrigin = lines.map((_line, i) => i).filter(i => i < cutStart || i >= cutEnd);
+    const kept = keptOrigin.map(i => lines[i]);
+
+    let at: number;
+    let lead: string[] = [];
+    let trail: string[] = [];
+    if (destination !== null) {
+        const line = destination;
+        at = keptOrigin.findIndex(i => i === line);
+        const keptFloor = keptOrigin.filter(i => i < floor).length;
+        if ((at > keptFloor ? kept[at - 1].trim() === '' : spaced)) trail = [''];
+    } else {
+        at = trimBack(kept, kept.length, 0);
+        if (at > 0 && spaced) lead = [''];
+    }
+
+    const next = [...kept.slice(0, at), ...lead, ...block, ...trail, ...kept.slice(at)];
+    const origin = [...keptOrigin.slice(0, at), ...lead.map(() => -1), ...block.map((_line, i) => start + i), ...trail.map(() => -1), ...keptOrigin.slice(at)];
+    const lineMap = new Map<number, number>();
+    origin.forEach((old, i) => {
+        if (old !== -1) lineMap.set(old, i);
+    });
+    return { lines: next, change: changedRun(lines, next), lineMap, landed: [lineMap.get(start) ?? -1] };
+}
+
+/**
+ * The note with new lines added under a heading that doesn't exist yet,
+ * which goes at the top of the note as its first section or at the bottom.
+ * When the note already has a heading by that name (in any case), the lines
+ * go under that one.
+ *
+ * `added` is the run of lines put in at `at`, heading and spacing included,
+ * so the add can be taken out again; `first` is the line of the first new
+ * line.
+ */
+export function addUnderNewHeading(lines: string[], name: string, level: number, where: 'top' | 'bottom', newLines: readonly string[]): { lines: string[]; at: number; added: string[]; first: number } {
+    const wanted = name.trim().toLowerCase();
+    const existing = noteHeadings(lines).find(heading => heading.title.toLowerCase() === wanted);
+    if (existing) {
+        const at = insertionLine(lines, existing.title, existing.line);
+        return { lines: [...lines.slice(0, at), ...newLines, ...lines.slice(at)], at, added: [...newLines], first: at };
+    }
+    const { at, lead, trail } = newHeadingPlace(lines, name, level, where);
+    const added = [...lead, ...newLines, ...trail];
+    return { lines: [...lines.slice(0, at), ...added, ...lines.slice(at)], at, added, first: at + lead.length };
 }
