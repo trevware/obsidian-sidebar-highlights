@@ -5,6 +5,18 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-31
+
+### Added
+- **You can move a heading and everything under it.** In a note's list in the Tasks tab, drag a heading's title above another heading, or to the bottom, and the note changes to match. Its tasks, its text and any smaller headings under it go along. Right-click a heading (or press and hold on a phone) and choose **Move heading** to pick the spot from a list. Undo puts it back.
+- **Quick add can create a heading.** Type a heading the note doesn't have yet in the note picker, and it offers to create it at the top or the bottom of the note on the note button. Your task goes under it.
+- **You can pin notes to the top of the Tasks tab's sidebar.** Right-click a note there (or press and hold on a phone) and choose **Pin**, or use **Pin this note** in ⌘K. Pinned notes get their own section above your folders and stay there even with nothing left to do. Your pins are saved with your settings, so they show up on your other devices too.
+- **Pinned notes go in whatever order you like.** Drag them, or use **Move up** and **Move down** from the same menu.
+
+### Fixed
+- **⌘↵ works in quick add every time.** Once you'd closed anything in the Tasks tab with Esc, ⌘↵ stopped adding the task, and ⌘B and ⌘I stopped working in a task's notes.
+- **Esc during a drag just cancels it.** Letting go of the mouse afterwards no longer selects the task you let go on.
+
 ## [2.2.0] - 2026-10-30
 
 ### Added

@@ -141,12 +141,13 @@ Collections gather related highlights from anywhere in the vault.
 - **Upcoming**: the days ahead, then weeks and months further out
 - **All Open**, **In Progress**, **Questions** and **Done**
 - Every note with open tasks, grouped by folder, with its tasks under their headings
+- Notes you pin, above the folders in the order you choose. Right-click a note (or press and hold) and choose **Pin**, then drag pinned notes to reorder them
 
 Each list keeps its own grouping and sorting, and whether it shows completed tasks, under **Display**.
 
 ### Adding Tasks
 
-Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading.
+Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it.
 
 <p align="center">
   <picture>
@@ -161,6 +162,7 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 - Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status
 - Right-click it (or press and hold on a phone) for everything else: move it under another heading, copy it as Markdown, open it beside the note, delete it
 - Drag tasks to reorder them, or onto another heading to move them there
+- In a note's list, drag a heading to move it with everything under it, or right-click it for **Move heading**
 - Undo any change from the message at the bottom, or with ⌘Z
 - ⌘K searches tasks, notes and commands, and **?** lists every keyboard shortcut
 
