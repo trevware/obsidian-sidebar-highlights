@@ -17,9 +17,13 @@ interface Tab {
     label(path: string): { name: string; desc: string };
 }
 
-/** The license's state as a line under the key field. */
-function plusLine(status: PlusStatus | null): string {
-    if (!status) return t('settings.plus.states.checking');
+/**
+ * The license's state as a line under the key field. A key nobody has
+ * checked yet says so: it's checked when a calendar is connected, so opening
+ * settings never contacts the server on its own.
+ */
+function plusLine(status: PlusStatus | null, hasKey: boolean): string {
+    if (!status) return t(hasKey ? 'settings.plus.states.unchecked' : 'settings.plus.states.none');
     return status.state === 'offline' && status.message
         ? `${t('settings.plus.states.offline')}`
         : t(`settings.plus.states.${status.state}`);
@@ -42,14 +46,17 @@ export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin,
     const active = plusStatus?.state === 'active';
     let keyTimer = 0;
 
-    const needsPlus = (): boolean => {
-        if (active) return false;
-        new Notice(t('calendar.errors.noPlus'));
+    /** Checks the license with the server now, and says why when it isn't active. */
+    const needsPlus = async (): Promise<boolean> => {
+        const status = await plugin.refreshPlusStatus(true);
+        if (status.state === 'active') return false;
+        new Notice(status.state === 'none' ? t('calendar.errors.noPlus') : status.message ?? t(`settings.plus.states.${status.state}`));
+        tab.update();
         return true;
     };
 
     const connectOAuth = async (provider: 'google' | 'microsoft', button: { setDisabled(v: boolean): unknown; setButtonText(v: string): unknown }) => {
-        if (needsPlus()) return;
+        if (await needsPlus()) return;
         button.setDisabled(true);
         button.setButtonText(t('settings.calendar.connect.waiting'));
         try {
@@ -60,8 +67,8 @@ export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin,
         tab.update();
     };
 
-    const connectCalDav = (kind: 'icloud' | 'caldav') => {
-        if (needsPlus()) return;
+    const connectCalDav = async (kind: 'icloud' | 'caldav') => {
+        if (await needsPlus()) return;
         new CalDavModal(tab.app, kind, async (details) => {
             await sync.connectCalDav(kind, details.server, details.username, details.password);
             tab.update();
@@ -71,7 +78,7 @@ export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin,
     const plusItems: SettingGroupItem[] = [
         {
             name: t('settings.plus.license.name'),
-            desc: `${t('settings.plus.license.desc')} ${plusLine(plusStatus)}`,
+            desc: `${t('settings.plus.license.desc')} ${plusLine(plusStatus, Boolean(plus.licenseKey()))}`,
             render: (setting: Setting) => {
                 setting.addText(text => {
                     text.inputEl.type = 'password';
@@ -106,8 +113,8 @@ export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin,
                 setting
                     .addButton(button => button.setButtonText(t('settings.calendar.connect.google')).onClick(() => void connectOAuth('google', button)))
                     .addButton(button => button.setButtonText(t('settings.calendar.connect.outlook')).onClick(() => void connectOAuth('microsoft', button)))
-                    .addButton(button => button.setButtonText(t('settings.calendar.connect.icloud')).onClick(() => connectCalDav('icloud')))
-                    .addButton(button => button.setButtonText(t('settings.calendar.connect.other')).onClick(() => connectCalDav('caldav')));
+                    .addButton(button => button.setButtonText(t('settings.calendar.connect.icloud')).onClick(() => void connectCalDav('icloud')))
+                    .addButton(button => button.setButtonText(t('settings.calendar.connect.other')).onClick(() => void connectCalDav('caldav')));
             }
         });
     } else {
@@ -120,7 +127,7 @@ export function plusAndCalendarGroups(tab: Tab, plugin: HighlightCommentsPlugin,
                 if (!here) {
                     setting.addButton(button => button.setButtonText(t('settings.calendar.connected.signInHere')).setCta().onClick(() => {
                         if (connection.provider === 'google' || connection.provider === 'microsoft') void connectOAuth(connection.provider, button);
-                        else connectCalDav(connection.provider);
+                        else void connectCalDav(connection.provider);
                     }));
                 } else {
                     setting.addButton(button => button.setButtonText(t('settings.calendar.connected.syncNow')).onClick(async () => {

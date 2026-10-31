@@ -475,7 +475,8 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.taskIndex.start();
             this.reminders.start();
             this.calendarSync.start();
-            if (calendarAvailable(this.app) && this.calendarSync.plus.licenseKey()) void this.refreshPlusStatus();
+            // The license is checked by sync itself; with no calendar connected, nothing goes online.
+            if (calendarAvailable(this.app) && this.settings.calendar && this.calendarSync.plus.licenseKey()) void this.refreshPlusStatus();
 
             // Ensure custom color styles are applied on load
             this.updateCustomColorStyles();
@@ -3591,18 +3592,6 @@ class HighlightSettingTab extends PluginSettingTab {
         plugin.calendarSync.onStatus(() => this.update());
     }
 
-    /** A license check is on its way, so a redraw doesn't start another. */
-    private checkingPlus = false;
-
-    /** Asks about the license once per redraw at most; a changed answer redraws the tab. */
-    private checkPlus(): void {
-        if (this.checkingPlus || !calendarAvailable(this.app)) return;
-        this.checkingPlus = true;
-        void this.plugin.refreshPlusStatus().finally(() => {
-            this.checkingPlus = false;
-        });
-    }
-
     hide(): void {
         super.hide();
         // Apply the backup retention limit once the user is done editing it.
@@ -3617,7 +3606,6 @@ class HighlightSettingTab extends PluginSettingTab {
      * setControlValue below; rows with buttons draw their own controls.
      */
     getSettingDefinitions(): SettingDefinitionItem[] {
-        this.checkPlus();
         return [
             {
                 type: 'group',

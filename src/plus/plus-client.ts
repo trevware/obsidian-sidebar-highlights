@@ -18,7 +18,7 @@ export const PLUS_BASE = 'https://powerup.trevware.com';
  * by setting the local storage key `sidebar-highlights-calendar-preview` to
  * "true" (from the developer console: app.saveLocalStorage(key, 'true')).
  */
-export const CALENDAR_LAUNCHED = false;
+export const CALENDAR_LAUNCHED = true;
 export const CALENDAR_PREVIEW_KEY = 'sidebar-highlights-calendar-preview';
 
 /**

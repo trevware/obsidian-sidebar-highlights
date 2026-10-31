@@ -243,7 +243,8 @@
         "unknown": "That key isn't recognized. Check that it was copied whole.",
         "inactive": "This subscription has ended.",
         "device-limit": "This key is already in use on five devices. Remove one from your Polar account page.",
-        "offline": "Couldn't reach Power-Up. Calendar sync keeps going for a week while it's out of reach."
+        "offline": "Couldn't reach Power-Up. Calendar sync keeps going for a week while it's out of reach.",
+        "unchecked": "Saved. It's checked when you connect a calendar."
       },
       "subscribe": {
         "name": "Subscribe",

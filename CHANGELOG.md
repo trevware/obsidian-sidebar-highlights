@@ -5,6 +5,21 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-30
+
+### Added
+- **Tasks can have a time.** Write it right after the date, like `2026-10-30 15:00` or `2026-10-30 3pm`, or type `fri 3pm` in quick add. The time shows on the row, sorts the day, and turns red once it's gone by. Pick 24-hour or 12-hour under Settings → Sidebar Highlights and Tasks → Tasks → Time format (either one is read).
+- **You can add, change or remove a time wherever you set a date.** Quick add's date chip, the task card and the date step in ⌘K each have Add time and Remove time. Moving a task to another day keeps its time.
+- **Tasks with a time remind you.** While Obsidian is open, your computer shows a notification at the task's time, or a little before if you'd like (Settings → Reminders → When to remind me). Click it to jump to the task. On a phone or tablet the reminder shows inside Obsidian, and reminders you missed while Obsidian was closed show as soon as it's back. Test reminder checks that notifications get through.
+- **Your tasks can live in your calendar, too.** Connect Google Calendar, Outlook, iCloud or another CalDAV calendar under Settings → Sidebar Highlights and Tasks → Calendar, and your dated tasks show up as events in a calendar of their own, with an alert at their time. Your phone reminds you even with Obsidian closed.
+- **Calendar sync goes both ways.** Drag an event to another day and its task moves with it. Delete an event and the task's date is cleared, with a short note under the task saying why. Complete a task and its event goes. Calendar sync is part of Power-Up, the same subscription that runs Describe in Oriko; everything else in the plugin stays free.
+
+### Changed
+- **Capitalize tasks writes Title Case as you type.** With it on, every word you add or rename starts with a capital, except small words like a, the and to. Links, tags and code are left as written.
+
+### Fixed
+- **Tasks you add in Today are due today.** Quick add from the Today list fills in today's date, so the new task stays where you put it.
+
 ## [2.1.2] - 2026-10-28
 
 ### Changed

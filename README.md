@@ -183,6 +183,14 @@ Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `-
 
 A task with a time reminds you when that time comes, as long as Obsidian is open. On a computer it's a notification like any other app's, and clicking it opens the note at the task. On a phone or tablet, the reminder shows inside Obsidian until you tap it. If Obsidian was closed or the computer was asleep, the day's missed reminders show as soon as it's back, and several at once arrive together. Set how early they come, or turn them off, under **Settings → Reminders**, where **Test reminder** checks that notifications get through.
 
+### Calendar Sync
+
+Reminders need Obsidian open. To have your phone remind you when it's closed, connect your calendar under **Settings → Calendar**: Google Calendar, Outlook, iCloud, or any other CalDAV calendar. Your dated tasks show up as events in a calendar of their own (named after your vault), with an alert at each task's time, so your phone's calendar app does the reminding. Tasks with only a date become all-day events, or you can leave them out with **Only tasks with a time**.
+
+It goes both ways. Drag an event to another day and its task moves with it. Delete an event and the task's date is cleared, with a dated note under it saying why (or set **When an event is deleted** to put the event back). Complete a task and its event goes. Each synced task carries a short ID at the end of its line so it can find its event again; it's hidden everywhere in Obsidian, and **Show calendar IDs** reveals it.
+
+Calendar sync needs a [Power-Up](https://trevware.com/power-up/) subscription, the same one that runs Describe in [Oriko](https://trevware.com/oriko/). Paste your license key under **Settings → Power-Up**. Outlook work and school accounts may need their IT admin to approve calendar access first. For iCloud, make an app-specific password at account.apple.com.
+
 ## On Your Phone
 
 Everything works in Obsidian for iOS and Android. Swipe in from the right for your highlights, open **Tasks** from the menu, and press and hold a highlight or a task for the menu a right-click opens on a computer.
@@ -210,6 +218,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
 - **Tasks**: the date and time formats your tasks use, and whether Tasks plugin metadata is hidden
 - **Reminders**: whether tasks with a time remind you, and how long before
+- **Power-Up** and **Calendar**: your license key, the calendar you've connected, and how events are made
 - **Typography** and **Styling**: font sizes and weights per element
 - **Backup and restore**: automatic backups of your collections and highlight metadata, with a retention limit
 
@@ -218,6 +227,17 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 **From Community Plugins**: Settings → Community Plugins → Browse → search "Sidebar Highlights" → Install → Enable.
 
 **Manually**: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/trevware/obsidian-sidebar-highlights/releases), drop them in `.obsidian/plugins/sidebar-highlights/`, and enable the plugin.
+
+## Payments, Accounts and Network Use
+
+Everything in the plugin is free except calendar sync, which needs a paid [Power-Up](https://trevware.com/power-up/) subscription, sold through Polar. Until you type a license key into its settings or connect a calendar, the plugin works only with your vault and never goes online.
+
+With calendar sync on, it contacts:
+
+- **powerup.trevware.com**, trevware's server, to check your license. For Google and Outlook it also handles the sign-in and renews access about once an hour, passing tokens through without keeping them.
+- **Google Calendar, Microsoft Outlook, iCloud or your CalDAV server**, directly from your device, to keep your tasks' events in step. Your tasks and calendars never pass through trevware's server.
+
+There are no analytics, and nothing else is sent anywhere. The [privacy policy](https://trevware.com/power-up/privacy/) has the details.
 
 ## Notes and Limitations
 
@@ -230,7 +250,7 @@ Bugs and feature requests are welcome on [GitHub Issues](https://github.com/trev
 
 ## Support the Project
 
-This plugin is free and always will be. It's built and maintained in my own time, and support is what makes that sustainable.
+This plugin is free and always will be; only calendar sync, which runs on a server, needs Power-Up. It's built and maintained in my own time, and support is what makes that sustainable.
 
 <p align="center">
   <a href="https://github.com/sponsors/trevware">

@@ -228,7 +228,8 @@
         "unknown": "无法识别该密钥。请确认已完整复制。",
         "inactive": "此订阅已结束。",
         "device-limit": "此密钥已在五台设备上使用。请在 Polar 账户页面移除一台。",
-        "offline": "无法连接 Power-Up。在无法连接期间，日历同步会继续运行一周。"
+        "offline": "无法连接 Power-Up。在无法连接期间，日历同步会继续运行一周。",
+        "unchecked": "已保存。连接日历时会进行验证。"
       },
       "subscribe": {
         "name": "订阅",
