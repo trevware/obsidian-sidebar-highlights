@@ -255,6 +255,13 @@ export class TasksTabView extends ItemView {
             this.togglePalette();
             return false;
         });
+        // Once anything in the tab answers Escape, this scope is the one
+        // Obsidian asks first, and it would hand these keys on to Obsidian's
+        // own hotkeys: ⌘↵ is Open link in new tab, ⌘B and ⌘I are bold and
+        // italic. Those run, swallow the key, and quick add's "add and keep
+        // going", Open to the side, and the notes editor never see it.
+        // Claiming the tab's own shortcuts here lets them through to the tab.
+        for (const key of ['Enter', 'b', 'i', 'a', 'z', 'Backspace']) this.scope.register(['Mod'], key, () => true);
     }
 
     getViewType(): string {
