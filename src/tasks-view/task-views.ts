@@ -500,20 +500,27 @@ export interface RailArea {
     notes: RailNote[];
 }
 
-/**
- * Notes with open tasks for the rail, collected under their folders the way
- * Things collects projects under areas. Folders sort by name and notes by
- * name inside them, so a note stays where you last saw it.
- */
-export function railAreas(all: readonly Task[], notes: NoteInfo): RailArea[] {
+function openCounts(all: readonly Task[]): Map<string, number> {
     const open = new Map<string, number>();
     for (const task of all) {
         if (!isOpenTask(task)) continue;
         open.set(task.filePath, (open.get(task.filePath) ?? 0) + 1);
     }
+    return open;
+}
+
+/**
+ * Notes with open tasks for the rail, collected under their folders the way
+ * Things collects projects under areas. Folders sort by name and notes by
+ * name inside them, so a note stays where you last saw it. Pinned notes,
+ * listed in `leaveOut`, show in their own section instead.
+ */
+export function railAreas(all: readonly Task[], notes: NoteInfo, leaveOut: ReadonlySet<string> = new Set()): RailArea[] {
+    const open = openCounts(all);
 
     const areas = new Map<string, RailNote[]>();
     for (const [path, count] of open) {
+        if (leaveOut.has(path)) continue;
         const folder = notes.folder(path);
         const list = areas.get(folder);
         const note = { path, name: notes.basename(path), open: count };
@@ -527,6 +534,26 @@ export function railAreas(all: readonly Task[], notes: NoteInfo): RailArea[] {
             folder,
             notes: list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
         }));
+}
+
+/**
+ * The rail's pinned notes, in the order they were pinned, each with its
+ * open count. A pinned note stays even with nothing open; one that no longer
+ * exists is left out.
+ */
+export function railPinned(pins: readonly string[], all: readonly Task[], notes: NoteInfo, exists: (path: string) => boolean): RailNote[] {
+    const open = openCounts(all);
+    return pins.filter(exists).map(path => ({ path, name: notes.basename(path), open: open.get(path) ?? 0 }));
+}
+
+/** The pins with a note added at the end, or taken out when it's already pinned. */
+export function togglePin(pins: readonly string[], path: string): string[] {
+    return pins.includes(path) ? pins.filter(pin => pin !== path) : [...pins, path];
+}
+
+/** The pins after a note moved from `from` to `to`, or null when it wasn't pinned. */
+export function renamedPins(pins: readonly string[], from: string, to: string): string[] | null {
+    return pins.includes(from) ? pins.map(pin => (pin === from ? to : pin)) : null;
 }
 
 /** "Note › Heading", shown on a row whenever its group isn't already that note. */

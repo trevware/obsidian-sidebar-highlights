@@ -38,11 +38,13 @@ import {
     listCounts,
     listKey,
     railAreas,
+    railPinned,
     sameList,
     SMART_LISTS,
     statusOf,
     taskKey,
-    tasksForList
+    tasksForList,
+    togglePin
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
 import { editableTitle, notesText, parseTaskLine, setDueInText, withState, withText, withTitle } from './task-line';
@@ -291,7 +293,8 @@ export class TasksTabView extends ItemView {
         this.bulkbar = this.main.createDiv({ cls: 'sh-glass sh-bulkbar' });
 
         this.palette = new GlassPalette(this.main, this.shell);
-        this.glassMenu = new GlassMenu(this.main);
+        // On the shell, so it can open over the rail as well as the list.
+        this.glassMenu = new GlassMenu(this.shell);
         this.quickAdd = new QuickAdd(this.main, {
             today: () => isoToday(),
             formatDate: (iso) => this.formatDate(iso),
@@ -346,6 +349,8 @@ export class TasksTabView extends ItemView {
         this.column.addEventListener('dblclick', (event) => this.onListDoubleClick(event));
         this.column.addEventListener('contextmenu', (event) => this.onListContextMenu(event));
         onLongPress(this.column, (event) => this.onListContextMenu(event));
+        this.rail.addEventListener('contextmenu', (event) => this.onRailContextMenu(event));
+        onLongPress(this.rail, (event) => this.onRailContextMenu(event));
         // Clicking anywhere outside an open card closes it. Surfaces the card
         // opens (the palette, menus, quick add) don't count as outside.
         root.addEventListener('mousedown', (event) => {
@@ -811,7 +816,7 @@ export class TasksTabView extends ItemView {
 
     private renderRail(today: string): void {
         // The rail only changes with the data, the list, or a fold.
-        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.inSidebar() ? this.thisNote().path : 'away'}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}`;
+        const signature = `${this.dataVersion}|${listKey(this.list)}|${this.list.kind === 'note' && this.list.follow ? 'follow' : ''}|${this.inSidebar() ? this.thisNote().path : 'away'}|${this.loaded}|${today}|${[...this.collapsed].filter(key => key.startsWith('area:')).join(',')}|${this.plugin.settings.pinnedNotes.join('\u0001')}`;
         if (signature === this.railSignature) return;
         this.railSignature = signature;
 
@@ -857,16 +862,24 @@ export class TasksTabView extends ItemView {
             row.addEventListener('click', () => this.setList(ref));
         });
 
-        const areas = railAreas(this.allTasks, this.noteInfo);
-        if (areas.length > 0) rail.createDiv({ cls: 'sh-rail-divider' });
+        // Pinned notes sit above the folders, in the order they were pinned,
+        // and don't repeat in their folder below.
+        const pinned = railPinned(this.plugin.settings.pinnedNotes, this.allTasks, this.noteInfo, path => this.app.vault.getAbstractFileByPath(path) instanceof TFile);
+        const areas = railAreas(this.allTasks, this.noteInfo, new Set(pinned.map(note => note.path)));
+        if (pinned.length > 0 || areas.length > 0) rail.createDiv({ cls: 'sh-rail-divider' });
 
-        for (const area of areas) {
-            const areaKey = `area:${area.folder}`;
+        // A folder path never starts with a slash, so this key is the pins' own.
+        const sections = [
+            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned }] : []),
+            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes }))
+        ];
+        for (const section of sections) {
+            const areaKey = section.key;
             const collapsed = this.collapsed.has(areaKey);
             const header = rail.createDiv({ cls: 'sh-rail-area' });
             header.toggleClass('is-collapsed', collapsed);
             setIcon(header.createDiv({ cls: 'sh-rail-chevron' }), 'chevron-down');
-            header.createDiv({ cls: 'sh-rail-area-label', text: area.folder || t('tasksTab.rail.vaultRoot') });
+            header.createDiv({ cls: 'sh-rail-area-label', text: section.label });
             header.addEventListener('click', () => {
                 if (collapsed) this.collapsed.delete(areaKey);
                 else this.collapsed.add(areaKey);
@@ -875,13 +888,14 @@ export class TasksTabView extends ItemView {
             });
             if (collapsed) continue;
 
-            for (const note of area.notes) {
+            for (const note of section.notes) {
                 const ref: ListRef = { kind: 'note', path: note.path };
                 const row = rail.createDiv({ cls: 'sh-rail-item is-note' });
+                row.dataset.path = note.path;
                 row.toggleClass('is-active', sameList(ref, this.list));
                 row.createDiv({ cls: 'sh-rail-icon is-note' });
                 row.createDiv({ cls: 'sh-rail-label', text: note.name });
-                row.createDiv({ cls: 'sh-rail-count is-quiet', text: String(note.open) });
+                if (note.open > 0) row.createDiv({ cls: 'sh-rail-count is-quiet', text: String(note.open) });
                 row.addEventListener('click', () => this.setList(ref));
             }
         }
@@ -1380,6 +1394,25 @@ export class TasksTabView extends ItemView {
         const row = target.closest<HTMLElement>('.sh-task-row');
         const task = row ? this.rowTasks.get(row.dataset.key ?? '') : undefined;
         if (task) this.toggleExpanded(task);
+    }
+
+    /** A note in the rail pins to the top of it, or unpins. */
+    private onRailContextMenu(event: MouseEvent): void {
+        const path = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-item.is-note')?.dataset.path;
+        if (!path) return;
+        event.preventDefault();
+        const pinned = this.plugin.settings.pinnedNotes.includes(path);
+        this.closeMenu();
+        this.glassMenu.showAtEvent(event, [
+            { label: t(pinned ? 'tasksTab.actions.unpin' : 'tasksTab.actions.pin'), icon: pinned ? 'pin-off' : 'pin', run: () => void this.togglePinned(path) }
+        ], () => this.focusList());
+    }
+
+    /** Pins a note to the top of the rail, or unpins it. */
+    private async togglePinned(path: string): Promise<void> {
+        this.plugin.settings.pinnedNotes = togglePin(this.plugin.settings.pinnedNotes, path);
+        await this.plugin.saveSettings();
+        this.renderRail(isoToday());
     }
 
     private onListContextMenu(event: MouseEvent): void {
@@ -2740,6 +2773,11 @@ export class TasksTabView extends ItemView {
             { id: 'display', section: sections.actions, icon: 'sliders-horizontal', label: t('tasksTab.actions.display'), detail: shortcut('⇧V'), keywords: 'group sort view options', run: () => this.openDisplayMenu(this.topbar.querySelector<HTMLElement>('.sh-display-button') ?? this.topbar) },
             { id: 'rail', section: sections.actions, icon: 'panel-left', label: t('tasksTab.actions.toggleSidebar'), detail: shortcut('['), run: () => this.toggleRail() }
         );
+        if (this.list.kind === 'note' && this.list.path) {
+            const path = this.list.path;
+            const pinned = this.plugin.settings.pinnedNotes.includes(path);
+            items.push({ id: 'pin', section: sections.actions, icon: pinned ? 'pin-off' : 'pin', label: t(pinned ? 'tasksTab.actions.unpinNote' : 'tasksTab.actions.pinNote'), keywords: 'pinned sidebar favorite star', run: () => void this.togglePinned(path) });
+        }
         // A list of keyboard shortcuts is no use without a keyboard.
         if (!Platform.isMobile) {
             items.push({ id: 'shortcuts', section: sections.actions, icon: 'keyboard', label: t('tasksTab.actions.shortcuts'), detail: '?', stage: this.shortcutsStage() });

@@ -18,6 +18,7 @@ import { meetsMinimumCharacterCount } from './src/utils/minimum-length';
 import { detectedHighlightColor, highlightDisplayText, stripColorMarker } from './src/utils/note-colors';
 import { StatusBarCounter } from './src/views/status-bar-counter';
 import { TasksTabView, VIEW_TYPE_TASKS } from './src/tasks-view/tasks-tab';
+import { renamedPins } from './src/tasks-view/task-views';
 import { ReminderManager } from './src/managers/reminder-manager';
 import { TaskIndex } from './src/managers/task-index';
 import { REMINDER_LEADS } from './src/tasks-view/reminders';
@@ -181,6 +182,7 @@ export interface CommentPluginSettings {
     taskTimeFormat: TimeFormat; // How times are written into tasks and shown in the Tasks tab; either form is read
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
+    pinnedNotes: string[]; // Notes pinned to the top of the Tasks tab's sidebar, in the order they were pinned
     taskReminders: boolean; // Show a reminder at a task's time while Obsidian is open
     taskReminderLead: number; // Minutes before a task's time its reminder shows
     calendar: CalendarConnection | null; // The calendar dated tasks sync to, shared by every device
@@ -247,6 +249,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskTimeFormat: 'HH:mm', // 24-hour times by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     capitalizeTasks: false,
+    pinnedNotes: [], // Nothing pinned by default
     taskReminders: true, // Tasks with a time remind you by default
     taskReminderLead: 0, // At the task's time
     calendar: null, // Not connected
@@ -503,6 +506,24 @@ export default class HighlightCommentsPlugin extends Plugin {
                     if (file instanceof TFile && this.shouldProcessFile(file)) {
                         void this.handleFileRename(file, oldPath);
                     }
+                })
+            );
+
+            // A pinned note stays pinned when it's renamed or moved, and
+            // leaves the pins when it's deleted.
+            this.registerEvent(
+                this.app.vault.on('rename', (file, oldPath) => {
+                    const pins = renamedPins(this.settings.pinnedNotes, oldPath, file.path);
+                    if (!pins) return;
+                    this.settings.pinnedNotes = pins;
+                    void this.saveSettings();
+                })
+            );
+            this.registerEvent(
+                this.app.vault.on('delete', (file) => {
+                    if (!this.settings.pinnedNotes.includes(file.path)) return;
+                    this.settings.pinnedNotes = this.settings.pinnedNotes.filter(path => path !== file.path);
+                    void this.saveSettings();
                 })
             );
 

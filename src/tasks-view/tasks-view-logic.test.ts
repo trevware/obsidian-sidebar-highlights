@@ -3,7 +3,7 @@ import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
-import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, sameList, tasksForList, upcomingBucket } from './task-views';
+import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, railPinned, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
 
@@ -461,6 +461,31 @@ describe('task-views', () => {
         expect(railAreas(tasks, notes)).toEqual([
             { folder: '', notes: [{ path: 'Inbox.md', name: 'Inbox', open: 1 }] },
             { folder: 'Work', notes: [{ path: 'Work/Note.md', name: 'Note', open: 4 }, { path: 'Work/recent.md', name: 'recent', open: 1 }] }
+        ]);
+    });
+
+    it('leaves pinned notes out of their folders', () => {
+        expect(railAreas(tasks, notes, new Set(['Inbox.md', 'Work/recent.md']))).toEqual([
+            { folder: 'Work', notes: [{ path: 'Work/Note.md', name: 'Note', open: 4 }] }
+        ]);
+    });
+
+    it('pins a note at the end of the list, and unpins it again', () => {
+        expect(togglePin(['A.md'], 'B.md')).toEqual(['A.md', 'B.md']);
+        expect(togglePin(['A.md', 'B.md'], 'A.md')).toEqual(['B.md']);
+    });
+
+    it('follows a pinned note when it is renamed or moved', () => {
+        expect(renamedPins(['A.md', 'B.md'], 'A.md', 'Work/A2.md')).toEqual(['Work/A2.md', 'B.md']);
+        expect(renamedPins(['A.md'], 'C.md', 'D.md')).toBeNull();
+    });
+
+    it('lists pinned notes in the order they were pinned, open tasks or not', () => {
+        const exists = (path: string) => path !== 'Gone.md';
+        expect(railPinned(['Work/recent.md', 'Empty.md', 'Gone.md', 'Inbox.md'], tasks, notes, exists)).toEqual([
+            { path: 'Work/recent.md', name: 'recent', open: 1 },
+            { path: 'Empty.md', name: 'Empty', open: 0 },
+            { path: 'Inbox.md', name: 'Inbox', open: 1 }
         ]);
     });
 });
