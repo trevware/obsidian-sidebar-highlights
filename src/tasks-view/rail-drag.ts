@@ -37,6 +37,8 @@ interface Press {
     y: number;
     row: HTMLElement;
     lift: Lift | null;
+    /** Escape put a lifted drag back; the release that follows is no click. */
+    cancelled?: boolean;
 }
 
 export class RailDrag {
@@ -74,7 +76,7 @@ export class RailDrag {
 
     private onMove = (event: PointerEvent) => {
         const press = this.press;
-        if (!press || event.pointerId !== press.pointerId) return;
+        if (!press || event.pointerId !== press.pointerId || press.cancelled) return;
         if (!press.lift) {
             if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < THRESHOLD) return;
             press.lift = this.lift(press);
@@ -94,11 +96,17 @@ export class RailDrag {
         this.stopListening();
         this.press = null;
         const lift = press.lift;
-        if (!lift) return;
+        if (!lift && !press.cancelled) return;
         // The click that follows this release is swallowed; one that never
         // comes (a release outside the rail) mustn't eat the next real one.
         this.swallowClick = true;
         window.setTimeout(() => { this.swallowClick = false; }, 0);
+        if (!lift) {
+            window.setTimeout(() => {
+                if (!this.press) this.rail.removeClass('has-drag');
+            }, 200);
+            return;
+        }
         const gap = lift.gap;
         const path = press.row.dataset.path;
         if (!gap || gap.at === lift.plan.blockStart || !path) {
@@ -120,13 +128,20 @@ export class RailDrag {
     };
 
     private onKey = (event: KeyboardEvent) => {
-        if (event.key !== 'Escape' || !this.press) return;
+        if (event.key !== 'Escape' || !this.press || this.press.cancelled) return;
         event.preventDefault();
         event.stopPropagation();
         const lift = this.press.lift;
+        if (lift) {
+            // The button is still down: wait for its release, so the click
+            // it makes doesn't open or select what's under the pointer.
+            this.press.lift = null;
+            this.press.cancelled = true;
+            this.settle(lift);
+            return;
+        }
         this.stopListening();
         this.press = null;
-        if (lift) this.settle(lift);
     };
 
     private stopListening(): void {
