@@ -5,6 +5,15 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-11-01
+
+### Added
+- **You can start a new note right from the Tasks tab.** Click **New note** at the bottom of the sidebar, or find it in ⌘K, and give it a name. The empty note opens with quick add ready for its first task. It goes wherever Obsidian puts new notes (Settings → Files and links → Default location for new notes), or right-click a folder in the sidebar and choose **New note in** that folder to put it there.
+- **Quick add can make the note too.** Type `/`, then a name no note has yet, and choose **Create note**. Your task goes straight into it.
+
+### Changed
+- **The note you're looking at stays in the sidebar**, even with nothing left to do in it, so it no longer disappears from under you when you tick off its last task.
+
 ## [2.4.1] - 2026-11-01
 
 ### Fixed
