@@ -515,8 +515,11 @@ function openCounts(all: readonly Task[]): Map<string, number> {
  * name inside them, so a note stays where you last saw it. Pinned notes,
  * listed in `leaveOut`, show in their own section instead.
  */
-export function railAreas(all: readonly Task[], notes: NoteInfo, leaveOut: ReadonlySet<string> = new Set()): RailArea[] {
+export function railAreas(all: readonly Task[], notes: NoteInfo, leaveOut: ReadonlySet<string> = new Set(), keep?: string): RailArea[] {
     const open = openCounts(all);
+    // The open note stays in its folder with nothing open, so a note just made,
+    // or just finished, doesn't vanish from under you.
+    if (keep && !open.has(keep)) open.set(keep, 0);
 
     const areas = new Map<string, RailNote[]>();
     for (const [path, count] of open) {

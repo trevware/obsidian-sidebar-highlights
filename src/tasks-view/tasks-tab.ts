@@ -61,6 +61,7 @@ import { RailDrag } from './rail-drag';
 import { IconPicker } from './icon-picker';
 import { lucideIds } from './icon-sets';
 import { NoteRefresher } from './note-refresh';
+import { cleanNoteName, folderOf, newNotePath } from './new-note';
 import { paintRun } from './row-runs';
 import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
@@ -891,13 +892,14 @@ export class TasksTabView extends ItemView {
         // Pinned notes sit above the folders, in the order they were pinned,
         // and don't repeat in their folder below.
         const pinned = railPinned(this.plugin.settings.pinnedNotes, this.allTasks, this.noteInfo, path => this.app.vault.getAbstractFileByPath(path) instanceof TFile);
-        const areas = railAreas(this.allTasks, this.noteInfo, new Set(pinned.map(note => note.path)));
+        const open = this.list.kind === 'note' && !this.list.follow && this.list.path && this.app.vault.getAbstractFileByPath(this.list.path) instanceof TFile ? this.list.path : undefined;
+        const areas = railAreas(this.allTasks, this.noteInfo, new Set(pinned.map(note => note.path)), open);
         if (pinned.length > 0 || areas.length > 0) rail.createDiv({ cls: 'sh-rail-divider' });
 
         // A folder path never starts with a slash, so this key is the pins' own.
         const sections = [
-            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned, pinned: true }] : []),
-            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes, pinned: false }))
+            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned, pinned: true, folder: undefined }] : []),
+            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes, pinned: false, folder: area.folder }))
         ];
         for (const section of sections) {
             const areaKey = section.key;
@@ -906,6 +908,7 @@ export class TasksTabView extends ItemView {
             header.toggleClass('is-collapsed', collapsed);
             setIcon(header.createDiv({ cls: 'sh-rail-chevron' }), 'chevron-down');
             header.createDiv({ cls: 'sh-rail-area-label', text: section.label });
+            if (section.folder !== undefined) header.dataset.folder = section.folder;
             header.addEventListener('click', () => {
                 if (collapsed) this.collapsed.delete(areaKey);
                 else this.collapsed.add(areaKey);
@@ -928,6 +931,12 @@ export class TasksTabView extends ItemView {
                 row.addEventListener('click', () => this.setList(ref));
             }
         }
+
+        if (sections.length > 0) rail.createDiv({ cls: 'sh-rail-gap' });
+        const create = rail.createDiv({ cls: 'sh-rail-item is-new-note' });
+        setIcon(create.createDiv({ cls: 'sh-rail-icon' }), 'plus');
+        create.createDiv({ cls: 'sh-rail-label', text: t('tasksTab.actions.newNote') });
+        create.addEventListener('click', () => this.newNote());
 
         // Lists and folders answer to Tab, Enter and Space as well as clicks.
         for (const item of Array.from(rail.querySelectorAll<HTMLElement>('.sh-rail-item, .sh-rail-area'))) {
@@ -1435,6 +1444,14 @@ export class TasksTabView extends ItemView {
      * also moves up or down, for reordering without dragging.
      */
     private onRailContextMenu(event: MouseEvent): void {
+        const folder = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-area')?.dataset.folder;
+        if (folder !== undefined) {
+            event.preventDefault();
+            this.closeMenu();
+            const label = t('tasksTab.actions.newNoteInFolder', { folder: folder || t('tasksTab.rail.vaultRoot') });
+            this.glassMenu.showAtEvent(event, [{ label, icon: 'file-plus', run: () => this.newNote(folder) }], () => this.focusList());
+            return;
+        }
         const path = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-item.is-note')?.dataset.path;
         if (!path) return;
         event.preventDefault();
@@ -1491,6 +1508,85 @@ export class TasksTabView extends ItemView {
         this.plugin.settings.pinnedNotes = movePin(this.plugin.settings.pinnedNotes, path, before);
         this.renderRail(isoToday());
         void this.plugin.saveSettings();
+    }
+
+    // ── New notes ───────────────────────────────────────────────────────
+
+    /** Asks for a name, then makes an empty note in `folder`, or wherever Obsidian puts new notes. */
+    private newNote(folder?: string): void {
+        this.closeMenu();
+        this.openPalette(this.newNoteStage(folder ?? this.newNoteFolder()));
+    }
+
+    /** Where Obsidian's "Default location for new notes" puts a note made from here. */
+    private newNoteFolder(): string {
+        const source = this.list.kind === 'note' && this.list.path ? this.list.path : this.app.workspace.getActiveFile()?.path ?? '';
+        return folderOf(this.app.fileManager.getNewFileParent(source).path);
+    }
+
+    /** The note already at this path, in any capitalisation, since some systems treat them as one. */
+    private existingNote(path: string): TFile | null {
+        const wanted = path.toLowerCase();
+        return this.app.vault.getMarkdownFiles().find(file => file.path.toLowerCase() === wanted) ?? null;
+    }
+
+    /** The palette page that names a new note. A name that's taken goes to that note instead. */
+    private newNoteStage(folder: string): PaletteStage {
+        const where = folder || t('tasksTab.rail.vaultRoot');
+        return {
+            title: t('tasksTab.actions.newNote'),
+            placeholder: t('tasksTab.palette.newNotePlaceholder'),
+            emptyText: t('tasksTab.palette.newNoteWhere', { folder: where }),
+            readsQuery: true,
+            items: (query) => {
+                const name = cleanNoteName(query);
+                if (!name) return [];
+                const path = normalizePath(newNotePath(folder, name));
+                const existing = this.existingNote(path);
+                if (existing) {
+                    return [{ id: 'open-note', section: '', icon: this.noteIcon(existing.path) ?? 'file-text', label: t('tasksTab.palette.goToNote', { note: existing.basename }), sublabel: where, run: () => this.setList({ kind: 'note', path: existing.path }) }];
+                }
+                return [{ id: 'create-note', section: '', icon: 'file-plus', label: t('tasksTab.palette.createNote', { note: name }), sublabel: where, run: () => void this.createNoteAndAdd(path) }];
+            }
+        };
+    }
+
+    /** Makes the note, opens its list, and has quick add ready for its first task. */
+    private async createNoteAndAdd(path: string): Promise<void> {
+        const file = await this.createNote(path);
+        if (!file) return;
+        this.setList({ kind: 'note', path: file.path });
+        this.openQuickAdd({ destination: { path: file.path } });
+    }
+
+    /** Makes an empty note, or says it couldn't. */
+    private async createNote(path: string): Promise<TFile | null> {
+        try {
+            return await this.app.vault.create(path, '');
+        } catch {
+            this.toast(t('tasksTab.notices.noteNotCreated'), false);
+            return null;
+        }
+    }
+
+    /** The note picker's row for making a note named in the query, when no note has that name. */
+    private newNoteRows(query: string, done: (destination: Destination) => void): PaletteItem[] {
+        const name = cleanNoteName(query);
+        if (!name) return [];
+        const lower = name.toLowerCase();
+        if (this.app.vault.getMarkdownFiles().some(file => file.basename.toLowerCase() === lower)) return [];
+        const folder = this.newNoteFolder();
+        const path = normalizePath(newNotePath(folder, name));
+        return [{
+            id: 'new-note',
+            section: '',
+            icon: 'file-plus',
+            label: t('tasksTab.quickAdd.createNote', { note: name }),
+            sublabel: folder || t('tasksTab.rail.vaultRoot'),
+            run: () => void this.createNote(path).then(file => {
+                if (file) done({ path: file.path });
+            })
+        }];
     }
 
     /** Pins a note to the top of the rail, or unpins it. */
@@ -2746,7 +2842,7 @@ export class TasksTabView extends ItemView {
                     run: () => done(choice)
                 };
             }),
-            footer: (query) => this.newHeadingRows(query, current, choices, done)
+            footer: (query) => [...this.newHeadingRows(query, current, choices, done), ...this.newNoteRows(query, done)]
         });
     }
 
@@ -2863,6 +2959,7 @@ export class TasksTabView extends ItemView {
         items.push(
             { id: 'add', section: sections.actions, icon: 'plus', label: t('tasksTab.actions.addTask'), detail: shortcut('Q'), keywords: 'new create quick capture', run: () => this.openQuickAdd() },
             { id: 'display', section: sections.actions, icon: 'sliders-horizontal', label: t('tasksTab.actions.display'), detail: shortcut('⇧V'), keywords: 'group sort view options', run: () => this.openDisplayMenu(this.topbar.querySelector<HTMLElement>('.sh-display-button') ?? this.topbar) },
+            { id: 'new-note', section: sections.actions, icon: 'file-plus', label: t('tasksTab.actions.newNote'), keywords: 'create file page project list', stage: this.newNoteStage(this.newNoteFolder()) },
             { id: 'rail', section: sections.actions, icon: 'panel-left', label: t('tasksTab.actions.toggleSidebar'), detail: shortcut('['), run: () => this.toggleRail() }
         );
         if (this.list.kind === 'note' && this.list.path) {

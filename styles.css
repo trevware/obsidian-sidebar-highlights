@@ -2071,6 +2071,17 @@
     color: var(--sh-accent);
 }
 
+/* New note sits under the folders, quieter than the notes above it. */
+.sh-rail-item.is-new-note,
+.sh-rail-item.is-new-note .sh-rail-icon {
+    color: var(--sh-surface-faint);
+}
+
+.sh-rail-item.is-new-note:hover,
+.sh-rail-item.is-new-note:hover .sh-rail-icon {
+    color: var(--sh-surface-text);
+}
+
 .sh-rail-icon.is-note {
     height: 17px;
     background-color: var(--sh-surface-dim);
