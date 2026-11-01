@@ -12,6 +12,8 @@ import { CALENDAR_ID_SOURCE } from '../calendar/ids';
 export interface ParsedTaskLine {
     prefix: string;
     indent: string;
+    /** The list marker the line is written with, `-`, `*` or `+`, kept on rewrite. */
+    bullet: string;
     state: string;
     text: string;
 }
@@ -19,12 +21,13 @@ export interface ParsedTaskLine {
 export function parseTaskLine(line: string): ParsedTaskLine | null {
     const match = line.match(CHECKBOX_REGEX_WITH_PREFIX);
     if (!match) return null;
-    const [, prefix, indent, state, text] = match;
-    return { prefix: prefix ?? '', indent, state, text };
+    const [, prefix = '', indent, state, text] = match;
+    // The pattern is anchored at the start, so the marker sits right after the prefix and indent.
+    return { prefix, indent, bullet: line.charAt(prefix.length + indent.length), state, text };
 }
 
 export function formatTaskLine(parsed: ParsedTaskLine): string {
-    return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${parsed.text}`;
+    return `${parsed.prefix}${parsed.indent}${parsed.bullet} [${parsed.state}] ${parsed.text}`;
 }
 
 /** Replace the checkbox state, keeping callout prefix, indent and text. */

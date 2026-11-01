@@ -19,12 +19,16 @@ export const ALTERNATE_MARKERS = ['>', '<', '!', '*', '"', 'l', 'b', 'i', 'S', '
 
 /**
  * Matches checkbox syntax: - [ ] - [x] - [/] - [-] - [?] - [!1] - [!2] - [!3]
- * and every alternate marker above. Supports tasks in callouts (lines
- * starting with >). Captures leading whitespace, checkbox state, and task text.
+ * and every alternate marker above, after any of Markdown's list markers
+ * (-, * or +). Supports tasks in callouts (lines starting with >). Captures
+ * leading whitespace, checkbox state, and task text.
  *
- * The hyphen sits last in the character class so it is read as a literal.
+ * The list marker is matched but not captured, so the group numbers stay the
+ * same; parseTaskLine reads it back from its position.
+ *
+ * The hyphen sits first or last in each character class so it is read as a literal.
  */
-export const CHECKBOX_PATTERN = String.raw`(\s*)- \[(!?[123]|[ xX/?><!*"lbiSIpcfkwud-])\] (.+)$`;
+export const CHECKBOX_PATTERN = String.raw`(\s*)[-*+] \[(!?[123]|[ xX/?><!*"lbiSIpcfkwud-])\] (.+)$`;
 
 /** Detection form — the callout prefix is matched but not captured. */
 export const CHECKBOX_REGEX = new RegExp(String.raw`^(?:>+ ?)?` + CHECKBOX_PATTERN);

@@ -49,7 +49,7 @@ import {
     togglePin
 } from './task-views';
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
-import { editableTitle, notesText, parseTaskLine, setDueInText, withState, withText, withTitle } from './task-line';
+import { editableTitle, formatTaskLine, notesText, parseTaskLine, setDueInText, withState, withText, withTitle } from './task-line';
 import { titleCase, titleCaseTyped } from './capitalize';
 import { parseDateTimeQuery } from './quick-parse';
 import { rank } from './fuzzy';
@@ -2482,7 +2482,7 @@ export class TasksTabView extends ItemView {
         await this.write(tasks, this.countLabel(key, tasks), (line, task) => {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
-            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, formatted, timeText)}`;
+            return formatTaskLine({ ...parsed, text: setDueInText(parsed.text, task, formatted, timeText) });
         });
     }
 
@@ -2499,7 +2499,7 @@ export class TasksTabView extends ItemView {
         await this.write(targets, this.countLabel(time ? 'timeSet' : 'timeRemoved', targets), (line, task) => {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
-            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, this.formatDate(task.date ?? today), timeText)}`;
+            return formatTaskLine({ ...parsed, text: setDueInText(parsed.text, task, this.formatDate(task.date ?? today), timeText) });
         });
     }
 
@@ -2509,7 +2509,7 @@ export class TasksTabView extends ItemView {
             const parsed = parseTaskLine(line);
             if (!parsed) return null;
             const next = this.formatDate(addDays(task.date ?? today, days));
-            return `${parsed.prefix}${parsed.indent}- [${parsed.state}] ${setDueInText(parsed.text, task, next)}`;
+            return formatTaskLine({ ...parsed, text: setDueInText(parsed.text, task, next) });
         });
     }
 

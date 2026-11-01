@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, contextRange, dateTimeText, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withTitle } from './task-line';
+import { buildTaskLine, contextRange, dateTimeText, editableTitle, formatTaskLine, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
@@ -132,6 +132,14 @@ describe('task-line', () => {
         expect(withState('> \t- [ ] Ship it', 'x')).toBe('> \t- [x] Ship it');
         expect(withState('- [!1] Ship it', '/')).toBe('- [/] Ship it');
         expect(withState('Not a task', 'x')).toBeNull();
+    });
+
+    it('keeps a * or + list marker through every rewrite', () => {
+        expect(withState('* [ ] Ship it', 'x')).toBe('* [x] Ship it');
+        expect(withState('> \t+ [x] Ship it', ' ')).toBe('> \t+ [ ] Ship it');
+        expect(withText('+ [/] Ship it', 'Ship it today')).toBe('+ [/] Ship it today');
+        expect(parseTaskLine('* [!2] Ship it')).toEqual({ prefix: '', indent: '', bullet: '*', state: '!2', text: 'Ship it' });
+        expect(formatTaskLine(parseTaskLine('  + [?] Why')!)).toBe('  + [?] Why');
     });
 
     it('replaces an existing date where it stands', () => {

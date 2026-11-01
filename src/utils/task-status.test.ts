@@ -80,6 +80,25 @@ describe('task checkbox parsing', () => {
             expect(match![2]).toBe('?');
         });
 
+        it.each(['*', '+'])('should match a task written with a %s list marker', (bullet) => {
+            const match = `${bullet} [x] Done with ${bullet}`.match(CHECKBOX_REGEX);
+
+            expect(match).not.toBeNull();
+            expect(match![2]).toBe('x');
+            expect(match![3]).toBe(`Done with ${bullet}`);
+        });
+
+        it('should match * and + tasks nested and inside callouts', () => {
+            expect('\t* [ ] Nested star'.match(CHECKBOX_REGEX)![1]).toBe('\t');
+            expect('> + [/] Plus in a callout'.match(CHECKBOX_REGEX)![3]).toBe('Plus in a callout');
+        });
+
+        it('should not match bold or marker-less brackets', () => {
+            expect('** [ ] Not a task'.match(CHECKBOX_REGEX)).toBeNull();
+            expect('*[ ] Not a task'.match(CHECKBOX_REGEX)).toBeNull();
+            expect('[ ] Not a task'.match(CHECKBOX_REGEX)).toBeNull();
+        });
+
         it('should not match unsupported states', () => {
             expect('- [z] Not a task'.match(CHECKBOX_REGEX)).toBeNull();
             expect('- [] Not a task'.match(CHECKBOX_REGEX)).toBeNull();
