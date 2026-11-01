@@ -1829,6 +1829,7 @@
     --sh-overdue: #ff6b6b;
 
     --sh-rail-width: 248px;
+    --sh-rail-new-height: 42px;
     --sh-gap: 10px;
 }
 
@@ -1893,34 +1894,89 @@
     overflow: hidden;
 }
 
-/* The rail floats beside the list as one glass panel, inset from the pane. */
-.sh-tasks-rail {
+/* The rail floats beside the list as one glass panel, inset from the pane.
+   Its lists scroll, and New note stays at the bottom. */
+.sh-tasks-rail-panel {
     position: absolute;
     top: var(--sh-gap);
     bottom: var(--sh-gap);
     left: var(--sh-gap);
     z-index: 35;
+    display: flex;
+    flex-direction: column;
     width: var(--sh-rail-width);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: var(--sh-surface-pad);
+    overflow: hidden;
     border-radius: var(--sh-surface-radius);
     background-color: var(--sh-surface);
     -webkit-backdrop-filter: var(--sh-surface-blur);
     backdrop-filter: var(--sh-surface-blur);
     box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
     color: var(--sh-surface-text);
-    scrollbar-width: none;
 }
 
-.sh-tasks-shell.is-rail-hidden .sh-tasks-rail {
+.sh-tasks-shell.is-rail-hidden .sh-tasks-rail-panel {
     display: none;
 }
 
 /* In a narrow pane the rail floats over the list, and stops above the
    controls so the toggle that closes it stays in reach. */
-.sh-tasks-shell.is-narrow .sh-tasks-rail {
+.sh-tasks-shell.is-narrow .sh-tasks-rail-panel {
     bottom: calc(76px + var(--sh-bottom-inset));
+}
+
+.sh-tasks-rail {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--sh-surface-pad);
+    scrollbar-width: none;
+}
+
+.sh-rail-foot {
+    flex: 0 0 auto;
+    padding: 0 var(--sh-surface-pad) var(--sh-surface-pad);
+}
+
+/* New note is a glass button of its own, raised off the rail's glass. */
+.sh-tasks-view button.sh-rail-new {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: var(--sh-rail-new-height);
+    padding: 0 16px;
+    border: 0;
+    border-radius: calc(var(--sh-rail-new-height) / 2);
+    background-color: var(--sh-surface);
+    background-image: none;
+    -webkit-backdrop-filter: var(--sh-surface-blur);
+    backdrop-filter: var(--sh-surface-blur);
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift);
+    color: var(--sh-surface-text);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 180ms cubic-bezier(0.22, 0.9, 0.28, 1), box-shadow 180ms ease;
+}
+
+.sh-tasks-view button.sh-rail-new:hover {
+    box-shadow: var(--sh-surface-ring), var(--sh-surface-lift), inset 0 0 0 999px var(--sh-inner-hover);
+}
+
+.sh-tasks-view button.sh-rail-new:active {
+    transform: scale(0.98);
+}
+
+.sh-rail-new-icon {
+    display: flex;
+}
+
+.sh-rail-new-icon .svg-icon {
+    width: 17px;
+    height: 17px;
 }
 
 /* Catches a tap on the list while the rail is open over it, so the tap only
@@ -2069,17 +2125,6 @@
 
 .sh-rail-item.is-active .sh-rail-icon {
     color: var(--sh-accent);
-}
-
-/* New note sits under the folders, quieter than the notes above it. */
-.sh-rail-item.is-new-note,
-.sh-rail-item.is-new-note .sh-rail-icon {
-    color: var(--sh-surface-faint);
-}
-
-.sh-rail-item.is-new-note:hover,
-.sh-rail-item.is-new-note:hover .sh-rail-icon {
-    color: var(--sh-surface-text);
 }
 
 .sh-rail-icon.is-note {
@@ -3608,6 +3653,17 @@
 
 .sh-quickadd-preview.is-empty code {
     color: var(--sh-surface-faint);
+}
+
+/* The New note field has nothing to tint, so it shows its own text. */
+.sh-tasks-view .sh-newnote input.sh-quickadd-input {
+    color: var(--sh-surface-text);
+}
+
+.sh-newnote-exists {
+    margin-left: 8px;
+    color: var(--sh-surface-faint);
+    font-size: 12.5px;
 }
 
 /* ── Selection bar ──────────────────────────────────────────────────────── */

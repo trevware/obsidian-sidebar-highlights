@@ -62,6 +62,7 @@ import { IconPicker } from './icon-picker';
 import { lucideIds } from './icon-sets';
 import { NoteRefresher } from './note-refresh';
 import { cleanNoteName, folderOf, newNotePath } from './new-note';
+import { NewNotePanel } from './new-note-panel';
 import { paintRun } from './row-runs';
 import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-move';
 import { GlassPalette } from './glass-palette';
@@ -246,6 +247,7 @@ export class TasksTabView extends ItemView {
     private cardComponent: Component | null = null;
     private palette!: GlassPalette;
     private quickAdd!: QuickAdd;
+    private newNote!: NewNotePanel;
     private glassMenu!: GlassMenu;
     private refreshTimers = new Map<string, number>();
     private resizer: ResizeObserver | null = null;
@@ -261,7 +263,7 @@ export class TasksTabView extends ItemView {
         // the tab's own listener sees it, so search takes it in the tab's scope.
         this.scope = new Scope(this.app.scope);
         this.scope.register(['Mod'], 'k', () => {
-            if (this.quickAdd.isOpen || this.glassMenu.isOpen || this.menuEl || this.iconPicker.isOpen) return true;
+            if (this.quickAdd.isOpen || this.newNote.isOpen || this.glassMenu.isOpen || this.menuEl || this.iconPicker.isOpen) return true;
             this.togglePalette();
             return false;
         });
@@ -294,7 +296,16 @@ export class TasksTabView extends ItemView {
         root.addClass('sh-tasks-view');
 
         this.shell = root.createDiv({ cls: 'sh-tasks-shell' });
-        this.rail = this.shell.createDiv({ cls: 'sh-tasks-rail' });
+        // The rail's glass panel: its lists scroll, and New note stays at the bottom.
+        const railPanel = this.shell.createDiv({ cls: 'sh-tasks-rail-panel' });
+        this.rail = railPanel.createDiv({ cls: 'sh-tasks-rail' });
+        const newNote = railPanel.createDiv({ cls: 'sh-rail-foot' }).createEl('button', { cls: 'sh-rail-new' });
+        setIcon(newNote.createSpan({ cls: 'sh-rail-new-icon' }), 'plus');
+        newNote.createSpan({ text: t('tasksTab.actions.newNote') });
+        newNote.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.openNewNote();
+        });
         this.main = this.shell.createDiv({ cls: 'sh-tasks-main' });
         // In a narrow pane the rail floats over the list like a drawer, and a
         // tap anywhere off it puts it away.
@@ -327,6 +338,17 @@ export class TasksTabView extends ItemView {
             submit: (lines, destination) => this.addLines(lines, destination),
             capitalize: () => this.plugin.settings.capitalizeTasks,
             onClose: () => this.focusList()
+        });
+        this.newNote = new NewNotePanel(this.main, {
+            defaultFolder: () => this.defaultNoteFolder(),
+            chooseFolder: (done, current) => this.pickFolder(done, current),
+            existing: (path) => this.existingNote(normalizePath(path))?.path ?? null,
+            submit: async (path) => (await this.createNote(normalizePath(path)))?.path ?? null,
+            onClose: () => this.focusList(),
+            opened: (path, created) => {
+                this.setList({ kind: 'note', path });
+                if (created) this.openQuickAdd({ destination: { path } });
+            }
         });
 
         this.drag = new TaskDrag(this.column, this.scroller, {
@@ -371,7 +393,7 @@ export class TasksTabView extends ItemView {
         this.rail.addEventListener('contextmenu', (event) => this.onRailContextMenu(event));
         onLongPress(this.rail, (event) => this.onRailContextMenu(event));
         this.railDrag = new RailDrag(this.rail, {
-            canDrag: () => !this.palette.isOpen && !this.quickAdd.isOpen && !this.glassMenu.isOpen && !this.iconPicker.isOpen,
+            canDrag: () => !this.palette.isOpen && !this.quickAdd.isOpen && !this.newNote.isOpen && !this.glassMenu.isOpen && !this.iconPicker.isOpen,
             reorder: (path, before) => this.reorderPin(path, before)
         });
         this.registerDomEvent(this.rail, 'pointerdown', (event) => this.railDrag.down(event));
@@ -898,8 +920,8 @@ export class TasksTabView extends ItemView {
 
         // A folder path never starts with a slash, so this key is the pins' own.
         const sections = [
-            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned, pinned: true, folder: undefined }] : []),
-            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes, pinned: false, folder: area.folder }))
+            ...(pinned.length > 0 ? [{ key: 'area:/pinned', label: t('tasksTab.rail.pinned'), notes: pinned, pinned: true }] : []),
+            ...areas.map(area => ({ key: `area:${area.folder}`, label: area.folder || t('tasksTab.rail.vaultRoot'), notes: area.notes, pinned: false }))
         ];
         for (const section of sections) {
             const areaKey = section.key;
@@ -908,7 +930,6 @@ export class TasksTabView extends ItemView {
             header.toggleClass('is-collapsed', collapsed);
             setIcon(header.createDiv({ cls: 'sh-rail-chevron' }), 'chevron-down');
             header.createDiv({ cls: 'sh-rail-area-label', text: section.label });
-            if (section.folder !== undefined) header.dataset.folder = section.folder;
             header.addEventListener('click', () => {
                 if (collapsed) this.collapsed.delete(areaKey);
                 else this.collapsed.add(areaKey);
@@ -931,12 +952,6 @@ export class TasksTabView extends ItemView {
                 row.addEventListener('click', () => this.setList(ref));
             }
         }
-
-        if (sections.length > 0) rail.createDiv({ cls: 'sh-rail-gap' });
-        const create = rail.createDiv({ cls: 'sh-rail-item is-new-note' });
-        setIcon(create.createDiv({ cls: 'sh-rail-icon' }), 'plus');
-        create.createDiv({ cls: 'sh-rail-label', text: t('tasksTab.actions.newNote') });
-        create.addEventListener('click', () => this.newNote());
 
         // Lists and folders answer to Tab, Enter and Space as well as clicks.
         for (const item of Array.from(rail.querySelectorAll<HTMLElement>('.sh-rail-item, .sh-rail-area'))) {
@@ -1444,14 +1459,6 @@ export class TasksTabView extends ItemView {
      * also moves up or down, for reordering without dragging.
      */
     private onRailContextMenu(event: MouseEvent): void {
-        const folder = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-area')?.dataset.folder;
-        if (folder !== undefined) {
-            event.preventDefault();
-            this.closeMenu();
-            const label = t('tasksTab.actions.newNoteInFolder', { folder: folder || t('tasksTab.rail.vaultRoot') });
-            this.glassMenu.showAtEvent(event, [{ label, icon: 'file-plus', run: () => this.newNote(folder) }], () => this.focusList());
-            return;
-        }
         const path = (event.target as HTMLElement).closest<HTMLElement>('.sh-rail-item.is-note')?.dataset.path;
         if (!path) return;
         event.preventDefault();
@@ -1512,16 +1519,22 @@ export class TasksTabView extends ItemView {
 
     // ── New notes ───────────────────────────────────────────────────────
 
-    /** Asks for a name, then makes an empty note in `folder`, or wherever Obsidian puts new notes. */
-    private newNote(folder?: string): void {
+    /** Opens the New note panel over the list. */
+    openNewNote(): void {
+        this.palette.close();
         this.closeMenu();
-        this.openPalette(this.newNoteStage(folder ?? this.newNoteFolder()));
+        if (this.quickAdd.isOpen) this.quickAdd.close(true);
+        if (this.narrow && !this.railHidden) this.toggleRail();
+        this.newNote.open();
     }
 
-    /** Where Obsidian's "Default location for new notes" puts a note made from here. */
-    private newNoteFolder(): string {
-        const source = this.list.kind === 'note' && this.list.path ? this.list.path : this.app.workspace.getActiveFile()?.path ?? '';
-        return folderOf(this.app.fileManager.getNewFileParent(source).path);
+    /**
+     * The folder a new note starts in: none, unless Obsidian's "Default
+     * location for new notes" names a folder. "Same folder as current file"
+     * has no current file to go by here, so it starts at the top too.
+     */
+    private defaultNoteFolder(): string {
+        return folderOf(this.app.fileManager.getNewFileParent('').path);
     }
 
     /** The note already at this path, in any capitalisation, since some systems treat them as one. */
@@ -1530,33 +1543,30 @@ export class TasksTabView extends ItemView {
         return this.app.vault.getMarkdownFiles().find(file => file.path.toLowerCase() === wanted) ?? null;
     }
 
-    /** The palette page that names a new note. A name that's taken goes to that note instead. */
-    private newNoteStage(folder: string): PaletteStage {
-        const where = folder || t('tasksTab.rail.vaultRoot');
-        return {
-            title: t('tasksTab.actions.newNote'),
-            placeholder: t('tasksTab.palette.newNotePlaceholder'),
-            emptyText: t('tasksTab.palette.newNoteWhere', { folder: where }),
-            readsQuery: true,
-            items: (query) => {
-                const name = cleanNoteName(query);
-                if (!name) return [];
-                const path = normalizePath(newNotePath(folder, name));
-                const existing = this.existingNote(path);
-                if (existing) {
-                    return [{ id: 'open-note', section: '', icon: this.noteIcon(existing.path) ?? 'file-text', label: t('tasksTab.palette.goToNote', { note: existing.basename }), sublabel: where, run: () => this.setList({ kind: 'note', path: existing.path }) }];
-                }
-                return [{ id: 'create-note', section: '', icon: 'file-plus', label: t('tasksTab.palette.createNote', { note: name }), sublabel: where, run: () => void this.createNoteAndAdd(path) }];
-            }
-        };
-    }
-
-    /** Makes the note, opens its list, and has quick add ready for its first task. */
-    private async createNoteAndAdd(path: string): Promise<void> {
-        const file = await this.createNote(path);
-        if (!file) return;
-        this.setList({ kind: 'note', path: file.path });
-        this.openQuickAdd({ destination: { path: file.path } });
+    /** The folder picker for the New note panel: no folder first, then every folder. */
+    private pickFolder(done: (folder: string) => void, current: string): void {
+        const folders = this.app.vault.getAllFolders(false).map(folder => folder.path)
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        const row = (path: string): PaletteItem => ({
+            id: `folder:${path}`,
+            section: '',
+            icon: path ? 'folder' : 'folder-x',
+            label: path ? path.split('/').pop() ?? path : t('tasksTab.newNote.noFolder'),
+            sublabel: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : undefined,
+            keywords: path,
+            detail: path === current ? '✓' : undefined,
+            run: () => done(path)
+        });
+        this.palette.open({
+            placeholder: '',
+            sections: [],
+            items: () => [],
+            onClose: () => this.newNote.reveal()
+        }, {
+            title: t('tasksTab.newNote.folderTitle'),
+            placeholder: t('tasksTab.newNote.folderPlaceholder'),
+            items: () => [row(''), ...folders.map(row)]
+        });
     }
 
     /** Makes an empty note, or says it couldn't. */
@@ -1575,7 +1585,7 @@ export class TasksTabView extends ItemView {
         if (!name) return [];
         const lower = name.toLowerCase();
         if (this.app.vault.getMarkdownFiles().some(file => file.basename.toLowerCase() === lower)) return [];
-        const folder = this.newNoteFolder();
+        const folder = this.defaultNoteFolder();
         const path = normalizePath(newNotePath(folder, name));
         return [{
             id: 'new-note',
@@ -2087,7 +2097,7 @@ export class TasksTabView extends ItemView {
 
     private handleKey(event: KeyboardEvent): void {
         if (this.app.workspace.getActiveViewOfType(TasksTabView) !== this) return;
-        if (this.palette.isOpen || this.quickAdd.isOpen || this.glassMenu.isOpen || this.iconPicker.isOpen) return;
+        if (this.palette.isOpen || this.quickAdd.isOpen || this.newNote.isOpen || this.glassMenu.isOpen || this.iconPicker.isOpen) return;
         if (event.isComposing) return;
         const target = event.target as HTMLElement | null;
         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -2959,7 +2969,7 @@ export class TasksTabView extends ItemView {
         items.push(
             { id: 'add', section: sections.actions, icon: 'plus', label: t('tasksTab.actions.addTask'), detail: shortcut('Q'), keywords: 'new create quick capture', run: () => this.openQuickAdd() },
             { id: 'display', section: sections.actions, icon: 'sliders-horizontal', label: t('tasksTab.actions.display'), detail: shortcut('⇧V'), keywords: 'group sort view options', run: () => this.openDisplayMenu(this.topbar.querySelector<HTMLElement>('.sh-display-button') ?? this.topbar) },
-            { id: 'new-note', section: sections.actions, icon: 'file-plus', label: t('tasksTab.actions.newNote'), keywords: 'create file page project list', stage: this.newNoteStage(this.newNoteFolder()) },
+            { id: 'new-note', section: sections.actions, icon: 'file-plus', label: t('tasksTab.actions.newNote'), keywords: 'create file page project list', run: () => this.openNewNote() },
             { id: 'rail', section: sections.actions, icon: 'panel-left', label: t('tasksTab.actions.toggleSidebar'), detail: shortcut('['), run: () => this.toggleRail() }
         );
         if (this.list.kind === 'note' && this.list.path) {

@@ -42,8 +42,6 @@ export interface PaletteStage {
      * there are matches above.
      */
     footer?: (query: string) => PaletteItem[];
-    /** Shown in place of "No matches" when the page has no rows, such as a hint before anything is typed. */
-    emptyText?: string;
 }
 
 export interface PaletteSource {
@@ -340,7 +338,7 @@ export class GlassPalette {
         this.rowEls = [];
 
         if (this.rows.length === 0) {
-            list.createDiv({ cls: 'sh-palette-empty', text: this.stage?.emptyText ?? 'No matches' });
+            list.createDiv({ cls: 'sh-palette-empty', text: 'No matches' });
             return;
         }
 
