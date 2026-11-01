@@ -1829,7 +1829,10 @@
     --sh-overdue: #ff6b6b;
 
     --sh-rail-width: 248px;
-    --sh-rail-new-height: 42px;
+    /* The round controls along the bottom, and New note beside them, share
+       one height and sit this far up from the bottom of the tab. */
+    --sh-control-height: 38px;
+    --sh-controls-inset: 22px;
     --sh-gap: 10px;
 }
 
@@ -1939,6 +1942,11 @@
     padding: 0 var(--sh-surface-pad) var(--sh-surface-pad);
 }
 
+/* Beside the list, New note lines up with the controls along the bottom. */
+.sh-tasks-shell:not(.is-narrow) .sh-rail-foot {
+    padding-bottom: calc(var(--sh-controls-inset) + var(--sh-bottom-inset) - var(--sh-gap));
+}
+
 /* New note is a glass button of its own, raised off the rail's glass. */
 .sh-tasks-view button.sh-rail-new {
     display: flex;
@@ -1946,10 +1954,10 @@
     justify-content: center;
     gap: 8px;
     width: 100%;
-    height: var(--sh-rail-new-height);
+    height: var(--sh-control-height);
     padding: 0 16px;
     border: 0;
-    border-radius: calc(var(--sh-rail-new-height) / 2);
+    border-radius: calc(var(--sh-control-height) / 2);
     background-color: var(--sh-surface);
     background-image: none;
     -webkit-backdrop-filter: var(--sh-surface-blur);
@@ -2231,9 +2239,9 @@
    its own glass pill, with the selection bar coming up between them. */
 .sh-tasks-controls {
     position: absolute;
-    right: 22px;
-    bottom: calc(22px + var(--sh-bottom-inset));
-    left: 22px;
+    right: var(--sh-controls-inset);
+    bottom: calc(var(--sh-controls-inset) + var(--sh-bottom-inset));
+    left: var(--sh-controls-inset);
     z-index: 30;
     display: flex;
     align-items: center;
@@ -2254,10 +2262,10 @@
     align-items: center;
     justify-content: center;
     width: 48px;
-    height: 38px;
+    height: var(--sh-control-height);
     padding: 0;
     border: 0;
-    border-radius: 19px;
+    border-radius: calc(var(--sh-control-height) / 2);
     background-color: var(--sh-surface);
     background-image: none;
     -webkit-backdrop-filter: var(--sh-surface-blur);
