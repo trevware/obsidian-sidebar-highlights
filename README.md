@@ -143,7 +143,7 @@ Collections gather related highlights from anywhere in the vault.
 - Every note with open tasks, grouped by folder, with its tasks under their headings
 - Notes you pin, above the folders in the order you choose. Right-click a note (or press and hold) and choose **Pin**, then drag pinned notes to reorder them
 - Give any note an icon: right-click it, or its title, and choose **Choose icon…**
-- Start a new note for a list with **New note** at the bottom of the sidebar, or in ⌘K. Right-click a folder to make it there
+- **New note**, at the bottom of the sidebar or in ⌘K, makes an empty note and opens it ready for its first task. Pick a folder from the chip in its panel, or press `/`
 
 Each list keeps its own grouping and sorting, and whether it shows completed tasks (and gathers them at the bottom), under **Display**.
 
