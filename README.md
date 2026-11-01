@@ -143,12 +143,13 @@ Collections gather related highlights from anywhere in the vault.
 - Every note with open tasks, grouped by folder, with its tasks under their headings
 - Notes you pin, above the folders in the order you choose. Right-click a note (or press and hold) and choose **Pin**, then drag pinned notes to reorder them
 - Give any note an icon: right-click it, or its title, and choose **Choose icon…**
+- Start a new note for a list with **New note** at the bottom of the sidebar, or in ⌘K. Right-click a folder to make it there
 
 Each list keeps its own grouping and sorting, and whether it shows completed tasks (and gathers them at the bottom), under **Display**.
 
 ### Adding Tasks
 
-Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it.
+Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it, or a note name that doesn't exist and it offers to make the note.
 
 <p align="center">
   <picture>
