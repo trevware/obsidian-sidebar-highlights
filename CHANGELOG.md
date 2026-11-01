@@ -5,6 +5,11 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-11-01
+
+### Fixed
+- **Tasks that start with `* [ ]` or `+ [ ]` now show up in the Tasks tab.** Before, only `- [ ]` counted. Checking one off, renaming it or giving it a date keeps the star or plus you wrote.
+
 ## [2.4.0] - 2026-10-31
 
 ### Added
