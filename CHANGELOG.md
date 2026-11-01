@@ -5,6 +5,13 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-11-01
+
+### Changed
+- **New note has a button and a panel of its own.** The **New note** button now sits at the bottom of the Tasks tab's sidebar, lined up with the buttons beside it. Click it (or use **New note** in ⌘K), type a name and press Enter, and the empty note opens with quick add ready for its first task.
+- **You pick the folder.** A new note starts with no folder, instead of landing next to whatever note you were looking at. Click the folder chip in the panel, or type `/`, to choose one from a list you can search, and the line underneath shows exactly where the note will go. Quick add's **Create note** starts with no folder too. Type a name that's already taken and Enter opens that note instead.
+- **Right-clicking a folder in the sidebar no longer offers New note.** The button covers it.
+
 ## [2.5.0] - 2026-11-01
 
 ### Added
