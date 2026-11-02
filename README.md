@@ -164,7 +164,8 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 - Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status. Click the task's name in the card to rename it (or press **R**), and **Add subtask** adds subtasks right there
 - Right-click it (or press and hold on a phone) for everything else: move it under another heading, copy it as Markdown, open it beside the note, delete it
 - Drag tasks to reorder them, or onto another heading to move them there
-- In a note's list, drag a heading to move it with everything under it, or right-click it for **Move heading**
+- In a note's list, drag a heading to move it with everything under it
+- Right-click a heading to rename it (links to it follow the new name), change its level, move it, copy a link to it, or delete it with or without its tasks
 - Undo any change from the message at the bottom, or with ⌘Z
 - ⌘K searches tasks, notes and commands, and **?** lists every keyboard shortcut
 
