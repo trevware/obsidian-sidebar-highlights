@@ -2757,6 +2757,19 @@
     line-height: 1.4;
 }
 
+/* A heading's name being renamed keeps the heading's own size and weight. */
+.sh-tasks-view textarea.sh-title-editor.is-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: inherit;
+    font-weight: inherit;
+    color: var(--text-normal);
+}
+
+.sh-group-label textarea.sh-title-editor.is-heading {
+    margin-right: 4px;
+}
+
 .sh-task-row.is-expanded .sh-task-title {
     cursor: text;
 }

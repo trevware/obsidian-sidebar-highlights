@@ -636,6 +636,11 @@
       "setStatus": "Set status",
       "moveToHeading": "Move to heading",
       "moveHeading": "Move heading",
+      "renameHeading": "Rename heading",
+      "changeLevel": "Change level",
+      "copyLink": "Copy link",
+      "deleteHeading": "Delete heading, keep tasks",
+      "deleteSection": "Delete heading and tasks",
       "pin": "Pin",
       "unpin": "Unpin",
       "pinNote": "Pin this note",
@@ -679,6 +684,8 @@
       "createHeadingBottom": "Create “{{heading}}” at the bottom",
       "moveHeadingPlaceholder": "Find a heading to put it above…",
       "bottomOfNote": "Bottom of the note",
+      "levelPlaceholder": "Pick a level",
+      "headingLevel": "Heading {{level}}",
       "shortcutsPlaceholder": "Filter shortcuts"
     },
     "display": {
@@ -776,7 +783,15 @@
       "noteNotCreated": "Couldn't create that note.",
       "headingMovedAbove": "Moved “{{heading}}” above {{target}}",
       "headingMovedBottom": "Moved “{{heading}}” to the bottom",
-      "headingNotMoved": "Nothing moved. The heading may already be there, or the note changed."
+      "headingNotMoved": "Nothing moved. The heading may already be there, or the note changed.",
+      "headingRenamed": "Renamed the heading to “{{heading}}”",
+      "headingRenamedLink": "Renamed the heading to “{{heading}}” and updated 1 link",
+      "headingRenamedLinks": "Renamed the heading to “{{heading}}” and updated {{count}} links",
+      "headingLevelSet": "Made “{{heading}}” a heading {{level}}",
+      "headingDeleted": "Deleted the heading “{{heading}}”",
+      "sectionDeleted": "Deleted “{{heading}}” and everything under it",
+      "headingNotChanged": "Nothing changed. The note may have changed in the meantime.",
+      "headingLinkCopied": "Copied a link to “{{heading}}”"
     },
     "shortcuts": {
       "moveHighlight": "Move up and down",

@@ -50,7 +50,7 @@ const HEADING = /^(#{1,6})\s+(.+?)\s*$/;
 const FENCE = /^\s*(`{3,}|~{3,})/;
 
 /** Where the note's body starts: after its properties, when it has them. */
-function bodyStart(lines: string[]): number {
+export function bodyStart(lines: string[]): number {
     if (lines[0]?.trim() !== '---') return 0;
     for (let i = 1; i < lines.length; i++) {
         if (lines[i].trim() === '---' || lines[i].trim() === '...') return i + 1;
@@ -115,7 +115,7 @@ function newHeadingPlace(lines: string[], name: string, level: number, where: 't
 }
 
 /** Steps back over blank lines, so a task joins the list above it. */
-function trimBack(lines: string[], end: number, floor: number): number {
+export function trimBack(lines: string[], end: number, floor: number): number {
     while (end > floor && lines[end - 1].trim() === '') end--;
     return end;
 }
@@ -142,7 +142,7 @@ function reindent(block: string[], indent: string): string[] {
     return block.map(line => (line.trim() !== '' && line.startsWith(base) ? indent + line.slice(base.length) : line));
 }
 
-function changedRun(before: string[], after: string[]): MovePlan['change'] {
+export function changedRun(before: string[], after: string[]): MovePlan['change'] {
     let start = 0;
     while (start < before.length && start < after.length && before[start] === after[start]) start++;
     let endBefore = before.length;
@@ -229,7 +229,7 @@ export type HeadingTarget =
     | { kind: 'bottom' };
 
 /** Of the headings with this text, the one nearest the line. */
-function findHeading(headings: readonly NoteHeading[], ref: HeadingRef): number {
+export function findHeading(headings: readonly NoteHeading[], ref: HeadingRef): number {
     let found = -1;
     headings.forEach((heading, index) => {
         if (heading.title !== ref.title) return;

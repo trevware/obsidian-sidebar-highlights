@@ -12,6 +12,8 @@ import {
     getIconIds,
     moment,
     normalizePath,
+    parseLinktext,
+    resolveSubpath,
     setIcon,
     setTooltip
 } from 'obsidian';
@@ -54,8 +56,10 @@ import { titleCase, titleCaseTyped } from './capitalize';
 import { parseDateTimeQuery } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
-import type { LineChange, RangeChange } from './task-writer';
-import { headingSectionEnd, newHeadingLevel, titleOf } from './task-move';
+import type { LineChange, RangeChange, TextSpan } from './task-writer';
+import { findHeading, headingSectionEnd, newHeadingLevel, titleOf } from './task-move';
+import { deleteSection, levelChoices, linkSafeHeading, removeHeading, renameHeading, retargetLink, setHeadingLevel } from './heading-edit';
+import type { HeadingEdit } from './heading-edit';
 import { TaskDrag } from './task-drag';
 import { RailDrag } from './rail-drag';
 import { IconPicker } from './icon-picker';
@@ -1620,9 +1624,7 @@ export class TasksTabView extends ItemView {
         if (heading) {
             event.preventDefault();
             this.closeMenu();
-            this.glassMenu.showAtEvent(event, [
-                { label: t('tasksTab.actions.moveHeading'), icon: 'heading', run: () => this.openPalette(this.moveHeadingStage(heading.path, heading)) }
-            ], () => this.focusList());
+            this.glassMenu.showAtEvent(event, this.headingMenuItems(heading), () => this.focusList());
             return;
         }
         const row = target.closest<HTMLElement>('.sh-task-row');
@@ -3412,6 +3414,235 @@ export class TasksTabView extends ItemView {
             : t('tasksTab.notices.headingMovedAbove', { heading: heading.title, target: target.title });
         this.pushRangeUndo(label, result.change);
         return true;
+    }
+
+    // ── Editing headings ────────────────────────────────────────────────
+
+    /** What a heading's menu offers: add under it, rename it, change its level, move it, open it, link to it, delete it. */
+    private headingMenuItems(heading: HeadingRef & { path: string }): GlassMenuItem[] {
+        const { path } = heading;
+        const name = { heading: heading.title };
+        return [
+            { label: t('tasksTab.actions.addHere'), icon: 'plus', run: () => this.openQuickAdd(this.prefillFor({ path, heading: heading.title, headingLine: heading.line })) },
+            { label: t('tasksTab.actions.renameHeading'), icon: 'pencil', divider: true, run: () => this.startHeadingRename(heading) },
+            { label: t('tasksTab.actions.changeLevel'), icon: 'chevrons-up-down', run: () => this.openPalette(this.headingLevelStage(heading)) },
+            { label: t('tasksTab.actions.moveHeading'), icon: 'heading', run: () => this.openPalette(this.moveHeadingStage(path, heading)) },
+            { label: t('tasksTab.actions.openInNote'), icon: 'arrow-up-right', divider: true, run: () => void this.openPath(path, heading.line) },
+            { label: t('tasksTab.actions.copyLink'), icon: 'link', run: () => void this.copyHeadingLink(heading) },
+            { label: t('tasksTab.actions.deleteHeading'), icon: 'eraser', divider: true, run: () => void this.editHeading(path, lines => removeHeading(lines, heading), t('tasksTab.notices.headingDeleted', name)) },
+            { label: t('tasksTab.actions.deleteSection'), icon: 'trash-2', destructive: true, run: () => void this.editHeading(path, lines => deleteSection(lines, heading), t('tasksTab.notices.sectionDeleted', name)) }
+        ];
+    }
+
+    /**
+     * Makes one edit to a heading, then redraws. Tasks below lines that came
+     * out keep their selection. The notice says what happened and can undo it.
+     */
+    private async editHeading(path: string, edit: (lines: string[]) => HeadingEdit | null, label: string): Promise<boolean> {
+        const result = await this.writer.editHeading(path, edit);
+        if (!result) {
+            this.toast(t('tasksTab.notices.headingNotChanged'), false);
+            return false;
+        }
+        await this.refreshFile(path);
+        if (result.change.before.length !== result.change.after.length) this.followMove(path, result.lineMap);
+        this.render(true);
+        this.pushRangeUndo(label, result.change);
+        return true;
+    }
+
+    /** The element showing a heading's name in the list, looked up again in case the list redrew. */
+    private headingNameEl(path: string, line: number): HTMLElement | null {
+        for (const groupEl of Array.from(this.column.querySelectorAll<HTMLElement>('.sh-group'))) {
+            const group = this.groupEls.get(groupEl);
+            if (group?.kind === 'heading' && group.add?.path === path && group.add.headingLine === line) {
+                return groupEl.querySelector<HTMLElement>(':scope > .sh-group-header .sh-group-title');
+            }
+            if (group?.kind === 'note' && group.key === `note:${path}`) {
+                const section = groupEl.querySelector<HTMLElement>(`:scope > .sh-section-title[data-line="${line}"]`);
+                if (section) return section;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A heading's name, edited in place. ↵ or clicking away saves and Escape
+     * puts it back. Links to the heading follow the new name.
+     */
+    private startHeadingRename(heading: HeadingRef & { path: string }): void {
+        const shown = this.headingNameEl(heading.path, heading.line);
+        if (!shown) return;
+        const original = shown.getText();
+        const inSection = shown.hasClass('sh-section-title');
+        const editor = createEl('textarea', { cls: 'sh-title-editor is-heading' });
+        editor.value = heading.title;
+        editor.rows = 1;
+        editor.spellcheck = true;
+        editor.setAttr('enterkeyhint', 'done');
+        editor.setAttr('aria-label', t('tasksTab.actions.renameHeading'));
+        if (inSection) {
+            shown.empty();
+            shown.appendChild(editor);
+        } else {
+            shown.replaceWith(editor);
+        }
+        // Clicks in the field stay there, since a click on the header folds the group.
+        for (const type of ['click', 'dblclick', 'mousedown', 'pointerdown'] as const) {
+            editor.addEventListener(type, (event) => event.stopPropagation());
+        }
+        const fit = () => {
+            editor.setCssProps({ height: 'auto' });
+            editor.setCssProps({ height: `${editor.scrollHeight}px` });
+        };
+
+        let done = false;
+        // Caught at the window, where Obsidian's own hotkeys listen, so
+        // Escape and ↵ reach the field first.
+        const onWindowKey = (event: KeyboardEvent) => {
+            if (document.activeElement !== editor || event.isComposing) return;
+            if (event.key === 'Escape' || event.key === 'Enter') {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                void finish(event.key === 'Enter').then(() => this.focusList());
+            }
+        };
+        window.addEventListener('keydown', onWindowKey, true);
+
+        const finish = async (save: boolean) => {
+            if (done) return;
+            done = true;
+            window.removeEventListener('keydown', onWindowKey, true);
+            const words = editor.value.replace(/\s+/g, ' ').trim();
+            const changed = save && words !== '' && words !== heading.title;
+            if (!inSection && editor.isConnected) editor.replaceWith(shown);
+            shown.setText(changed ? words : original);
+            if (changed) await this.renameHeadingTo(heading, words);
+        };
+
+        editor.addEventListener('input', fit);
+        editor.addEventListener('blur', () => void finish(true));
+        editor.focus();
+        editor.select();
+        fit();
+    }
+
+    /**
+     * Renames a heading, then points every link to it at the new name, in
+     * this note and in others. One Undo puts the heading and the links back.
+     */
+    private async renameHeadingTo(heading: HeadingRef & { path: string }, words: string): Promise<boolean> {
+        const { path } = heading;
+        // Found before the rename, while the links still lead to the heading.
+        const links = this.linksToHeading(path, heading.line);
+        const result = await this.writer.editHeading(path, lines => renameHeading(lines, heading, words));
+        if (!result) {
+            this.toast(t('tasksTab.notices.headingNotChanged'), false);
+            this.render(true);
+            return false;
+        }
+        const safe = linkSafeHeading(words);
+        const linkChanges: LineChange[] = [];
+        let updated = 0;
+        for (const [source, found] of links) {
+            const spans: TextSpan[] = [];
+            for (const link of found) {
+                const after = retargetLink(link.before, safe);
+                if (after && after !== link.before) spans.push({ ...link, after });
+            }
+            const { changes, count } = await this.writer.replaceSpans(source, spans);
+            linkChanges.push(...changes);
+            updated += count;
+        }
+        const remembered = this.readJson<Destination | null>(STORAGE.destination, null);
+        if (remembered?.path === path && remembered.heading === heading.title) {
+            this.writeJson(STORAGE.destination, { ...remembered, heading: words });
+        }
+        const touched = [path, ...linkChanges.map(change => change.path)];
+        await this.refreshFiles(touched);
+        this.render(true);
+
+        const label = updated === 0
+            ? t('tasksTab.notices.headingRenamed', { heading: truncate(words, 40) })
+            : t(updated === 1 ? 'tasksTab.notices.headingRenamedLink' : 'tasksTab.notices.headingRenamedLinks', { heading: truncate(words, 40), count: updated });
+        this.undoStack.push({
+            label,
+            undo: async () => {
+                await this.writer.undo(linkChanges);
+                await this.writer.undoRange(result.change);
+                await this.refreshFiles(touched);
+                this.render(true);
+            }
+        });
+        if (this.undoStack.length > 50) this.undoStack.shift();
+        this.toast(label, true);
+        return true;
+    }
+
+    /**
+     * Every link that leads to a heading, by the note it's written in: links
+     * and embeds in Markdown notes, including the note's own links to itself.
+     */
+    private linksToHeading(path: string, line: number): Map<string, Array<Omit<TextSpan, 'after'>>> {
+        const found = new Map<string, Array<Omit<TextSpan, 'after'>>>();
+        const target = this.app.vault.getAbstractFileByPath(path);
+        const targetCache = target instanceof TFile ? this.app.metadataCache.getFileCache(target) : null;
+        if (!targetCache) return found;
+        const sources = new Set([path]);
+        for (const [source, destinations] of Object.entries(this.app.metadataCache.resolvedLinks)) {
+            if (destinations[path]) sources.add(source);
+        }
+        for (const source of sources) {
+            const file = this.app.vault.getAbstractFileByPath(source);
+            if (!(file instanceof TFile) || file.extension !== 'md') continue;
+            const cache = this.app.metadataCache.getFileCache(file);
+            for (const link of [...(cache?.links ?? []), ...(cache?.embeds ?? [])]) {
+                const { path: linkPath, subpath } = parseLinktext(link.link);
+                if (!subpath || link.position.start.line !== link.position.end.line) continue;
+                const destination = linkPath ? this.app.metadataCache.getFirstLinkpathDest(linkPath, source) : file;
+                if (destination?.path !== path) continue;
+                const resolved = resolveSubpath(targetCache, subpath);
+                if (resolved?.type !== 'heading' || resolved.current.position.start.line !== line) continue;
+                const list = found.get(source) ?? [];
+                list.push({ line: link.position.start.line, start: link.position.start.col, end: link.position.end.col, before: link.original });
+                found.set(source, list);
+            }
+        }
+        return found;
+    }
+
+    /**
+     * A page of heading levels, H1 to H6, leaving out any that would push a
+     * smaller heading under it past six. Those move by the same step.
+     */
+    private headingLevelStage(heading: HeadingRef & { path: string }): PaletteStage {
+        const headings = this.headingsOf(heading.path);
+        const current = headings[findHeading(headings, heading)]?.level;
+        return {
+            title: `${t('tasksTab.actions.changeLevel')} · ${heading.title}`,
+            placeholder: t('tasksTab.palette.levelPlaceholder'),
+            items: () => levelChoices(headings, heading).map(level => ({
+                id: `level:${level}`,
+                section: '',
+                icon: `heading-${level}`,
+                label: t('tasksTab.palette.headingLevel', { level }),
+                detail: level === current ? '✓' : '#'.repeat(level),
+                keywords: `h${level} ${'#'.repeat(level)}`,
+                run: () => {
+                    if (level === current) return;
+                    void this.editHeading(heading.path, lines => setHeadingLevel(lines, heading, level), t('tasksTab.notices.headingLevelSet', { heading: heading.title, level }));
+                }
+            }))
+        };
+    }
+
+    /** Copies a link to a heading, written the way the vault's link settings write links. */
+    private async copyHeadingLink(heading: HeadingRef & { path: string }): Promise<void> {
+        const file = this.app.vault.getAbstractFileByPath(heading.path);
+        if (!(file instanceof TFile)) return;
+        const link = this.app.fileManager.generateMarkdownLink(file, '', `#${linkSafeHeading(heading.title)}`);
+        await navigator.clipboard.writeText(link);
+        this.toast(t('tasksTab.notices.headingLinkCopied', { heading: truncate(heading.title, 40) }), false);
     }
 
     /** What a task's status reads as, naming its alternate marker when it has one. */

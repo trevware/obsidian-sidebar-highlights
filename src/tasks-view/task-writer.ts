@@ -3,6 +3,7 @@ import type { Task } from '../../main';
 import { contextRange, insertionLine, locateTaskLine, notesLines, subtaskLines, taskBlockEnd } from './task-line';
 import { addUnderNewHeading, moveHeading, moveTasks } from './task-move';
 import type { HeadingRef, HeadingTarget, MoveTarget } from './task-move';
+import type { HeadingEdit } from './heading-edit';
 
 /** One line the Tasks tab changed, kept so the change can be undone. */
 export interface LineChange {
@@ -34,6 +35,15 @@ export interface RemovedBlock {
     path: string;
     start: number;
     lines: string[];
+}
+
+/** A stretch of text on one line to swap for another, found by what it reads now. */
+export interface TextSpan {
+    line: number;
+    start: number;
+    end: number;
+    before: string;
+    after: string;
 }
 
 export interface WriteResult {
@@ -334,6 +344,64 @@ export class TaskWriter {
             return result.lines.join('\n');
         });
         return placed;
+    }
+
+    /**
+     * Makes one heading edit in a note: a rename, a new level, or lines taken
+     * out. Returns the change for undo and where each line went, or null when
+     * the note is gone or nothing changed.
+     */
+    async editHeading(path: string, edit: (lines: string[]) => HeadingEdit | null): Promise<MoveResult | null> {
+        const file = this.file(path);
+        if (!file) return null;
+        let result: MoveResult | null = null;
+        await this.app.vault.process(file, (data) => {
+            const lines = data.split('\n');
+            const plan = edit(lines);
+            if (!plan) return data;
+            const { start, before, after } = plan.change;
+            const lineMap = new Map<number, number>();
+            lines.forEach((_line, i) => {
+                if (i < start) lineMap.set(i, i);
+                else if (i >= start + before.length) lineMap.set(i, i - before.length + after.length);
+            });
+            result = { change: { path, ...plan.change }, lineMap, landed: [] };
+            return plan.lines.join('\n');
+        });
+        return result;
+    }
+
+    /**
+     * Swaps stretches of text on lines, such as links. A stretch that no
+     * longer reads as expected is left alone. Returns the changed lines, for
+     * undo, and how many stretches were swapped.
+     */
+    async replaceSpans(path: string, spans: readonly TextSpan[]): Promise<{ changes: LineChange[]; count: number }> {
+        const file = this.file(path);
+        const changes: LineChange[] = [];
+        let count = 0;
+        if (!file || spans.length === 0) return { changes, count };
+        await this.app.vault.process(file, (data) => {
+            const lines = data.split('\n');
+            const byLine = new Map<number, TextSpan[]>();
+            for (const span of spans) byLine.set(span.line, [...(byLine.get(span.line) ?? []), span]);
+            for (const [index, list] of byLine) {
+                const before = lines[index];
+                if (before === undefined) continue;
+                let after = before;
+                // Right to left, so earlier columns stay true.
+                for (const span of [...list].sort((a, b) => b.start - a.start)) {
+                    if (after.slice(span.start, span.end) !== span.before) continue;
+                    after = after.slice(0, span.start) + span.after + after.slice(span.end);
+                    count++;
+                }
+                if (after === before) continue;
+                lines[index] = after;
+                changes.push({ path, line: index, before, after });
+            }
+            return lines.join('\n');
+        });
+        return { changes, count };
     }
 
     /** Puts a replaced run of lines back, finding it by what it was changed to. */
