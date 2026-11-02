@@ -5,6 +5,11 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **This Note in the sidebar keeps up when the sidebar was closed.** Close the right sidebar, open another note, and open the sidebar again: the Tasks tab there now shows the note you're on.
+
 ## [2.7.0] - 2026-11-01
 
 ### Added

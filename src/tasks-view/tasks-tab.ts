@@ -453,7 +453,12 @@ export class TasksTabView extends ItemView {
         // A time due today turns overdue once it has gone by, with nothing else changing.
         this.registerInterval(window.setInterval(() => this.onClockTick(), 30_000));
 
-        this.resizer = new ResizeObserver(() => this.applyWidth());
+        this.resizer = new ResizeObserver(() => {
+            this.applyWidth();
+            // Coming back into view (a sidebar expanding, say) with nothing
+            // making it the active tab still catches up on what changed.
+            if (this.dirty && this.contentEl.isShown()) this.render();
+        });
         this.resizer.observe(this.shell);
         this.resizer.observe(this.main);
 
