@@ -131,7 +131,7 @@ Collections gather related highlights from anywhere in the vault.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-dark.webp">
-    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-light.webp" alt="The Tasks tab on Today, with overdue tasks above today's">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/tasks-light.webp" alt="The Tasks tab on Today, with overdue tasks above today's, two of them at a set time, and two pinned notes with icons in the sidebar">
   </picture>
 </p>
 
@@ -149,12 +149,12 @@ Each list keeps its own grouping and sorting, and whether it shows completed tas
 
 ### Adding Tasks
 
-Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it, or a note name that doesn't exist and it offers to make the note.
+Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. Put a time after the day, like `fri 3pm`, and the task gets that time too. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it, or a note name that doesn't exist and it offers to make the note.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-dark.webp">
-    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-light.webp" alt="Quick add reading a date and a priority out of the task as it's typed">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-light.webp" alt="Quick add reading a day, a time and a priority out of the task as it's typed">
   </picture>
 </p>
 
@@ -164,10 +164,25 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 - Click a task to highlight it, then click again to open its card: the notes under it, its date, priority and status. Click the task's name in the card to rename it (or press **R**), and **Add subtask** adds subtasks right there
 - Right-click it (or press and hold on a phone) for everything else: move it under another heading, copy it as Markdown, open it beside the note, delete it
 - Drag tasks to reorder them, or onto another heading to move them there
-- In a note's list, drag a heading to move it with everything under it
-- Right-click a heading to rename it (links to it follow the new name), change its level, move it, copy a link to it, or delete it with or without its tasks
 - Undo any change from the message at the bottom, or with ⌘Z
 - ⌘K searches tasks, notes and commands, and **?** lists every keyboard shortcut
+
+### Headings
+
+A note's list groups its tasks under the note's own headings, and you can rearrange them from there without opening the note. Drag a heading to move it with everything under it, or right-click it (press and hold on a phone) for the rest:
+
+- **Rename heading** edits the name in place, and links to it in your other notes follow the new name
+- **Change level** picks anything from Heading 1 to Heading 6, and the smaller headings under it move along
+- **Move heading** puts it somewhere else in the note, picked from a list
+- **Add a task here**, **Open in note** and **Copy link** do what they say
+- **Delete heading, keep tasks** takes out the heading line and its tasks join the section above. **Delete heading and tasks** takes out the whole section. Undo brings either one back
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/headings-dark.webp">
+    <img src="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/headings-light.webp" alt="Right-clicking the Contractors heading in a note's list, with Rename heading, Change level, Move heading and the two ways to delete it">
+  </picture>
+</p>
 
 ### In the Sidebar
 
@@ -182,7 +197,7 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 
 ### What Counts as a Task
 
-Standard checkboxes, `- [ ]` and `- [x]`, plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. A time written right after that date, like `2026-10-30 15:00` or `2026-10-30 3pm`, is the task's time: it shows on the row, sorts the day, and turns red once it has gone by. Metadata written by the Tasks plugin is hidden by default.
+Standard checkboxes, `- [ ]` and `- [x]` (written with `*` or `+` just as well), plus in-progress `- [/]`, cancelled `- [-]` and question `- [?]`. Alternate checkboxes from themes like Minimal show up under their own names. A date anywhere on the line, in the format set under **Settings → Tasks → Due date format**, is the task's due date. A time written right after that date, like `2026-10-30 15:00` or `2026-10-30 3pm`, is the task's time: it shows on the row, sorts the day, and turns red once it has gone by. Metadata written by the Tasks plugin is hidden by default.
 
 ### Reminders
 
