@@ -5,6 +5,14 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-11-01
+
+### Added
+- **You can rename a heading right from the Tasks tab.** Right-click a heading (or press and hold on a phone), choose **Rename heading**, and type the new name where the old one was. Links to that heading in your other notes change to the new name too, and the notice tells you how many it updated.
+- **Headings can change level.** **Change level** in the same menu lets you pick anything from Heading 1 to Heading 6. Smaller headings under it move by the same amount, so the section keeps its shape.
+- **You can delete a heading two ways.** **Delete heading, keep tasks** takes out just the heading, and its tasks join the section above. **Delete heading and tasks** takes out the heading with everything under it. Either one can be undone from the notice or with ⌘Z.
+- **The heading menu has a few handy extras.** **Add a task here** puts a task under it, **Open in note** jumps to it, and **Copy link** gives you a link to it to paste anywhere.
+
 ## [2.6.0] - 2026-11-01
 
 ### Changed
