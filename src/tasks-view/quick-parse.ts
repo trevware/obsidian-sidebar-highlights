@@ -5,6 +5,9 @@
  * the date and priority, the way Todoist's Quick Add does, so the words that
  * were recognised can be shown highlighted and clicked to turn them back into
  * plain text. Kept free of Obsidian imports so it can be unit tested directly.
+ *
+ * Chinese is read alongside English, whatever language Obsidian is in:
+ * "明天下午3点给妈妈打电话 p2" is due tomorrow at 15:00 with priority 2.
  */
 
 import { addDays, addMonths, startOfWeek, weekday } from './dates';
@@ -132,6 +135,120 @@ const DATE_RULES: DateRule[] = [
     } }
 ];
 
+// ── Chinese ──
+
+const CN_DIGITS: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** A number in figures or Chinese numerals up to 99: "3", "两", "十", "十五", "二十三". */
+function cnNumber(text: string): number | undefined {
+    if (/^\d+$/.test(text)) return Number(text);
+    const tenAt = text.indexOf('十');
+    if (tenAt === -1) return text.length === 1 ? CN_DIGITS[text] : undefined;
+    if (tenAt > 1 || text.length - tenAt > 2) return undefined;
+    const tens = tenAt === 0 ? 1 : CN_DIGITS[text[0]];
+    const units = tenAt === text.length - 1 ? 0 : CN_DIGITS[text[tenAt + 1]];
+    return tens === undefined || units === undefined ? undefined : tens * 10 + units;
+}
+
+const CN_NUM = String.raw`(\d{1,3}|[零〇一二两三四五六七八九十]{1,3})`;
+const CN_WEEK = String.raw`(?:周|星期|礼拜)`;
+const CN_WEEKDAY = String.raw`([一二三四五六日天])`;
+const CN_WEEKDAYS: Record<string, number> = { 日: 0, 天: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6 };
+
+function cnUnit(unit: string): string {
+    if (unit === '天' || unit === '日') return 'd';
+    return unit.includes('月') ? 'm' : 'w';
+}
+
+/** A day of this month, or of next month once it has passed. */
+function dayOfMonth(today: string, day: number): string | undefined {
+    const [year, month] = today.split('-').map(Number);
+    const thisMonth = iso(year, month - 1, day);
+    if (thisMonth && thisMonth >= today) return thisMonth;
+    return month === 12 ? iso(year + 1, 0, day) : iso(year, month, day);
+}
+
+DATE_RULES.push(
+    { pattern: String.raw`(?:今天|今日|今晚|今早)`, resolve: (_m, today) => today },
+    { pattern: String.raw`(?:明天|明日|明晚|明早)`, resolve: (_m, today) => addDays(today, 1) },
+    { pattern: '后天', resolve: (_m, today) => addDays(today, 2) },
+    { pattern: '大后天', resolve: (_m, today) => addDays(today, 3) },
+    { pattern: String.raw`${CN_NUM}\s*(天|日|个?星期|个?礼拜|周|个月)\s*(?:之后|以后|后)`, resolve: (m, today) => {
+        const count = cnNumber(m[1]);
+        return count === undefined ? undefined : addUnit(today, count, cnUnit(m[2]));
+    } },
+    { pattern: String.raw`下\s*个?${CN_WEEK}`, resolve: (_m, today) => addDays(startOfWeek(today), 7) },
+    { pattern: String.raw`下\s*个?月`, resolve: (_m, today) => addMonths(today, 1) },
+    { pattern: String.raw`(?:本|这个?)?周末`, resolve: (_m, today) => {
+        const day = weekday(today);
+        return day === 6 || day === 0 ? today : nextWeekday(today, 6);
+    } },
+    { pattern: String.raw`下\s*个?${CN_WEEK}${CN_WEEKDAY}`, resolve: (m, today) => weekdayNextWeek(today, CN_WEEKDAYS[m[1]]) },
+    // This week's day, or next week's once it has gone by.
+    { pattern: String.raw`(?:本|这个?)${CN_WEEK}${CN_WEEKDAY}`, resolve: (m, today) => {
+        const day = addDays(startOfWeek(today), (CN_WEEKDAYS[m[1]] + 6) % 7);
+        return day >= today ? day : nextWeekday(today, CN_WEEKDAYS[m[1]]);
+    } },
+    // Not 每周五, "every Friday", which is no one day.
+    { pattern: String.raw`(?<!每)${CN_WEEK}${CN_WEEKDAY}`, resolve: (m, today) => nextWeekday(today, CN_WEEKDAYS[m[1]]) },
+    { pattern: String.raw`(?:(\d{4})\s*年\s*)?${CN_NUM}\s*月\s*${CN_NUM}\s*(?:日|号)`, resolve: (m, today) => {
+        const month = cnNumber(m[2]);
+        const day = cnNumber(m[3]);
+        if (month === undefined || day === undefined || month < 1 || month > 12) return undefined;
+        return dayMonth(today, month - 1, day, m[1] ? Number(m[1]) : undefined);
+    } },
+    // In figures only, and never a building, a line or a room: 3号楼, 2号线.
+    { pattern: String.raw`(\d{1,2})\s*(?:日|号)(?![楼线门室院号位栋层座床次])`, resolve: (m, today) => dayOfMonth(today, Number(m[1])) }
+);
+
+const CN_PERIOD = String.raw`(上午|早上|早晨|凌晨|中午|下午|傍晚|晚上)`;
+const CN_MINUTES = String.raw`(半|一刻|三刻|\d{1,2}(?:\s*分)?|[零〇一二三四五六七八九十]{1,3}\s*分)`;
+
+/**
+ * A Chinese time of day: 下午3点, 晚上8点半, 上午10点15分, 15点30. With no
+ * period said, 1 to 6 o'clock is the afternoon (few tasks are at 3am) and
+ * 7 to 12 is as written. `hint` is the part of day a 今晚 or 明早 just before
+ * it gave.
+ */
+function cnTime(m: RegExpExecArray, hint?: string): string | undefined {
+    let hour = cnNumber(m[2]);
+    const period = m[1] ?? hint;
+    const minutesText = m[3];
+    // 一点 on its own is "a little", as in 多喝一点水.
+    if (hour === undefined || hour > 24 || (m[2] === '一' && !period && !minutesText)) return undefined;
+    let minutes = 0;
+    if (minutesText === '半') minutes = 30;
+    else if (minutesText === '一刻') minutes = 15;
+    else if (minutesText === '三刻') minutes = 45;
+    else if (minutesText) {
+        const parsed = cnNumber(minutesText.replace(/\s*分$/u, ''));
+        if (parsed === undefined || parsed > 59) return undefined;
+        minutes = parsed;
+    }
+    if (period === '下午' || period === '傍晚' || period === '晚上') {
+        if (hour < 12) hour += 12;
+    } else if (period === '中午') {
+        if (hour < 11) hour += 12;
+    } else if (period === '凌晨') {
+        if (hour === 12) hour = 0;
+    } else if (!period && hour >= 1 && hour <= 6) {
+        hour += 12;
+    }
+    if (hour === 24) hour = 0;
+    return `${String(hour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/** Full-width letters, figures and colons, as a Chinese keyboard types them, read as their plain forms. One character for one, so every position still lines up. */
+function halfWidth(text: string): string {
+    return text.replace(/[\uFF01-\uFF5E]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0)).replace(/\u3000/gu, ' ');
+}
+
+const PRIORITY_RULES: Array<{ pattern: string; level: (m: RegExpExecArray) => 1 | 2 | 3 }> = [
+    { pattern: String.raw`p([123])`, level: (m) => Number(m[1]) as 1 | 2 | 3 },
+    { pattern: String.raw`优先级\s*([123一二三])`, level: (m) => (cnNumber(m[1]) ?? Number(m[1])) as 1 | 2 | 3 },
+    { pattern: String.raw`(高|中|低)\s*优先级`, level: (m) => ({ 高: 1, 中: 2, 低: 3 } as const)[m[1] as '高' | '中' | '低'] }
+];
+
 const AT = String.raw`(?:at|@)\s*`;
 // Never the tail of something with a colon in it: "3:5pm" is not 5pm.
 const NOT_AFTER_COLON = String.raw`(?<!:)`;
@@ -141,16 +258,20 @@ const NOT_AFTER_COLON = String.raw`(?<!:)`;
  * reads anywhere, as date words do. A bare colon time needs "at" in front of
  * it or a date phrase right before it, so a verse like "John 3:16" stays words.
  */
-const TIME_RULES: Array<{ pattern: string; afterDate?: boolean }> = [
+const TIME_RULES: Array<{ pattern: string; afterDate?: boolean; resolve?: (m: RegExpExecArray, hint?: string) => string | undefined }> = [
     { pattern: String.raw`(?:${AT})?${NOT_AFTER_COLON}(${MERIDIEM_SOURCE}|noon|midnight)` },
     { pattern: String.raw`${AT}(${COLON_SOURCE})` },
-    { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true }
+    { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true },
+    // Said with 点, so it reads anywhere, like a time with am or pm.
+    { pattern: String.raw`${CN_PERIOD}?\s*${CN_NUM}\s*[点时](?:\s*${CN_MINUTES})?`, resolve: cnTime }
 ];
 
 // Word edges that understand letters beyond ASCII, so "fri" inside "Friedrich"
-// or "tom" inside "tomato" is never read as a date.
-const EDGE_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
-const EDGE_AFTER = String.raw`(?![\p{L}\p{N}_])`;
+// or "tom" inside "tomato" is never read as a date. Chinese runs its words
+// together, so a Chinese character is an edge, and a phrase that starts or
+// ends with one needs no edge on that side: 明天给妈妈打电话, 今晚8点.
+const EDGE_BEFORE = String.raw`(?:(?=\p{sc=Han})|(?<![\p{L}\p{N}_](?<!\p{sc=Han})))`;
+const EDGE_AFTER = String.raw`(?:(?<=\p{sc=Han})|(?!(?!\p{sc=Han})[\p{L}\p{N}_]))`;
 
 function findAll(input: string, pattern: string): RegExpExecArray[] {
     const regex = new RegExp(`${EDGE_BEFORE}${pattern}${EDGE_AFTER}`, 'giu');
@@ -184,16 +305,21 @@ export interface QuickParseOptions {
 }
 
 export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet<string> = new Set(), options: QuickParseOptions = {}): QuickParse {
+    // Matched in plain forms; every token keeps the text as it was typed.
+    const scan = halfWidth(input);
+    const typed = (match: RegExpExecArray) => input.slice(match.index, match.index + match[0].length);
     const isIgnored = (text: string) => ignored.has(text.toLowerCase());
+    // Nothing but spaces, or nothing at all, from the end of one to the start of the other.
+    const touching = (first: { end: number }, second: { start: number }) => second.start >= first.end && /^\s*$/u.test(scan.slice(first.end, second.start));
 
     // Longest first at each position: "next fri" should beat "fri".
     const dateCandidates: Array<ParsedToken & { date: string }> = [];
     for (const rule of DATE_RULES) {
-        for (const match of findAll(input, rule.pattern)) {
-            if (isIgnored(match[0])) continue;
+        for (const match of findAll(scan, rule.pattern)) {
+            if (isIgnored(typed(match))) continue;
             const date = rule.resolve(match, today);
             if (!date) continue;
-            dateCandidates.push({ kind: 'date', start: match.index, end: match.index + match[0].length, text: match[0], date });
+            dateCandidates.push({ kind: 'date', start: match.index, end: match.index + match[0].length, text: typed(match), date });
         }
     }
     dateCandidates.sort((a, b) => (b.end - b.start) - (a.end - a.start) || b.start - a.start);
@@ -203,34 +329,40 @@ export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet
     }
     const dateToken = dateTokens.sort((a, b) => b.start - a.start)[0];
 
+    // 今晚 and 明早 say the part of the day for a time right after them.
+    const hint = dateToken && /晚$/u.test(dateToken.text) ? '晚上' : dateToken && /早$/u.test(dateToken.text) ? '早上' : undefined;
+
     // The last time wins, like the date.
     let timeToken: (ParsedToken & { time: string }) | undefined;
     for (const rule of TIME_RULES) {
-        for (const match of findAll(input, rule.pattern)) {
+        for (const match of findAll(scan, rule.pattern)) {
             const span = { start: match.index, end: match.index + match[0].length };
-            if (isIgnored(match[0]) || (dateToken && overlaps(dateToken, span))) continue;
-            const besideDate = !!dateToken && (/^\s+$/u.test(input.slice(dateToken.end, span.start)) || /^\s+$/u.test(input.slice(span.end, dateToken.start)));
-            if (rule.afterDate && !(dateToken && /^\s+$/u.test(input.slice(dateToken.end, span.start)))) continue;
+            if (isIgnored(typed(match)) || (dateToken && overlaps(dateToken, span))) continue;
+            const besideDate = !!dateToken && (touching(dateToken, span) || touching(span, dateToken));
+            if (rule.afterDate && !(dateToken && touching(dateToken, span))) continue;
             if (options.timesNeedADate && !besideDate) continue;
-            const time = parseTime(match[1]);
+            const time = rule.resolve ? rule.resolve(match, dateToken && touching(dateToken, span) ? hint : undefined) : parseTime(match[1]);
             if (!time) continue;
             if (!timeToken || span.start > timeToken.start || (span.start === timeToken.start && span.end > timeToken.end)) {
-                timeToken = { kind: 'time', ...span, text: match[0], time };
+                timeToken = { kind: 'time', ...span, text: typed(match), time };
             }
         }
     }
 
-    const priorityMatches = findAll(input, String.raw`p([123])`)
-        .filter(match => !isIgnored(match[0]))
-        .filter(match => ![dateToken, timeToken].some(token => token && overlaps(token, { start: match.index, end: match.index + match[0].length })));
-    const priorityMatch = priorityMatches[priorityMatches.length - 1];
+    // The last priority wins too.
+    let priorityToken: (ParsedToken & { level: 1 | 2 | 3 }) | undefined;
+    for (const rule of PRIORITY_RULES) {
+        for (const match of findAll(scan, rule.pattern)) {
+            const span = { start: match.index, end: match.index + match[0].length };
+            if (isIgnored(typed(match)) || [dateToken, timeToken].some(token => token && overlaps(token, span))) continue;
+            if (!priorityToken || span.start > priorityToken.start) priorityToken = { kind: 'priority', ...span, text: typed(match), level: rule.level(match) };
+        }
+    }
 
     const tokens: ParsedToken[] = [];
     if (dateToken) tokens.push({ kind: 'date', start: dateToken.start, end: dateToken.end, text: dateToken.text });
     if (timeToken) tokens.push({ kind: 'time', start: timeToken.start, end: timeToken.end, text: timeToken.text });
-    if (priorityMatch) {
-        tokens.push({ kind: 'priority', start: priorityMatch.index, end: priorityMatch.index + priorityMatch[0].length, text: priorityMatch[0] });
-    }
+    if (priorityToken) tokens.push({ kind: 'priority', start: priorityToken.start, end: priorityToken.end, text: priorityToken.text });
     tokens.sort((a, b) => a.start - b.start);
 
     let title = '';
@@ -246,7 +378,7 @@ export function parseQuickAdd(input: string, today: string, ignored: ReadonlySet
         title,
         date: dateToken?.date,
         time: timeToken?.time,
-        priority: priorityMatch ? (Number(priorityMatch[1]) as 1 | 2 | 3) : undefined,
+        priority: priorityToken?.level,
         tokens
     };
 }

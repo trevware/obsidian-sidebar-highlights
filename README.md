@@ -151,6 +151,8 @@ Each list keeps its own grouping and sorting, and whether it shows completed tas
 
 Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. Put a time after the day, like `fri 3pm`, and the task gets that time too. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it, or a note name that doesn't exist and it offers to make the note.
 
+Quick add reads Chinese too, with or without spaces: `明天下午3点给妈妈打电话 p2` is due tomorrow at 15:00 with priority 2, and it knows days like `周五`, `下周三`, `3天后` and `11月3日`, times like `晚上8点半`, and `高优先级` or `优先级1`.
+
 Notes go in the box under the task's name. Click it, or press **⇧↵** (or **↓**), and write whatever you'd put in the task's card: a line of context, a link, a few bullets. Enter carries a list on, Tab indents, and **⌘↵** adds the task with its notes tucked underneath.
 
 <p align="center">

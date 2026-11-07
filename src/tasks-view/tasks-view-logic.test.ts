@@ -204,6 +204,127 @@ describe('task-line', () => {
         expect(parsed.priority).toBe(1);
     });
 
+    describe('quick add in Chinese', () => {
+        const date = (text: string) => parseQuickAdd(text, TODAY).date;
+        const time = (text: string) => parseQuickAdd(text, TODAY).time;
+
+        it('reads days said in Chinese, with no spaces around them', () => {
+            const parsed = parseQuickAdd('明天给妈妈打电话', TODAY);
+            expect(parsed.title).toBe('给妈妈打电话');
+            expect(parsed.date).toBe('2026-10-26');
+            expect(parsed.tokens[0].text).toBe('明天');
+            expect(date('今天')).toBe(TODAY);
+            expect(date('后天交报告')).toBe('2026-10-27');
+            expect(date('大后天交报告')).toBe('2026-10-28');
+            expect(date('明晚吃饭')).toBe('2026-10-26');
+        });
+
+        it('reads weekdays, this week and next week', () => {
+            expect(date('给妈妈打电话周五')).toBe('2026-10-30');
+            expect(date('星期五开会')).toBe('2026-10-30');
+            expect(date('礼拜天去超市')).toBe('2026-11-01');
+            expect(date('下周三开会')).toBe('2026-10-28');
+            expect(date('下星期一开会')).toBe('2026-10-26');
+            expect(date('本周五')).toBe('2026-10-30');
+            expect(date('下周')).toBe('2026-10-26');
+            expect(date('周末大扫除')).toBe(TODAY);
+            expect(date('下个月')).toBe('2026-11-25');
+        });
+
+        it('reads a span from today, in figures or Chinese numerals', () => {
+            expect(date('3天后')).toBe('2026-10-28');
+            expect(date('两周后')).toBe('2026-11-08');
+            expect(date('一个月后')).toBe('2026-11-25');
+            expect(date('十天之后')).toBe('2026-11-04');
+        });
+
+        it('reads a day of the month', () => {
+            expect(date('11月3日交报告')).toBe('2026-11-03');
+            expect(date('11月3号交报告')).toBe('2026-11-03');
+            expect(date('2027年1月5日')).toBe('2027-01-05');
+            expect(date('3号交报告')).toBe('2026-11-03');
+            expect(date('30号交报告')).toBe('2026-10-30');
+        });
+
+        it('leaves words that only look like days or times alone', () => {
+            expect(date('每周五开会')).toBeUndefined();
+            expect(date('去3号楼')).toBeUndefined();
+            expect(date('坐2号线')).toBeUndefined();
+            expect(time('多喝一点水')).toBeUndefined();
+            expect(parseQuickAdd('多喝一点水', TODAY).title).toBe('多喝一点水');
+        });
+
+        it('reads a time typed right after the day', () => {
+            expect(parseQuickAdd('周五15:00开会', TODAY)).toMatchObject({ date: '2026-10-30', time: '15:00', title: '开会' });
+            expect(parseQuickAdd('明早6点跑步', TODAY)).toMatchObject({ date: '2026-10-26', time: '06:00', title: '跑步' });
+        });
+
+        it('reads times of day', () => {
+            const parsed = parseQuickAdd('明天下午3点开会', TODAY);
+            expect(parsed.title).toBe('开会');
+            expect(parsed.date).toBe('2026-10-26');
+            expect(parsed.time).toBe('15:00');
+            expect(time('晚上8点半')).toBe('20:30');
+            expect(time('上午10点15分')).toBe('10:15');
+            expect(time('中午12点')).toBe('12:00');
+            expect(time('中午1点')).toBe('13:00');
+            expect(time('凌晨3点')).toBe('03:00');
+            expect(time('15点30')).toBe('15:30');
+            expect(time('十点')).toBe('10:00');
+            expect(time('下午三点一刻')).toBe('15:15');
+        });
+
+        it('takes a bare 1 to 6 o\'clock as the afternoon, and 7 to 12 as written', () => {
+            expect(time('3点开会')).toBe('15:00');
+            expect(time('9点开会')).toBe('09:00');
+        });
+
+        it('reads tonight with its time', () => {
+            const parsed = parseQuickAdd('今晚8点给妈妈打电话', TODAY);
+            expect(parsed.date).toBe(TODAY);
+            expect(parsed.time).toBe('20:00');
+            expect(parsed.title).toBe('给妈妈打电话');
+        });
+
+        it('reads priorities right after Chinese words, and in Chinese', () => {
+            const parsed = parseQuickAdd('给妈妈打电话p2', TODAY);
+            expect(parsed.priority).toBe(2);
+            expect(parsed.title).toBe('给妈妈打电话');
+            expect(parseQuickAdd('交报告 P1', TODAY).priority).toBe(1);
+            expect(parseQuickAdd('交报告优先级3', TODAY).priority).toBe(3);
+            expect(parseQuickAdd('交报告 高优先级', TODAY).priority).toBe(1);
+            expect(parseQuickAdd('交报告 低优先级', TODAY).priority).toBe(3);
+        });
+
+        it('reads full-width letters and figures from a Chinese keyboard', () => {
+            const parsed = parseQuickAdd('明天 １５：３０ 开会 ｐ２', TODAY);
+            expect(parsed.date).toBe('2026-10-26');
+            expect(parsed.time).toBe('15:30');
+            expect(parsed.priority).toBe(2);
+            expect(parsed.title).toBe('开会');
+            expect(parsed.tokens.map(token => token.text)).toEqual(['明天', '１５：３０', 'ｐ２']);
+        });
+
+        it('mixes with English words', () => {
+            const parsed = parseQuickAdd('给妈妈打电话fri 3pm', TODAY);
+            expect(parsed.date).toBe('2026-10-30');
+            expect(parsed.time).toBe('15:00');
+            expect(parsed.title).toBe('给妈妈打电话');
+        });
+
+        it('reads Chinese in the date picker', () => {
+            expect(parseDateQuery('周五', TODAY)).toBe('2026-10-30');
+            expect(parseDateQuery('3天后', TODAY)).toBe('2026-10-28');
+            expect(parseDateTimeQuery('周五下午3点', TODAY)).toEqual({ date: '2026-10-30', time: '15:00' });
+            expect(parseDateTimeQuery('下午3点', TODAY)).toEqual({ date: undefined, time: '15:00' });
+        });
+
+        it('keeps a pasted line\'s time beside its day with no space between', () => {
+            const parsed = parseQuickAdd('明天下午3点开会', TODAY, new Set(), { timesNeedADate: true });
+            expect(parsed.time).toBe('15:00');
+        });
+    });
+
     it('writes notes straight under a task that was just added', () => {
         const lines = ['## Today', '- [ ] Call the dentist', '', '## Later'];
         expect(addNotes(lines, 1, 'Ask about the crown\n- bring the card')).toEqual(['    Ask about the crown', '    - bring the card']);
