@@ -53,7 +53,7 @@ import {
 import type { AddTarget, DisplayOptions, GroupLabels, GroupMode, ListRef, NoteInfo, SmartListId, SortMode, TaskGroup } from './task-views';
 import { editableTitle, formatTaskLine, notesText, parseTaskLine, setDueInText, withState, withText, withTitle } from './task-line';
 import { titleCase, titleCaseTyped } from './capitalize';
-import { parseDateTimeQuery } from './quick-parse';
+import { parseDateTimeQuery, setSlashDayFirst } from './quick-parse';
 import { rank } from './fuzzy';
 import { TaskWriter } from './task-writer';
 import type { LineChange, RangeChange, TextSpan } from './task-writer';
@@ -513,6 +513,7 @@ export class TasksTabView extends ItemView {
     }
 
     openQuickAdd(prefill: QuickAddPrefill = {}): void {
+        this.syncDateOrder();
         this.palette.close();
         this.closeMenu();
         this.quickAdd.open(prefill);
@@ -1872,8 +1873,17 @@ export class TasksTabView extends ItemView {
         if (row) this.editTitle(row, task);
     }
 
+    /** A slash date like 3/4 reads the way the vault writes its dates: day first for DD/MM/YYYY. */
+    private syncDateOrder(): void {
+        const format = (this.plugin.settings.taskDateFormat || 'YYYY-MM-DD').toUpperCase();
+        const day = format.indexOf('D');
+        const month = format.indexOf('M');
+        setSlashDayFirst(day !== -1 && month !== -1 && day < month);
+    }
+
     /** Opens the task's card with a field in it for typing subtasks. */
     private addSubtask(task: Task): void {
+        this.syncDateOrder();
         const key = taskKey(task);
         if (this.subtaskField?.key === key) {
             this.subtaskField.focus();
@@ -2906,6 +2916,7 @@ export class TasksTabView extends ItemView {
     // ── Palette ─────────────────────────────────────────────────────────
 
     private openPalette(stage?: PaletteStage): void {
+        this.syncDateOrder();
         this.closeMenu();
         const sections = {
             selection: t('tasksTab.palette.selection'),

@@ -93,6 +93,48 @@ const UNIT = String.raw`(d|days?|w|wks?|weeks?|m|mos?|months?)`;
 const WEEKDAY_WORD = String.raw`(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues?|wed|thu(?:rs?)?|fri|sat)`;
 const MONTH_WORD = String.raw`(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)`;
 
+/** The last day of this month. */
+function endOfMonth(today: string): string {
+    const [year, month] = today.split('-').map(Number);
+    return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/** The next Monday to Friday after today. */
+function nextWorkday(today: string): string {
+    let day = addDays(today, 1);
+    while (weekday(day) === 0 || weekday(day) === 6) day = addDays(day, 1);
+    return day;
+}
+
+/** A day of this month, or of next month once it has passed. */
+function dayOfMonth(today: string, day: number): string | undefined {
+    const [year, month] = today.split('-').map(Number);
+    const thisMonth = iso(year, month - 1, day);
+    if (thisMonth && thisMonth >= today) return thisMonth;
+    return month === 12 ? iso(year + 1, 0, day) : iso(year, month, day);
+}
+
+/** Early, mid and late in a month: the 5th, the 15th and the 25th. Todoist puts "mid January" on the 15th. */
+const PART_OF_MONTH: Record<string, number> = { early: 5, mid: 15, late: 25, 上旬: 5, 中旬: 15, 下旬: 25 };
+
+let slashDayFirst = false;
+
+/** Whether a slash date both ways could read, like 3/4, is day first (4 March). Follows the vault's due date format. */
+export function setSlashDayFirst(dayFirst: boolean): void {
+    slashDayFirst = dayFirst;
+}
+
+/** 1/27, 27/1, 3/12/2027: whichever way the numbers allow, else the vault's order. */
+function slashDate(m: RegExpExecArray, today: string): string | undefined {
+    const first = Number(m[1]);
+    const second = Number(m[2]);
+    const year = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : undefined;
+    const dayFirst = first > 12 ? true : second > 12 ? false : slashDayFirst;
+    const [day, month] = dayFirst ? [first, second] : [second, first];
+    if (month < 1 || month > 12 || day < 1) return undefined;
+    return dayMonth(today, month - 1, day, year);
+}
+
 function addUnit(today: string, count: number, unit: string): string {
     if (unit.startsWith('d')) return addDays(today, count);
     if (unit.startsWith('w')) return addDays(today, count * 7);
@@ -132,7 +174,24 @@ const DATE_RULES: DateRule[] = [
     { pattern: String.raw`(\d{1,2})(?:st|nd|rd|th)?\s+${MONTH_WORD}(?:\s+(\d{4}))?`, resolve: (m, today) => {
         const month = monthIndex(m[2]);
         return month === undefined ? undefined : dayMonth(today, month, Number(m[1]), m[3] ? Number(m[3]) : undefined);
-    } }
+    } },
+    { pattern: 'someday', resolve: (_m, today) => addMonths(today, 2) },
+    { pattern: String.raw`(early|mid|late)[\s-]+${MONTH_WORD}`, resolve: (m, today) => {
+        const month = monthIndex(m[2]);
+        return month === undefined ? undefined : dayMonth(today, month, PART_OF_MONTH[m[1].toLowerCase()]);
+    } },
+    { pattern: String.raw`mid[\s-]?month`, resolve: (_m, today) => dayOfMonth(today, 15) },
+    { pattern: String.raw`(?:eom|end\s+of\s+(?:the\s+)?month)`, resolve: (_m, today) => endOfMonth(today) },
+    // Next week's Saturday, as "next fri" is next week's Friday.
+    { pattern: String.raw`next\s+weekend`, resolve: (_m, today) => addDays(startOfWeek(today), 12) },
+    { pattern: String.raw`next\s+(?:work|business)\s*day`, resolve: (_m, today) => nextWorkday(today) },
+    { pattern: String.raw`\+\s*(\d{1,3})\s*${UNIT}`, resolve: (m, today) => addUnit(today, Number(m[1]), m[2].toLowerCase()) },
+    { pattern: 'tonight', resolve: (_m, today) => today },
+    // "this" only as the day of "this evening", whose time the evening gives.
+    { pattern: String.raw`this(?=\s+(?:morning|afternoon|evening))`, resolve: (_m, today) => today },
+    // Never inside a path like docs/1/2.
+    { pattern: String.raw`(?<![\d/])(\d{4})/(\d{1,2})/(\d{1,2})(?![\d/])`, resolve: (m) => iso(Number(m[1]), Number(m[2]) - 1, Number(m[3])) },
+    { pattern: String.raw`(?<![\d/])(\d{1,2})/(\d{1,2})(?:/(\d{4}|\d{2}))?(?![\d/])`, resolve: slashDate }
 ];
 
 // ── Chinese ──
@@ -160,14 +219,6 @@ function cnUnit(unit: string): string {
     return unit.includes('月') ? 'm' : 'w';
 }
 
-/** A day of this month, or of next month once it has passed. */
-function dayOfMonth(today: string, day: number): string | undefined {
-    const [year, month] = today.split('-').map(Number);
-    const thisMonth = iso(year, month - 1, day);
-    if (thisMonth && thisMonth >= today) return thisMonth;
-    return month === 12 ? iso(year + 1, 0, day) : iso(year, month, day);
-}
-
 DATE_RULES.push(
     { pattern: String.raw`(?:今天|今日|今晚|今早)`, resolve: (_m, today) => today },
     { pattern: String.raw`(?:明天|明日|明晚|明早)`, resolve: (_m, today) => addDays(today, 1) },
@@ -181,14 +232,23 @@ DATE_RULES.push(
         const count = cnNumber(m[1]);
         return count === undefined ? undefined : addUnit(today, count, cnUnit(m[2]));
     } },
-    { pattern: String.raw`(?:月底|月末)`, resolve: (_m, today) => {
+    { pattern: String.raw`(?:月底|月末)`, resolve: (_m, today) => endOfMonth(today) },
+    { pattern: String.raw`下\s*个?工作日`, resolve: (_m, today) => nextWorkday(today) },
+    { pattern: String.raw`(?:某天|某一天|改天)`, resolve: (_m, today) => addMonths(today, 2) },
+    { pattern: String.raw`(?:${CN_NUM}\s*月|(本|这个?|下个?)\s*月)\s*(上旬|中旬|下旬)`, resolve: (m, today) => {
+        const day = PART_OF_MONTH[m[3]];
         const [year, month] = today.split('-').map(Number);
-        return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+        if (m[1]) {
+            const named = cnNumber(m[1]);
+            return named === undefined || named < 1 || named > 12 ? undefined : dayMonth(today, named - 1, day);
+        }
+        if (m[2].startsWith('下')) return month === 12 ? iso(year + 1, 0, day) : iso(year, month, day);
+        return iso(year, month - 1, day);
     } },
-    { pattern: String.raw`下\s*个?工作日`, resolve: (_m, today) => {
-        let day = addDays(today, 1);
-        while (weekday(day) === 0 || weekday(day) === 6) day = addDays(day, 1);
-        return day;
+    { pattern: String.raw`(?:${CN_NUM}\s*)?月中(?!旬)`, resolve: (m, today) => {
+        if (!m[1]) return dayOfMonth(today, 15);
+        const named = cnNumber(m[1]);
+        return named === undefined || named < 1 || named > 12 ? undefined : dayMonth(today, named - 1, 15);
     } },
     // Next week's Saturday, weeks starting on Monday as they do in China.
     { pattern: String.raw`下\s*个?周末`, resolve: (_m, today) => addDays(startOfWeek(today), 12) },
@@ -218,6 +278,9 @@ DATE_RULES.push(
 
 const CN_PERIOD = String.raw`(上午|早上|早晨|凌晨|中午|下午|傍晚|晚上)`;
 const CN_MINUTES = String.raw`(半|一刻|三刻|\d{1,2}(?:\s*分)?|[零〇一二三四五六七八九十]{1,3}\s*分)`;
+
+/** A part of the day in English, at the same times as in Chinese. */
+const EN_PARTS_OF_DAY: Record<string, string> = { morning: '09:00', afternoon: '15:00', evening: '19:00', night: '22:00' };
 
 /**
  * A part of the day on its own, right after a day: 明天晚上, 周五下午. The
@@ -288,6 +351,9 @@ const TIME_RULES: Array<{ pattern: string; afterDate?: boolean; resolve?: (m: Re
     { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true },
     // Said with 点, so it reads anywhere, like a time with am or pm.
     { pattern: String.raw`(?:@\s*)?${CN_PERIOD}?\s*${CN_NUM}\s*[点时](?:\s*${CN_MINUTES})?`, resolve: (m, hint) => cnTime(m, hint) },
+    { pattern: String.raw`in\s+the\s+(morning|afternoon|evening)`, resolve: (m) => EN_PARTS_OF_DAY[m[1].toLowerCase()] },
+    // Only beside a day, so "good morning" stays words.
+    { pattern: String.raw`(morning|afternoon|evening|night)`, afterDate: true, resolve: (m) => EN_PARTS_OF_DAY[m[1].toLowerCase()] },
     // Only beside a day, so 买下午茶 stays words.
     { pattern: String.raw`(早上|早晨|上午|中午|下午|傍晚|晚上|夜间|夜里)`, afterDate: true, resolve: (m) => CN_PARTS_OF_DAY[m[1]] }
 ];

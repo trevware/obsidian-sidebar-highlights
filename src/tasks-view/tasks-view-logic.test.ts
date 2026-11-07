@@ -2,7 +2,7 @@ import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, shortDate, sta
 import { addNotes, buildTaskLine, contextRange, dateTimeText, editableTitle, formatTaskLine, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
-import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
+import { parseDateQuery, parseDateTimeQuery, parseQuickAdd, setSlashDayFirst } from './quick-parse';
 import { buildGroups, completedLast, DEFAULT_DISPLAY, followNote, listCounts, listDefaults, outsideSidebar, railAreas, movePin, railPinned, renamedIcons, renamedPins, sameList, togglePin, tasksForList, upcomingBucket } from './task-views';
 import type { GroupLabels, NoteInfo } from './task-views';
 import type { Task } from '../../main';
@@ -202,6 +202,76 @@ describe('task-line', () => {
         expect(parsed.title).toBe('看牙医');
         expect(parsed.date).toBe('2026-10-30');
         expect(parsed.priority).toBe(1);
+    });
+
+    describe('quick add\'s rarer dates, in English and Chinese', () => {
+        const date = (text: string) => parseQuickAdd(text, TODAY).date;
+        const time = (text: string) => parseQuickAdd(text, TODAY).time;
+        afterEach(() => setSlashDayFirst(false));
+
+        it('puts someday two months out, as Todoist does', () => {
+            expect(parseQuickAdd('Read Dune someday', TODAY)).toMatchObject({ date: '2026-12-25', title: 'Read Dune' });
+            expect(parseQuickAdd('某天读完这本书', TODAY)).toMatchObject({ date: '2026-12-25', title: '读完这本书' });
+            expect(date('改天吃饭')).toBe('2026-12-25');
+        });
+
+        it('reads early, mid and late in a month', () => {
+            expect(date('mid jan')).toBe('2027-01-15');
+            expect(date('mid-november')).toBe('2026-11-15');
+            expect(date('early dec')).toBe('2026-12-05');
+            expect(date('late nov')).toBe('2026-11-25');
+            expect(date('1月中旬')).toBe('2027-01-15');
+            expect(date('11月上旬')).toBe('2026-11-05');
+            expect(date('11月下旬')).toBe('2026-11-25');
+            expect(date('下个月中旬')).toBe('2026-11-15');
+            expect(date('本月下旬')).toBe('2026-10-25');
+        });
+
+        it('reads the middle of this month, or next once it has gone by', () => {
+            expect(date('mid month')).toBe('2026-11-15');
+            expect(date('mid-month')).toBe('2026-11-15');
+            expect(date('月中')).toBe('2026-11-15');
+            expect(date('3月中')).toBe('2027-03-15');
+        });
+
+        it('reads slash dates, month first unless the numbers or the date format say otherwise', () => {
+            expect(date('1/27')).toBe('2027-01-27');
+            expect(date('12/3')).toBe('2026-12-03');
+            expect(date('27/1')).toBe('2027-01-27');
+            expect(date('3/12/2027')).toBe('2027-03-12');
+            expect(date('3/12/27')).toBe('2027-03-12');
+            expect(date('2027/1/5')).toBe('2027-01-05');
+            expect(parseQuickAdd('1/27交报告', TODAY)).toMatchObject({ date: '2027-01-27', title: '交报告' });
+            setSlashDayFirst(true);
+            expect(date('3/12')).toBe('2026-12-03');
+            expect(date('12/3')).toBe('2027-03-12');
+        });
+
+        it('leaves slashes in paths and impossible dates alone', () => {
+            expect(date('fix docs/1/2')).toBeUndefined();
+            expect(date('13/13')).toBeUndefined();
+            expect(date('2/30')).toBeUndefined();
+        });
+
+        it('gives English what Chinese reads: end of month, next weekend, next workday, +5 days', () => {
+            expect(date('end of month')).toBe('2026-10-31');
+            expect(date('eom')).toBe('2026-10-31');
+            expect(date('next weekend')).toBe('2026-10-31');
+            expect(date('next workday')).toBe('2026-10-26');
+            expect(date('next business day')).toBe('2026-10-26');
+            expect(date('+5 days')).toBe('2026-10-30');
+            expect(date('+2w')).toBe('2026-11-08');
+        });
+
+        it('reads parts of the day in English, as in Chinese', () => {
+            expect(parseQuickAdd('Run tomorrow morning', TODAY)).toMatchObject({ date: '2026-10-26', time: '09:00', title: 'Run' });
+            expect(time('fri afternoon')).toBe('15:00');
+            expect(time('fri evening')).toBe('19:00');
+            expect(time('tom night')).toBe('22:00');
+            expect(parseQuickAdd('Call mum this evening', TODAY)).toMatchObject({ date: TODAY, time: '19:00', title: 'Call mum' });
+            expect(time('Read in the evening')).toBe('19:00');
+            expect(parseQuickAdd('Good morning email', TODAY)).toMatchObject({ time: undefined, title: 'Good morning email' });
+        });
     });
 
     describe('quick add in Chinese', () => {

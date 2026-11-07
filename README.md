@@ -153,6 +153,8 @@ Press **Q**, or the **+** button, and type it the way you'd say it. `Call the de
 
 Quick add reads Chinese too, with or without spaces: `明天下午3点给妈妈打电话 p2` is due tomorrow at 15:00 with priority 2, and it knows days like `周五`, `下周三`, `3天后`, `月底` and `11月3日`, times like `晚上8点半` or just `明天晚上`, and `高优先级` or `优先级1`.
 
+A few rarer ways work in both languages: `someday` (某天) is two months out, `mid jan` (1月中旬) is the 15th, `end of month` (月底), `next weekend` (下个周末), `+5 days` (+5天), `tomorrow morning` (明天早上), and slash dates like `1/27`. A slash date that could go either way, like `3/4`, follows your due date format.
+
 Notes go in the box under the task's name. Click it, or press **⇧↵** (or **↓**), and write whatever you'd put in the task's card: a line of context, a link, a few bullets. Enter carries a list on, Tab indents, and **⌘↵** adds the task with its notes tucked underneath.
 
 <p align="center">

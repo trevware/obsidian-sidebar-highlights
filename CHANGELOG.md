@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **The Tasks tab speaks Chinese.** Set Obsidian to Chinese and everything in the Tasks tab follows: the lists, menus, quick add, search, notices and keyboard shortcuts. Dates read the Chinese way too, like 11月7日 星期六.
 - **Quick add understands Chinese dates, times and priorities.** Type `明天下午3点给妈妈打电话 p2` and the task is due tomorrow at 15:00 with priority 2, no spaces needed. Days like 周五, 下周三, 3天后, 月底 and 11月3日 work, and so do times like 晚上8点半 or just 明天晚上, and priorities like 高优先级. The date picker reads them too, whatever language Obsidian is in.
+- **Quick add knows a few more ways to say a date, in English and Chinese.** `someday` (某天) puts a task two months out, `mid jan` (1月中旬) lands on the 15th, with `early` and `late` (上旬, 下旬) on the 5th and 25th, and slash dates like `1/27` work. A slash date that could go either way, like `3/4`, follows your due date format. English also picks up `end of month`, `next weekend`, `next workday`, `+5 days` and parts of the day like `tomorrow morning` or `fri evening`.
 
 ## [2.8.0] - 2026-11-07
 
