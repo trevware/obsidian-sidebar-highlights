@@ -182,6 +182,7 @@ export interface CommentPluginSettings {
     taskTimeFormat: TimeFormat; // How times are written into tasks and shown in the Tasks tab; either form is read
     hideTasksPluginMetadata: boolean; // Hide Tasks plugin scheduling metadata from displayed task text
     capitalizeTasks: boolean; // Start tasks added or renamed in the Tasks tab with a capital letter
+    quickAddPreview: boolean; // Quick add shows the Markdown line it will write
     pinnedNotes: string[]; // Notes pinned to the top of the Tasks tab's sidebar, in the order they were pinned
     noteIcons: Record<string, string>; // A Lucide icon chosen for a note in the Tasks tab, by the note's path
     taskReminders: boolean; // Show a reminder at a task's time while Obsidian is open
@@ -250,6 +251,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     taskTimeFormat: 'HH:mm', // 24-hour times by default
     hideTasksPluginMetadata: true, // Hide Tasks plugin metadata (dates, recurrence, priority) from task text
     capitalizeTasks: false,
+    quickAddPreview: true, // Quick add shows the Markdown it will write by default
     pinnedNotes: [], // Nothing pinned by default
     noteIcons: {}, // Notes show the page icon by default
     taskReminders: true, // Tasks with a time remind you by default
@@ -3828,6 +3830,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 items: [
                     { ...this.label('settings.tasks.hideTasksPluginMetadata'), control: { type: 'toggle', key: 'hideTasksPluginMetadata' } },
                     { ...this.label('settings.tasks.capitalizeTasks'), control: { type: 'toggle', key: 'capitalizeTasks' } },
+                    { ...this.label('settings.tasks.quickAddPreview'), control: { type: 'toggle', key: 'quickAddPreview' } },
                     {
                         ...this.label('settings.tasks.taskDateFormat'),
                         control: { type: 'text', key: 'taskDateFormat', placeholder: t('settings.tasks.taskDateFormat.placeholder') },

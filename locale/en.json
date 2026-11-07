@@ -195,6 +195,10 @@
         "name": "Capitalize tasks",
         "desc": "Write each task you add or rename in the Tasks tab in Title Case, as you type: every word starts with a capital, except small words like a, the, and, or to. Links, tags and code are left as written."
       },
+      "quickAddPreview": {
+        "name": "Show Markdown in quick add",
+        "desc": "Show the line quick add will write into your note, with its notes, under the task as you type it. Turn it off for a smaller panel."
+      },
       "taskDateFormat": {
         "name": "Due date format",
         "desc": "Date format for parsing due dates in tasks (e.g., YYYY-MM-DD, MM/DD/YYYY). Due dates matching this format will be displayed as badges.",

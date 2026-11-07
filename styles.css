@@ -3682,6 +3682,11 @@
     margin-top: 12px;
 }
 
+/* With no Markdown shown, the chips keep the preview's gap above the hints. */
+.sh-quickadd.no-preview .sh-quickadd-chips {
+    margin-bottom: 12px;
+}
+
 .sh-quickadd-preview {
     margin: 12px 0 10px;
     padding: 9px 12px;

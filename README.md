@@ -238,7 +238,7 @@ Everything lives under **Settings → Sidebar Highlights and Tasks**.
 - **Detection**: whether HTML comments and adjacent native comments are picked up
 - **Filters**: skip Excalidraw files, or include and exclude specific files and folders from scanning
 - **Display**: note titles, timestamps, date format, and a minimum character count to keep stray `==` out of the sidebar
-- **Tasks**: the date and time formats your tasks use, whether tasks start with a capital (**Capitalize tasks**), and whether Tasks plugin metadata is hidden
+- **Tasks**: the date and time formats your tasks use, whether tasks start with a capital (**Capitalize tasks**), whether quick add shows the Markdown it will write (**Show Markdown in quick add**), and whether Tasks plugin metadata is hidden
 - **Reminders**: whether tasks with a time remind you, and how long before
 - **Power-Up** and **Calendar**: your license key, the calendar you've connected, and how events are made
 - **Typography** and **Styling**: font sizes and weights per element

@@ -50,6 +50,8 @@ export interface QuickAddHost {
     submit: (lines: string[], destination: Destination, notes?: string) => Promise<boolean>;
     /** Whether tasks are written in Title Case. */
     capitalize: () => boolean;
+    /** Whether the panel shows the Markdown it will write; on when left out. */
+    showPreview?: () => boolean;
     onClose: () => void;
 }
 
@@ -183,7 +185,8 @@ export class QuickAdd {
         notes.addEventListener('keydown', (event) => this.handleNotesKey(event, notes));
 
         this.chips = this.panel.createDiv({ cls: 'sh-quickadd-chips' });
-        this.preview = this.panel.createDiv({ cls: 'sh-quickadd-preview' });
+        if (this.host.showPreview?.() === false) this.panel.addClass('no-preview');
+        else this.preview = this.panel.createDiv({ cls: 'sh-quickadd-preview' });
 
         const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
         this.foot = foot;

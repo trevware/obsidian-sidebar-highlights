@@ -416,6 +416,27 @@ describe('quick add from the keyboard', () => {
     });
 });
 
+describe('the Markdown preview', () => {
+    it('shows the line it will write by default', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toBe('- [ ] Call the dentist');
+    });
+
+    it('leaves the Markdown out when the setting is off, and still adds the task', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit, { showPreview: () => false });
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        expect(container.querySelector('.sh-quickadd-preview')).toBeNull();
+        expect(container.querySelector('.sh-quickadd')?.classList.contains('no-preview')).toBe(true);
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' });
+    });
+});
+
 describe('notes in quick add', () => {
     const notesBox = (container: HTMLElement) => container.querySelector('.sh-quickadd-notes') as HTMLTextAreaElement;
     const typeNotes = (container: HTMLElement, text: string) => {

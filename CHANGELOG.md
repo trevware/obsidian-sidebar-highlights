@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **You can write a task's notes while you add it.** Quick add has a notes box under the task's name now. Click it or press ⇧↵, type what you'd put in the task's card, and press ⌘↵: the task lands with its notes tucked underneath, so there's no opening the card afterwards. Undo takes both away together.
+- **You can hide the Markdown in quick add.** Turn off **Show Markdown in quick add** in Settings → Sidebar Highlights and Tasks → Tasks, and the panel drops the line it would write, for a smaller, quieter quick add.
 
 ### Fixed
 - **This Note in the sidebar keeps up when the sidebar was closed.** Close the right sidebar, open another note, and open the sidebar again: the Tasks tab there now shows the note you're on.

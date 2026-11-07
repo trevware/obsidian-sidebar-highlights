@@ -342,6 +342,7 @@ export class TasksTabView extends ItemView {
             chooseDestination: (done, current) => this.pickDestination(done, current),
             submit: (lines, destination, notes) => this.addLines(lines, destination, notes),
             capitalize: () => this.plugin.settings.capitalizeTasks,
+            showPreview: () => this.plugin.settings.quickAddPreview,
             onClose: () => this.focusList()
         });
         this.newNote = new NewNotePanel(this.main, {
