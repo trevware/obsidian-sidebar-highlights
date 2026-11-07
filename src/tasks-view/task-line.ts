@@ -326,3 +326,14 @@ export function notesLines(lines: string[], index: number, markdown: string): st
     return text.split('\n').map(line => (line.trim() === '' ? (prefix ? prefix.trimEnd() : '') : `${prefix}${indent}${line}`));
 }
 
+/**
+ * Writes notes under a task that has none yet (one just added), straight
+ * after its line at `index`. Returns the lines written, which is none for
+ * notes that are only blank.
+ */
+export function addNotes(lines: string[], index: number, markdown: string): string[] {
+    const added = notesLines(lines, index, markdown);
+    lines.splice(index + 1, 0, ...added);
+    return added;
+}
+

@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { Task } from '../../main';
-import { contextRange, insertionLine, locateTaskLine, notesLines, subtaskLines, taskBlockEnd } from './task-line';
+import { addNotes, contextRange, insertionLine, locateTaskLine, notesLines, subtaskLines, taskBlockEnd } from './task-line';
 import { addUnderNewHeading, moveHeading, moveTasks } from './task-move';
 import type { HeadingRef, HeadingTarget, MoveTarget } from './task-move';
 import type { HeadingEdit } from './heading-edit';
@@ -145,29 +145,32 @@ export class TaskWriter {
 
     /**
      * Add lines to a note at the end of a heading's section, or at the end of
-     * the note. Returns the line number of the first one, or -1 when the note
-     * is missing.
+     * the note, with any notes written under the first. Returns where they
+     * went and every line written, or null when the note is missing.
      */
-    async insert(path: string, heading: string | undefined, newLines: readonly string[], headingLine?: number): Promise<number> {
+    async insert(path: string, heading: string | undefined, newLines: readonly string[], headingLine?: number, notes?: string): Promise<{ at: number; lines: string[] } | null> {
         const file = this.file(path);
-        if (!file || newLines.length === 0) return -1;
+        if (!file || newLines.length === 0) return null;
 
-        let at = -1;
+        let placed: { at: number; lines: string[] } | null = null;
         await this.app.vault.process(file, (data) => {
             const lines = data.length === 0 ? [] : data.split('\n');
-            at = insertionLine(lines, heading, headingLine);
+            const at = insertionLine(lines, heading, headingLine);
             lines.splice(at, 0, ...newLines);
+            const written = [...newLines];
+            if (notes) written.splice(1, 0, ...addNotes(lines, at, notes));
+            placed = { at, lines: written };
             return lines.join('\n');
         });
-        return at;
+        return placed;
     }
 
     /**
-     * Add lines as subtasks of a task, after its notes and its last subtask.
-     * Returns where they went and the lines as written, or null when the note
-     * or the task is gone.
+     * Add lines as subtasks of a task, after its notes and its last subtask,
+     * with any notes written under the first. Returns where they went and the
+     * lines as written, or null when the note or the task is gone.
      */
-    async insertUnder(path: string, parent: { line: number; text: string }, newLines: readonly string[]): Promise<{ at: number; lines: string[] } | null> {
+    async insertUnder(path: string, parent: { line: number; text: string }, newLines: readonly string[], notes?: string): Promise<{ at: number; lines: string[] } | null> {
         const file = this.file(path);
         if (!file || newLines.length === 0) return null;
 
@@ -175,9 +178,11 @@ export class TaskWriter {
         await this.app.vault.process(file, (data) => {
             const lines = data.split('\n');
             const index = locateTaskLine(lines, parent.line, parent.text);
-            placed = index === -1 ? null : subtaskLines(lines, index, newLines);
-            if (!placed) return data;
-            lines.splice(placed.at, 0, ...placed.lines);
+            const subtasks = index === -1 ? null : subtaskLines(lines, index, newLines);
+            if (!subtasks) return data;
+            lines.splice(subtasks.at, 0, ...subtasks.lines);
+            if (notes) subtasks.lines.splice(1, 0, ...addNotes(lines, subtasks.at, notes));
+            placed = subtasks;
             return lines.join('\n');
         });
         return placed;
@@ -330,16 +335,18 @@ export class TaskWriter {
 
     /**
      * Adds lines under a new heading at the top or bottom of a note, or under
-     * the heading of that name when the note has one by now. Returns the run
+     * the heading of that name when the note has one by now, with any notes
+     * written under the first. Returns the run
      * of lines added (for undo) and the line of the first new one, or null
      * when the note is missing.
      */
-    async insertUnderNewHeading(path: string, heading: string, level: number, where: 'top' | 'bottom', newLines: readonly string[]): Promise<{ at: number; added: string[]; first: number } | null> {
+    async insertUnderNewHeading(path: string, heading: string, level: number, where: 'top' | 'bottom', newLines: readonly string[], notes?: string): Promise<{ at: number; added: string[]; first: number } | null> {
         const file = this.file(path);
         if (!file || newLines.length === 0) return null;
         let placed: { at: number; added: string[]; first: number } | null = null;
         await this.app.vault.process(file, (data) => {
             const result = addUnderNewHeading(data.length === 0 ? [] : data.split('\n'), heading, level, where, newLines);
+            if (notes) result.added.splice(result.first - result.at + 1, 0, ...addNotes(result.lines, result.first, notes));
             placed = { at: result.at, added: result.added, first: result.first };
             return result.lines.join('\n');
         });

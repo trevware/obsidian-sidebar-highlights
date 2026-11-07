@@ -3649,6 +3649,32 @@
     --sh-token-bg: color-mix(in oklch, var(--sh-p1) 28%, transparent);
 }
 
+/* Notes under the task, typed as Markdown, lined up with the task's name. */
+.sh-tasks-view .sh-quickadd textarea.sh-quickadd-notes,
+.sh-tasks-view .sh-quickadd textarea.sh-quickadd-notes:hover,
+.sh-tasks-view .sh-quickadd textarea.sh-quickadd-notes:focus,
+.sh-tasks-view .sh-quickadd textarea.sh-quickadd-notes:focus-visible {
+    display: block;
+    width: 100%;
+    max-height: 40vh;
+    margin-top: 2px;
+    padding: 2px 8px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    resize: none;
+    overflow-y: auto;
+    color: var(--sh-surface-text);
+    font-family: var(--font-text);
+    font-size: 13.5px;
+    line-height: 1.55;
+}
+
+.sh-tasks-view .sh-quickadd textarea.sh-quickadd-notes::placeholder {
+    color: var(--sh-surface-faint);
+}
+
 .sh-quickadd-chips {
     display: flex;
     flex-wrap: wrap;

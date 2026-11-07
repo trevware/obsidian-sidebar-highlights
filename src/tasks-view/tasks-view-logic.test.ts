@@ -1,5 +1,5 @@
 import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
-import { buildTaskLine, contextRange, dateTimeText, editableTitle, formatTaskLine, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from './task-line';
+import { addNotes, buildTaskLine, contextRange, dateTimeText, editableTitle, formatTaskLine, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
 import { parseDateQuery, parseDateTimeQuery, parseQuickAdd } from './quick-parse';
@@ -189,6 +189,20 @@ describe('task-line', () => {
         expect(notesLines(['> - [ ] In a callout'], 0, 'note')).toEqual(['>     note']);
         expect(notesLines(['- [ ] Parent', '  - two-space note'], 0, 'a\nb')).toEqual(['  a', '  b']);
         expect(notesLines(lines, 0, '   ')).toEqual([]);
+    });
+
+    it('writes notes straight under a task that was just added', () => {
+        const lines = ['## Today', '- [ ] Call the dentist', '', '## Later'];
+        expect(addNotes(lines, 1, 'Ask about the crown\n- bring the card')).toEqual(['    Ask about the crown', '    - bring the card']);
+        expect(lines).toEqual(['## Today', '- [ ] Call the dentist', '    Ask about the crown', '    - bring the card', '', '## Later']);
+
+        const tabbed = ['- [ ] Parent', '\t- [ ] New subtask'];
+        expect(addNotes(tabbed, 1, 'why')).toEqual(['\t\twhy']);
+        const callout = ['> [!todo]', '> - [ ] In a callout'];
+        expect(addNotes(callout, 1, 'one\n\ntwo')).toEqual(['>     one', '>', '>     two']);
+        const blank = ['- [ ] Nothing to add'];
+        expect(addNotes(blank, 0, '  \n')).toEqual([]);
+        expect(blank).toEqual(['- [ ] Nothing to add']);
     });
 
     it('inserts at the top of a heading\'s tasks', () => {

@@ -416,6 +416,162 @@ describe('quick add from the keyboard', () => {
     });
 });
 
+describe('notes in quick add', () => {
+    const notesBox = (container: HTMLElement) => container.querySelector('.sh-quickadd-notes') as HTMLTextAreaElement;
+    const typeNotes = (container: HTMLElement, text: string) => {
+        const box = notesBox(container);
+        box.focus();
+        box.value = text;
+        box.setSelectionRange(text.length, text.length);
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    it('writes the notes under the task with ⌘↵', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, 'Ask about the crown\n- bring the card');
+        keydown(notesBox(container), 'Enter', { metaKey: true });
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' }, 'Ask about the crown\n- bring the card');
+        expect(quickAdd.isOpen).toBe(false);
+    });
+
+    it('writes them with Enter in the task name too', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, 'Ask about the crown');
+        field(container).focus();
+        enter();
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' }, 'Ask about the crown');
+    });
+
+    it('leaves the notes out when they are only blank', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, '  \n ');
+        keydown(notesBox(container), 'Enter', { metaKey: true });
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' });
+    });
+
+    it('starts a new line with Enter in the notes, without adding the task', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, '- bring the card');
+        const event = keydown(notesBox(container), 'Enter');
+        await settle();
+        expect(submit).not.toHaveBeenCalled();
+        expect(notesBox(container).value).toBe('- bring the card\n- ');
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('indents with Tab in the notes instead of moving to a chip', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        typeNotes(container, '- nested');
+        keydown(notesBox(container), 'Tab');
+        expect(document.activeElement).toBe(notesBox(container));
+        expect(notesBox(container).value).toBe('    - nested');
+    });
+
+    it('moves into the notes with ⇧↵ or ↓ from the task name, and back with ↑ or Backspace', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        keydown(field(container), 'Enter', { shiftKey: true });
+        await settle();
+        expect(submit).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(notesBox(container));
+
+        keydown(notesBox(container), 'Backspace');
+        expect(document.activeElement).toBe(field(container));
+        keydown(field(container), 'ArrowDown');
+        expect(document.activeElement).toBe(notesBox(container));
+
+        typeNotes(container, 'Ask');
+        notesBox(container).setSelectionRange(0, 0);
+        keydown(notesBox(container), 'ArrowUp');
+        expect(document.activeElement).toBe(field(container));
+    });
+
+    it('keeps Backspace and ↑ inside notes that have words before the cursor', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        typeNotes(container, 'one\ntwo');
+        const back = keydown(notesBox(container), 'Backspace');
+        const up = keydown(notesBox(container), 'ArrowUp');
+        expect(document.activeElement).toBe(notesBox(container));
+        expect(back.defaultPrevented).toBe(false);
+        expect(up.defaultPrevented).toBe(false);
+    });
+
+    it('lets a click put the cursor in the notes', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        notesBox(container).dispatchEvent(down);
+        expect(down.defaultPrevented).toBe(false);
+    });
+
+    it('shows the notes in the preview, under the task', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, 'Ask about the crown');
+        expect(container.querySelector('.sh-quickadd-preview code')?.textContent).toBe('- [ ] Call the dentist\n    Ask about the crown');
+    });
+
+    it('keeps the notes with a draft that was put away, and clears them after an add', async () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, 'Ask about the crown');
+        escape();
+        quickAdd.open();
+        expect(notesBox(container).value).toBe('Ask about the crown');
+        keydown(notesBox(container), 'Enter', { metaKey: true });
+        await settle();
+        quickAdd.open();
+        expect(notesBox(container).value).toBe('');
+    });
+
+    it('clears the notes for the next task with ⌘↵ in the task name', async () => {
+        const submit = jest.fn(() => Promise.resolve(true));
+        const { quickAdd, container } = setup(submit);
+        quickAdd.open();
+        type(container, 'Call the dentist');
+        typeNotes(container, 'Ask about the crown');
+        field(container).focus();
+        keydown(field(container), 'Enter', { metaKey: true });
+        await settle();
+        expect(submit).toHaveBeenCalledWith(['- [ ] Call the dentist'], { path: 'Inbox.md' }, 'Ask about the crown');
+        expect(quickAdd.isOpen).toBe(true);
+        expect(notesBox(container).value).toBe('');
+        expect(document.activeElement).toBe(field(container));
+    });
+
+    it('swaps the keyboard hints while the cursor is in the notes', () => {
+        const { quickAdd, container } = setup();
+        quickAdd.open();
+        const keys = () => [...container.querySelectorAll('.sh-palette-foot .sh-key')].map(key => key.textContent);
+        expect(keys()).toEqual(['↵', '⌘↵', '⇧↵', '/', 'esc']);
+        notesBox(container).focus();
+        expect(keys()).toEqual(['⌘↵', '⇥', 'esc']);
+        field(container).focus();
+        expect(keys()).toEqual(['↵', '⌘↵', '⇧↵', '/', 'esc']);
+    });
+});
+
 describe('quick add on a phone', () => {
     beforeEach(() => { mockPlatform.isMobile = true; });
     afterEach(() => { mockPlatform.isMobile = false; });

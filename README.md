@@ -151,6 +151,8 @@ Each list keeps its own grouping and sorting, and whether it shows completed tas
 
 Press **Q**, or the **+** button, and type it the way you'd say it. `Call the dentist fri p1` is due Friday with priority 1, and dates understand things like `tomorrow`, `in 3 days` and `nov 3`. Put a time after the day, like `fri 3pm`, and the task gets that time too. A task added from a note's list goes to that note, otherwise to wherever you added the last one, and typing `/` picks another note or a heading. Type a heading the note doesn't have yet and quick add offers to create it, or a note name that doesn't exist and it offers to make the note.
 
+Notes go in the box under the task's name. Click it, or press **⇧↵** (or **↓**), and write whatever you'd put in the task's card: a line of context, a link, a few bullets. Enter carries a list on, Tab indents, and **⌘↵** adds the task with its notes tucked underneath.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trevware/obsidian-sidebar-highlights/HEAD/.github/screenshots/quick-add-dark.webp">

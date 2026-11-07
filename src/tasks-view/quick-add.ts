@@ -3,7 +3,8 @@ import { GlassMenu } from './glass-menu';
 import type { GlassMenuItem } from './glass-menu';
 import { parseQuickAdd } from './quick-parse';
 import type { QuickParse, TokenKind } from './quick-parse';
-import { buildTaskLine } from './task-line';
+import { buildTaskLine, notesLines } from './task-line';
+import { continueList, indentSelection, wrapSelection } from './notes-editing';
 import { titleCase, titleCaseTyped } from './capitalize';
 import { addDays, startOfWeek, weekday } from './dates';
 import { TIME_PRESETS } from './times';
@@ -45,8 +46,8 @@ export interface QuickAddHost {
     defaultDate: () => string | undefined;
     /** Opens the note picker; `current` is the place on the chip, where a new heading would go. */
     chooseDestination: (done: (destination: Destination) => void, current?: Destination) => void;
-    /** Writes the lines; resolves false when nothing could be written. */
-    submit: (lines: string[], destination: Destination) => Promise<boolean>;
+    /** Writes the lines, with `notes` under the first; resolves false when nothing could be written. */
+    submit: (lines: string[], destination: Destination, notes?: string) => Promise<boolean>;
     /** Whether tasks are written in Title Case. */
     capitalize: () => boolean;
     onClose: () => void;
@@ -85,6 +86,13 @@ interface Draft {
     time?: string;
     priority?: 1 | 2 | 3;
     destination?: Destination;
+    /** Markdown to write under the task, as typed in the notes box. */
+    notes?: string;
+}
+
+/** Notes as they'll be written: no blank lines before the first words or after the last. */
+export function cleanNotes(notes: string | undefined): string {
+    return (notes ?? '').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
 }
 
 /**
@@ -95,10 +103,16 @@ interface Draft {
  * Recognised words are tinted in the field. A chip below names each one, and
  * its × turns the words back into plain text (as does Backspace right after
  * them). Dismissing keeps the draft for next time.
+ *
+ * Under the field, a notes box takes Markdown to write under the task, typed
+ * the way the task card's notes are: ⇧↵ or ↓ goes down into it, and ⌘↵ adds
+ * the task from there.
  */
 export class QuickAdd {
     private panel: HTMLElement | null = null;
     private input: HTMLInputElement | null = null;
+    private notesBox: HTMLTextAreaElement | null = null;
+    private foot: HTMLElement | null = null;
     private mirror: HTMLElement | null = null;
     private chips: HTMLElement | null = null;
     private preview: HTMLElement | null = null;
@@ -133,12 +147,12 @@ export class QuickAdd {
         }
         // An empty draft goes where it's opened from; one with words in it
         // keeps the note picked for them.
-        if (!this.draft.destination || (!prefill.destination && this.draft.text.trim() === '')) {
+        if (!this.draft.destination || (!prefill.destination && this.isBlank())) {
             this.draft.destination = this.host.defaultDestination() ?? undefined;
         }
         // An empty draft takes the list's day the same way, so a task added
         // in Today is due today and stays in sight.
-        if (!prefill.date && this.draft.text.trim() === '') {
+        if (!prefill.date && this.isBlank()) {
             this.draft.date = this.host.defaultDate();
             this.draft.time = undefined;
         }
@@ -159,10 +173,20 @@ export class QuickAdd {
         this.input.addEventListener('scroll', () => this.syncScroll());
         this.input.addEventListener('paste', (event) => this.handlePaste(event));
 
+        const notes = this.panel.createEl('textarea', { cls: 'sh-quickadd-notes' });
+        this.notesBox = notes;
+        notes.placeholder = t('tasksTab.quickAdd.notesPlaceholder');
+        notes.rows = 1;
+        notes.spellcheck = true;
+        notes.value = this.draft.notes ?? '';
+        notes.addEventListener('input', () => this.notesChanged());
+        notes.addEventListener('keydown', (event) => this.handleNotesKey(event, notes));
+
         this.chips = this.panel.createDiv({ cls: 'sh-quickadd-chips' });
         this.preview = this.panel.createDiv({ cls: 'sh-quickadd-preview' });
 
         const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
+        this.foot = foot;
         if (Platform.isMobile) {
             // No Escape or ⌘ on a phone's keyboard, so the footer becomes the
             // two buttons that matter.
@@ -172,10 +196,9 @@ export class QuickAdd {
             const add = foot.createEl('button', { cls: 'sh-quickadd-button mod-cta', text: t('tasksTab.quickAdd.addButton') });
             add.addEventListener('click', () => void this.submit(false));
         } else {
-            hint(foot, '↵', t('tasksTab.quickAdd.add'));
-            hint(foot, '⌘↵', t('tasksTab.quickAdd.addAnother'));
-            hint(foot, '/', t('tasksTab.quickAdd.note'));
-            hint(foot, 'esc', t('tasksTab.quickAdd.close'));
+            this.paintFoot(false);
+            // The hints follow the cursor: the notes box has keys of its own.
+            this.panel.addEventListener('focusin', (event) => this.paintFoot(event.target === this.notesBox));
         }
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
@@ -188,10 +211,11 @@ export class QuickAdd {
         };
         document.addEventListener('pointerdown', this.onPointer, true);
         this.panel.addEventListener('mousedown', (event) => {
-            if (event.target !== this.input) event.preventDefault();
+            if (event.target !== this.input && event.target !== this.notesBox) event.preventDefault();
         });
 
         this.refresh();
+        this.fitNotes();
         this.input.focus({ preventScroll: true });
         this.input.setSelectionRange(this.input.value.length, this.input.value.length);
     }
@@ -207,11 +231,90 @@ export class QuickAdd {
         this.panel?.remove();
         this.panel = null;
         this.input = null;
+        this.notesBox = null;
+        this.foot = null;
         this.mirror = null;
         this.chips = null;
         this.preview = null;
         if (!keepDraft) this.draft = { text: '', ignored: new Set(), destination: this.draft.destination };
         this.host.onClose();
+    }
+
+    /** Nothing typed yet, in the field or the notes. */
+    private isBlank(): boolean {
+        return this.draft.text.trim() === '' && cleanNotes(this.draft.notes) === '';
+    }
+
+    private paintFoot(inNotes: boolean): void {
+        const foot = this.foot;
+        if (!foot || Platform.isMobile) return;
+        foot.empty();
+        if (inNotes) {
+            hint(foot, '⌘↵', t('tasksTab.quickAdd.add'));
+            hint(foot, '⇥', t('tasksTab.quickAdd.indent'));
+            hint(foot, 'esc', t('tasksTab.quickAdd.close'));
+        } else {
+            hint(foot, '↵', t('tasksTab.quickAdd.add'));
+            hint(foot, '⌘↵', t('tasksTab.quickAdd.addAnother'));
+            hint(foot, '⇧↵', t('tasksTab.quickAdd.notes'));
+            hint(foot, '/', t('tasksTab.quickAdd.note'));
+            hint(foot, 'esc', t('tasksTab.quickAdd.close'));
+        }
+    }
+
+    private notesChanged(): void {
+        if (!this.notesBox) return;
+        this.draft.notes = this.notesBox.value;
+        this.fitNotes();
+        this.paintPreview();
+    }
+
+    /** The notes box grows with what's in it, up to a limit set in the styles. */
+    private fitNotes(): void {
+        const box = this.notesBox;
+        if (!box) return;
+        box.setCssProps({ height: 'auto' });
+        box.setCssProps({ height: `${box.scrollHeight}px` });
+    }
+
+    private focusNotes(): void {
+        const box = this.notesBox;
+        if (!box) return;
+        box.focus({ preventScroll: true });
+        box.setSelectionRange(box.value.length, box.value.length);
+    }
+
+    private focusField(): void {
+        const input = this.input;
+        if (!input) return;
+        input.focus({ preventScroll: true });
+        input.setSelectionRange(input.value.length, input.value.length);
+    }
+
+    /**
+     * Keys in the notes box, after the panel's own (Escape closes, ⌘↵ adds):
+     * Enter continues a list, Tab and Shift-Tab indent, and ↑ on the first
+     * line or Backspace in an empty box goes back up to the task's name.
+     */
+    private handleNotesKey(event: KeyboardEvent, box: HTMLTextAreaElement): void {
+        if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+        const collapsed = box.selectionStart === box.selectionEnd;
+        if (event.key === 'Enter' && !event.shiftKey) {
+            if (continueList(box)) {
+                event.preventDefault();
+                this.notesChanged();
+            }
+        } else if (event.key === 'Tab') {
+            event.preventDefault();
+            indentSelection(box, event.shiftKey);
+            this.notesChanged();
+        } else if (event.key === 'Backspace' && collapsed && box.value === '') {
+            event.preventDefault();
+            this.focusField();
+        } else if (event.key === 'ArrowUp' && !event.shiftKey && collapsed && !box.value.slice(0, box.selectionStart).includes('\n')) {
+            event.preventDefault();
+            this.focusField();
+        }
     }
 
     private effectiveDate(): string | undefined {
@@ -326,7 +429,9 @@ export class QuickAdd {
         preview.empty();
         const line = this.lineFor(this.parsed, this.draft);
         preview.toggleClass('is-empty', line === null);
-        preview.createEl('code', { text: line ?? buildTaskLine({ text: t('tasksTab.quickAdd.previewEmpty') }) });
+        const shown = line ?? buildTaskLine({ text: t('tasksTab.quickAdd.previewEmpty') });
+        const notes = cleanNotes(this.draft.notes);
+        preview.createEl('code', { text: notes ? [shown, ...notesLines([shown], 0, notes)].join('\n') : shown });
     }
 
     private unparse(text: string): void {
@@ -453,15 +558,37 @@ export class QuickAdd {
             this.close(true);
             return;
         }
+        const mod = event.metaKey || event.ctrlKey;
+        if (active === this.notesBox && this.notesBox) {
+            // Caught here, ahead of Obsidian's own hotkeys (⌘↵ toggles a checkbox).
+            if (event.key === 'Enter' && mod && !event.isComposing) {
+                event.preventDefault();
+                event.stopPropagation();
+                void this.submit(false);
+            } else if (mod && !event.shiftKey && !event.altKey && (event.key === 'b' || event.key === 'i')) {
+                event.preventDefault();
+                event.stopPropagation();
+                wrapSelection(this.notesBox, event.key === 'b' ? '**' : '*');
+                this.notesChanged();
+            }
+            return;
+        }
         if (event.key === 'Enter' && !event.isComposing && inTab && !otherField && !onChip) {
             event.preventDefault();
             event.stopPropagation();
-            void this.submit(event.metaKey || event.ctrlKey);
+            if (event.shiftKey && !mod) this.focusNotes();
+            else void this.submit(mod);
             return;
         }
         if (active !== this.input) {
             const typing = event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey;
             if (typing && event.key !== ' ' && inTab && !otherField) this.input.focus({ preventScroll: true });
+            return;
+        }
+
+        if (event.key === 'ArrowDown' && !mod && !event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            this.focusNotes();
             return;
         }
 
@@ -515,8 +642,9 @@ export class QuickAdd {
         // leaves quick add stuck ignoring Enter.
         this.busy = true;
         let ok = false;
+        const notes = cleanNotes(this.draft.notes);
         try {
-            ok = await this.host.submit([line], destination);
+            ok = await (notes ? this.host.submit([line], destination, notes) : this.host.submit([line], destination));
         } catch (error) {
             console.error('Sidebar Highlights: adding the task failed', error);
         } finally {
@@ -527,7 +655,9 @@ export class QuickAdd {
         if (keepOpen && this.input) {
             this.draft = { text: '', ignored: new Set(), destination, date: this.draft.date, priority: this.draft.priority };
             this.input.value = '';
+            if (this.notesBox) this.notesBox.value = '';
             this.refresh();
+            this.fitNotes();
             this.input.focus({ preventScroll: true });
         } else {
             this.close(false);

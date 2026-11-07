@@ -72,6 +72,7 @@ import type { HeadingRef, HeadingTarget, MoveTarget, NoteHeading } from './task-
 import { GlassPalette } from './glass-palette';
 import type { PaletteItem, PaletteStage } from './glass-palette';
 import { QuickAdd } from './quick-add';
+import { continueList, indentSelection, wrapSelection } from './notes-editing';
 import { SubtaskField } from './subtask-field';
 import { GlassMenu } from './glass-menu';
 import { MARKER_DEFS, markerDef } from './markers';
@@ -339,7 +340,7 @@ export class TasksTabView extends ItemView {
             defaultDestination: () => this.defaultDestination(),
             defaultDate: () => this.list.kind === 'smart' && this.list.id === 'today' ? isoToday() : undefined,
             chooseDestination: (done, current) => this.pickDestination(done, current),
-            submit: (lines, destination) => this.addLines(lines, destination),
+            submit: (lines, destination, notes) => this.addLines(lines, destination, notes),
             capitalize: () => this.plugin.settings.capitalizeTasks,
             onClose: () => this.focusList()
         });
@@ -2636,21 +2637,22 @@ export class TasksTabView extends ItemView {
         this.toast(this.countLabel('copied', tasks), false);
     }
 
-    private async addLines(lines: string[], destination: Destination): Promise<boolean> {
+    /** Adds tasks to a note, with `notes` written under the first one. */
+    private async addLines(lines: string[], destination: Destination, notes?: string): Promise<boolean> {
         const parent = destination.parent;
         let at: number;
         let written = lines;
         // The first task's line: past the new heading, when one was added.
         let first: number | null = null;
         if (parent) {
-            const placed = await this.writer.insertUnder(destination.path, parent, lines);
+            const placed = await this.writer.insertUnder(destination.path, parent, lines, notes);
             if (!placed) {
                 new Notice(t('tasksTab.notices.parentMissing'));
                 return false;
             }
             ({ at, lines: written } = placed);
         } else if (destination.create && destination.heading) {
-            const placed = await this.writer.insertUnderNewHeading(destination.path, destination.heading, destination.create.level, destination.create.where, lines);
+            const placed = await this.writer.insertUnderNewHeading(destination.path, destination.heading, destination.create.level, destination.create.where, lines, notes);
             if (!placed) {
                 new Notice(t('tasksTab.notices.noteMissing'));
                 return false;
@@ -2660,11 +2662,12 @@ export class TasksTabView extends ItemView {
             first = placed.first;
             this.writeJson(STORAGE.destination, { path: destination.path, heading: destination.heading });
         } else {
-            at = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine);
-            if (at === -1) {
+            const placed = await this.writer.insert(destination.path, destination.heading, lines, destination.headingLine, notes);
+            if (!placed) {
                 new Notice(t('tasksTab.notices.noteMissing'));
                 return false;
             }
+            ({ at, lines: written } = placed);
             // A subtask's place isn't remembered: the next task goes back to a note.
             this.writeJson(STORAGE.destination, destination);
         }
@@ -4018,55 +4021,6 @@ function paintEmptyGlyph(el: HTMLElement): void {
     svg.setAttribute('class', 'sh-glyph-svg');
     svgPath(svg, SQUIRCLE_PATH, 'sh-glyph-outline');
     el.appendChild(svg);
-}
-
-/** Enter inside a list item starts the next item, or ends the list on an empty one. */
-function continueList(editor: HTMLTextAreaElement): boolean {
-    const { value, selectionStart, selectionEnd } = editor;
-    if (selectionStart !== selectionEnd) return false;
-    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-    const line = value.slice(lineStart, selectionStart);
-    const match = line.match(/^(\s*)([-*+]|\d+[.)])(\s+)(\[.\]\s+)?/);
-    if (!match) return false;
-    if (line.trim() === match[0].trim()) {
-        // An empty item: the list ends here.
-        editor.setRangeText('', lineStart, selectionStart, 'end');
-        return true;
-    }
-    const [, indent, bullet, space, box] = match;
-    const next = /\d/.test(bullet) ? `${parseInt(bullet, 10) + 1}${bullet.slice(-1)}` : bullet;
-    editor.setRangeText(`\n${indent}${next}${space}${box ? '[ ] ' : ''}`, selectionStart, selectionEnd, 'end');
-    return true;
-}
-
-/** Tab and Shift-Tab indent or outdent every line the selection touches. */
-function indentSelection(editor: HTMLTextAreaElement, outdent: boolean): void {
-    const { value, selectionStart, selectionEnd } = editor;
-    const start = value.lastIndexOf('\n', selectionStart - 1) + 1;
-    const end = selectionEnd;
-    const block = value.slice(start, end);
-    const lines = block.split('\n');
-    const changed = lines.map(line => (outdent ? line.replace(/^( {1,4}|\t)/, '') : `    ${line}`));
-    const text = changed.join('\n');
-    editor.setRangeText(text, start, end, 'select');
-    if (selectionStart === selectionEnd) {
-        const shift = text.length - block.length;
-        editor.setSelectionRange(Math.max(start, selectionStart + shift), Math.max(start, selectionStart + shift));
-    }
-}
-
-/** ⌘B and ⌘I: wrap the selection in Markdown emphasis, or unwrap it. */
-function wrapSelection(editor: HTMLTextAreaElement, mark: string): void {
-    const { value, selectionStart, selectionEnd } = editor;
-    const selected = value.slice(selectionStart, selectionEnd);
-    const before = value.slice(selectionStart - mark.length, selectionStart);
-    const after = value.slice(selectionEnd, selectionEnd + mark.length);
-    if (before === mark && after === mark) {
-        editor.setRangeText(selected, selectionStart - mark.length, selectionEnd + mark.length, 'select');
-        return;
-    }
-    editor.setRangeText(`${mark}${selected}${mark}`, selectionStart, selectionEnd, 'end');
-    if (selected === '') editor.setSelectionRange(selectionStart + mark.length, selectionStart + mark.length);
 }
 
 function truncate(text: string, length: number): string {
