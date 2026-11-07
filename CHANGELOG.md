@@ -5,7 +5,7 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.8.0] - 2026-11-07
 
 ### Added
 - **You can write a task's notes while you add it.** Quick add has a notes box under the task's name now. Click it or press ⇧↵, type what you'd put in the task's card, and press ⌘↵: the task lands with its notes tucked underneath, so there's no opening the card afterwards. Undo takes both away together.
