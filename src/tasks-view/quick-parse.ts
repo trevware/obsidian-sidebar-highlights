@@ -325,6 +325,17 @@ function cnTime(m: RegExpExecArray, hint?: string): string | undefined {
     return `${String(hour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+/** A colon time after a part of the day: 下午3:30 is 15:30, 上午9:30 stays 09:30. */
+function cnColonTime(period: string, clock: string): string | undefined {
+    const time = parseTime(clock);
+    if (!time) return undefined;
+    let hour = Number(time.slice(0, 2));
+    if ((period === '下午' || period === '傍晚' || period === '晚上') && hour < 12) hour += 12;
+    else if (period === '中午' && hour < 11) hour += 12;
+    else if (period === '凌晨' && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, '0')}${time.slice(2)}`;
+}
+
 /** Full-width letters, figures and colons, as a Chinese keyboard types them, read as their plain forms. One character for one, so every position still lines up. */
 function halfWidth(text: string): string {
     return text.replace(/[\uFF01-\uFF5E]/gu, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0)).replace(/\u3000/gu, ' ');
@@ -349,6 +360,8 @@ const TIME_RULES: Array<{ pattern: string; afterDate?: boolean; resolve?: (m: Re
     { pattern: String.raw`(?:${AT})?${NOT_AFTER_COLON}(${MERIDIEM_SOURCE}|noon|midnight)` },
     { pattern: String.raw`${AT}(${COLON_SOURCE})` },
     { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true },
+    // A part of the day with a colon time: 下午3:30.
+    { pattern: String.raw`${CN_PERIOD}\s*(${COLON_SOURCE})`, resolve: (m) => cnColonTime(m[1], m[2]) },
     // Said with 点, so it reads anywhere, like a time with am or pm.
     { pattern: String.raw`(?:@\s*)?${CN_PERIOD}?\s*${CN_NUM}\s*[点时](?:\s*${CN_MINUTES})?`, resolve: (m, hint) => cnTime(m, hint) },
     { pattern: String.raw`in\s+the\s+(morning|afternoon|evening)`, resolve: (m) => EN_PARTS_OF_DAY[m[1].toLowerCase()] },

@@ -364,6 +364,13 @@ describe('task-line', () => {
             expect(time('下午三点一刻')).toBe('15:15');
         });
 
+        it('reads a part of the day with a colon time', () => {
+            expect(parseQuickAdd('明天下午3:30给妈妈打电话', TODAY)).toMatchObject({ date: '2026-10-26', time: '15:30', title: '给妈妈打电话' });
+            expect(time('晚上8:15')).toBe('20:15');
+            expect(time('上午9:30')).toBe('09:30');
+            expect(time('下午3：30')).toBe('15:30');
+        });
+
         it('takes a bare 1 to 6 o\'clock as the afternoon, and 7 to 12 as written', () => {
             expect(time('3点开会')).toBe('15:00');
             expect(time('9点开会')).toBe('09:00');
