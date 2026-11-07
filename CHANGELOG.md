@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Chinese times with a colon read correctly.** `下午3:30` in quick add is 15:30 again, and the 3:30 no longer stays in the task's name.
+- **Chinese times with a colon read correctly.** `下午3:30` in quick add is now 15:30, and the 3:30 no longer stays in the task's name.
 
 ## [2.9.0] - 2026-11-07
 
