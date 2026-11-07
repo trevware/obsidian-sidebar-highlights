@@ -141,6 +141,16 @@ class I18n {
 	getLocale(): string {
 		return this.locale;
 	}
+
+	/**
+	 * The locale for weekday and month names: the plugin's language when it
+	 * has one other than English, so dates read in the same language as the
+	 * words around them. English leaves it to the system, which keeps a
+	 * reader's own "7 Nov" or "Nov 7".
+	 */
+	dateLocale(): string | undefined {
+		return this.locale === 'en' ? undefined : this.locale;
+	}
 }
 
 // Export a singleton instance
@@ -148,3 +158,5 @@ export const i18n = new I18n();
 
 // Export the translation function for convenience
 export const t = (key: string, vars?: Record<string, unknown>) => i18n.t(key, vars);
+
+export const dateLocale = () => i18n.dateLocale();

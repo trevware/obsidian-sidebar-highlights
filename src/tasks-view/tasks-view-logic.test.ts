@@ -1,4 +1,4 @@
-import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, startOfWeek, weekday } from './dates';
+import { addDays, addMonths, daysBetween, dueLabel, rowDateLabel, shortDate, startOfWeek, weekday, weekdayName } from './dates';
 import { addNotes, buildTaskLine, contextRange, dateTimeText, editableTitle, formatTaskLine, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDateInText, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from './task-line';
 import { titleCase } from './capitalize';
 import { parseTime } from './times';
@@ -189,6 +189,19 @@ describe('task-line', () => {
         expect(notesLines(['> - [ ] In a callout'], 0, 'note')).toEqual(['>     note']);
         expect(notesLines(['- [ ] Parent', '  - two-space note'], 0, 'a\nb')).toEqual(['  a', '  b']);
         expect(notesLines(lines, 0, '   ')).toEqual([]);
+    });
+
+    it('writes weekdays and dates in Chinese for a Chinese Obsidian', () => {
+        expect(weekdayName('2026-10-30', 'long', 'zh-cn')).toBe('星期五');
+        expect(shortDate('2026-11-03', TODAY, 'zh-cn')).toBe('11月3日');
+        expect(rowDateLabel('2026-10-28', TODAY, { today: '今天', tomorrow: '明天', yesterday: '昨天' }, 'zh-cn').text).toBe('星期三');
+    });
+
+    it('reads a date and priority typed after a Chinese task name', () => {
+        const parsed = parseQuickAdd('看牙医 fri p1', TODAY);
+        expect(parsed.title).toBe('看牙医');
+        expect(parsed.date).toBe('2026-10-30');
+        expect(parsed.priority).toBe(1);
     });
 
     it('writes notes straight under a task that was just added', () => {

@@ -1,6 +1,7 @@
 import { Platform, setIcon } from 'obsidian';
 import { rank } from './fuzzy';
 import type { MatchRange } from './fuzzy';
+import { t } from '../i18n';
 
 /**
  * One row the palette can show: a command, a list to go to, a note, or a task.
@@ -134,9 +135,9 @@ export class GlassPalette {
         // Keyboard hints, where there's a keyboard to use them.
         if (!Platform.isMobile) {
             const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
-            hint(foot, '↑↓', 'navigate');
-            hint(foot, '↵', 'select');
-            hint(foot, 'esc', 'close');
+            hint(foot, '↑↓', t('tasksTab.keys.navigate'));
+            hint(foot, '↵', t('tasksTab.keys.select'));
+            hint(foot, 'esc', t('tasksTab.keys.close'));
         }
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
@@ -338,7 +339,7 @@ export class GlassPalette {
         this.rowEls = [];
 
         if (this.rows.length === 0) {
-            list.createDiv({ cls: 'sh-palette-empty', text: 'No matches' });
+            list.createDiv({ cls: 'sh-palette-empty', text: t('tasksTab.palette.noMatches') });
             return;
         }
 

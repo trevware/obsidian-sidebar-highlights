@@ -69,9 +69,9 @@ export class IconPicker {
 
         if (!Platform.isMobile) {
             const foot = this.panel.createDiv({ cls: 'sh-palette-foot' });
-            hint(foot, '↑↓←→', 'navigate');
-            hint(foot, '↵', 'choose');
-            hint(foot, 'esc', 'close');
+            hint(foot, '↑↓←→', t('tasksTab.keys.navigate'));
+            hint(foot, '↵', t('tasksTab.keys.choose'));
+            hint(foot, 'esc', t('tasksTab.keys.close'));
         }
 
         this.onKey = (event: KeyboardEvent) => this.handleKey(event);
@@ -109,7 +109,7 @@ export class IconPicker {
             return;
         }
         for (const section of sections) {
-            if (section.title) body.createDiv({ cls: 'sh-palette-section', text: section.title });
+            if (section.title) body.createDiv({ cls: 'sh-palette-section', text: t(`tasksTab.iconPicker.sections.${section.title.toLowerCase()}`) });
             const grid = body.createDiv({ cls: 'sh-icon-grid' });
             for (const icon of section.icons) {
                 const el = grid.createEl('button', { cls: 'sh-icon-cell' });

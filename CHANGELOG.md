@@ -5,6 +5,11 @@ All notable changes to the Sidebar Highlights and Tasks plugin will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **The Tasks tab speaks Chinese.** Set Obsidian to Chinese and everything in the Tasks tab follows: the lists, menus, quick add, search, notices and keyboard shortcuts. Dates read the Chinese way too, like 11月7日 星期六.
+
 ## [2.8.0] - 2026-11-07
 
 ### Added

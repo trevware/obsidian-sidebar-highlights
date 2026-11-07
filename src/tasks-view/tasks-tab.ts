@@ -23,7 +23,7 @@ import { TaskManager } from '../managers/task-manager';
 import { TaskRenderer } from '../renderers/task-renderer';
 import { statusToCheckboxState } from '../utils/task-status';
 import { SQUIRCLE_PATH } from '../utils/squircle-icon';
-import { t } from '../i18n';
+import { dateLocale, t } from '../i18n';
 import { onLongPress } from '../utils/long-press';
 import { addDays, dueLabel, isoToday, nowTime, rowDateLabel, startOfWeek, weekday } from './dates';
 import type { DateLabel, DateWords } from './dates';
@@ -706,7 +706,7 @@ export class TasksTabView extends ItemView {
     }
 
     private dateLabel(iso: string): DateLabel {
-        return rowDateLabel(iso, isoToday(), this.dateWords());
+        return rowDateLabel(iso, isoToday(), this.dateWords(), dateLocale());
     }
 
     /**
@@ -720,13 +720,14 @@ export class TasksTabView extends ItemView {
             now: nowTime(),
             words: this.dateWords(),
             hour12: this.plugin.settings.taskTimeFormat === 'h:mma',
-            showDay
+            showDay,
+            locale: dateLocale()
         });
     }
 
     /** A time as rows and chips show it. */
     private timeLabel(time: string): string {
-        return displayTime(time, this.plugin.settings.taskTimeFormat === 'h:mma');
+        return displayTime(time, this.plugin.settings.taskTimeFormat === 'h:mma', dateLocale());
     }
 
     /** A time as it's written into a note. */
@@ -1014,7 +1015,7 @@ export class TasksTabView extends ItemView {
 
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, dateLocale(), this.lingering, this.todaysDailyNote());
         this.groupSignature = this.groupSignatureOf(groups);
 
         this.renderHeader(column, today);
@@ -1142,7 +1143,7 @@ export class TasksTabView extends ItemView {
             const folder = this.noteInfo.folder(this.list.path) || t('tasksTab.rail.vaultRoot');
             eyebrow.setText(this.list.follow ? `${t('tasksTab.lists.thisNote')} · ${folder}` : folder);
         } else if (this.list.kind === 'smart' && this.list.id === 'today') {
-            eyebrow.setText(moment(today, 'YYYY-MM-DD').format('dddd, D MMMM'));
+            eyebrow.setText(moment(today, 'YYYY-MM-DD').format(t('tasksTab.header.dateFormat')));
         }
         if (eyebrow.textContent === '') eyebrow.remove();
 
@@ -1332,7 +1333,7 @@ export class TasksTabView extends ItemView {
         const today = isoToday();
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, dateLocale(), this.lingering, this.todaysDailyNote());
         if (this.groupSignatureOf(groups) !== this.groupSignature) return false;
 
         const next: Array<{ task: Task; group: TaskGroup }> = [];
@@ -2475,7 +2476,7 @@ export class TasksTabView extends ItemView {
         const today = isoToday();
         const display = this.display();
         const tasks = tasksForList(this.allTasks, this.list, today, display, this.lingering, this.todaysDailyNote());
-        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, undefined, this.lingering, this.todaysDailyNote());
+        const groups = buildGroups(tasks, this.list, today, display, this.groupLabels(), this.noteInfo, dateLocale(), this.lingering, this.todaysDailyNote());
         const shape = (signature: string) => signature.split('|').map(part => part.replace(/:\d+:/, ':')).join('|');
         const nextSignature = this.groupSignatureOf(groups);
         if (shape(nextSignature) !== shape(this.groupSignature) || groups.some(group => group.count === 0)) return false;

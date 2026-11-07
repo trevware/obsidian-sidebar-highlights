@@ -6,7 +6,7 @@ import { locateTaskLine } from '../tasks-view/task-line';
 import { openNoteAt } from '../tasks-view/open-note';
 import { dueBetween, nextWait, reminderTitle, remindersFor, SEPARATE_LIMIT } from '../tasks-view/reminders';
 import type { Reminder, TimedTask } from '../tasks-view/reminders';
-import { t } from '../i18n';
+import { dateLocale, t } from '../i18n';
 
 interface AppliedSettings {
     enabled: boolean;
@@ -145,7 +145,8 @@ export class ReminderManager {
                 yesterday: t('tasksTab.dates.yesterday')
             },
             hour12: this.plugin.settings.taskTimeFormat === 'h:mma',
-            showDay: reminder.date !== today
+            showDay: reminder.date !== today,
+            locale: dateLocale()
         });
         const note = reminder.path.split('/').pop()?.replace(/\.md$/, '') ?? reminder.path;
         return `${due.text} · ${note}`;
