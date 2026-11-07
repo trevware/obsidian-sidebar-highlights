@@ -173,10 +173,25 @@ DATE_RULES.push(
     { pattern: String.raw`(?:明天|明日|明晚|明早)`, resolve: (_m, today) => addDays(today, 1) },
     { pattern: '后天', resolve: (_m, today) => addDays(today, 2) },
     { pattern: '大后天', resolve: (_m, today) => addDays(today, 3) },
-    { pattern: String.raw`${CN_NUM}\s*(天|日|个?星期|个?礼拜|周|个月)\s*(?:之后|以后|后)`, resolve: (m, today) => {
+    { pattern: String.raw`${CN_NUM}\s*(天|日|个?星期|个?礼拜|周|个月)\s*(?:之后|以后|后|之内|以内|内)`, resolve: (m, today) => {
         const count = cnNumber(m[1]);
         return count === undefined ? undefined : addUnit(today, count, cnUnit(m[2]));
     } },
+    { pattern: String.raw`\+\s*${CN_NUM}\s*(天|日|个?星期|周|个月)`, resolve: (m, today) => {
+        const count = cnNumber(m[1]);
+        return count === undefined ? undefined : addUnit(today, count, cnUnit(m[2]));
+    } },
+    { pattern: String.raw`(?:月底|月末)`, resolve: (_m, today) => {
+        const [year, month] = today.split('-').map(Number);
+        return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    } },
+    { pattern: String.raw`下\s*个?工作日`, resolve: (_m, today) => {
+        let day = addDays(today, 1);
+        while (weekday(day) === 0 || weekday(day) === 6) day = addDays(day, 1);
+        return day;
+    } },
+    // Next week's Saturday, weeks starting on Monday as they do in China.
+    { pattern: String.raw`下\s*个?周末`, resolve: (_m, today) => addDays(startOfWeek(today), 12) },
     { pattern: String.raw`下\s*个?${CN_WEEK}`, resolve: (_m, today) => addDays(startOfWeek(today), 7) },
     { pattern: String.raw`下\s*个?月`, resolve: (_m, today) => addMonths(today, 1) },
     { pattern: String.raw`(?:本|这个?)?周末`, resolve: (_m, today) => {
@@ -203,6 +218,15 @@ DATE_RULES.push(
 
 const CN_PERIOD = String.raw`(上午|早上|早晨|凌晨|中午|下午|傍晚|晚上)`;
 const CN_MINUTES = String.raw`(半|一刻|三刻|\d{1,2}(?:\s*分)?|[零〇一二三四五六七八九十]{1,3}\s*分)`;
+
+/**
+ * A part of the day on its own, right after a day: 明天晚上, 周五下午. The
+ * times are Todoist's for Chinese (早上 9点, 晚上 19点, 夜间 22点), except
+ * 下午, which Todoist puts at noon; noon is 中午, so 下午 is mid-afternoon.
+ */
+const CN_PARTS_OF_DAY: Record<string, string> = {
+    早上: '09:00', 早晨: '09:00', 上午: '09:00', 中午: '12:00', 下午: '15:00', 傍晚: '18:00', 晚上: '19:00', 夜间: '22:00', 夜里: '22:00'
+};
 
 /**
  * A Chinese time of day: 下午3点, 晚上8点半, 上午10点15分, 15点30. With no
@@ -263,7 +287,9 @@ const TIME_RULES: Array<{ pattern: string; afterDate?: boolean; resolve?: (m: Re
     { pattern: String.raw`${AT}(${COLON_SOURCE})` },
     { pattern: String.raw`${NOT_AFTER_COLON}(${COLON_SOURCE})`, afterDate: true },
     // Said with 点, so it reads anywhere, like a time with am or pm.
-    { pattern: String.raw`${CN_PERIOD}?\s*${CN_NUM}\s*[点时](?:\s*${CN_MINUTES})?`, resolve: cnTime }
+    { pattern: String.raw`(?:@\s*)?${CN_PERIOD}?\s*${CN_NUM}\s*[点时](?:\s*${CN_MINUTES})?`, resolve: (m, hint) => cnTime(m, hint) },
+    // Only beside a day, so 买下午茶 stays words.
+    { pattern: String.raw`(早上|早晨|上午|中午|下午|傍晚|晚上|夜间|夜里)`, afterDate: true, resolve: (m) => CN_PARTS_OF_DAY[m[1]] }
 ];
 
 // Word edges that understand letters beyond ASCII, so "fri" inside "Friedrich"

@@ -254,6 +254,26 @@ describe('task-line', () => {
             expect(parseQuickAdd('多喝一点水', TODAY).title).toBe('多喝一点水');
         });
 
+        it('reads a part of the day said right after the day, as Todoist does', () => {
+            expect(parseQuickAdd('明天晚上给妈妈打电话', TODAY)).toMatchObject({ date: '2026-10-26', time: '19:00', title: '给妈妈打电话' });
+            expect(parseQuickAdd('明天早上跑步', TODAY)).toMatchObject({ time: '09:00', title: '跑步' });
+            expect(parseQuickAdd('周五下午开会', TODAY)).toMatchObject({ date: '2026-10-30', time: '15:00', title: '开会' });
+            expect(time('明天中午')).toBe('12:00');
+            expect(time('明天夜间')).toBe('22:00');
+            expect(parseQuickAdd('买下午茶', TODAY)).toMatchObject({ title: '买下午茶', time: undefined });
+        });
+
+        it('reads the other ways Todoist lists for Chinese', () => {
+            expect(date('5天内')).toBe('2026-10-30');
+            expect(date('+5天')).toBe('2026-10-30');
+            expect(date('3周内')).toBe('2026-11-15');
+            expect(date('月底')).toBe('2026-10-31');
+            expect(date('下个周末')).toBe('2026-10-31');
+            expect(date('下周末')).toBe('2026-10-31');
+            expect(date('下个工作日')).toBe('2026-10-26');
+            expect(parseQuickAdd('周五@19点', TODAY)).toMatchObject({ date: '2026-10-30', time: '19:00', title: '' });
+        });
+
         it('reads a time typed right after the day', () => {
             expect(parseQuickAdd('周五15:00开会', TODAY)).toMatchObject({ date: '2026-10-30', time: '15:00', title: '开会' });
             expect(parseQuickAdd('明早6点跑步', TODAY)).toMatchObject({ date: '2026-10-26', time: '06:00', title: '跑步' });
