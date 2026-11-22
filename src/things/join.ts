@@ -1,21 +1,31 @@
 /**
  * First connect: what already exists on both sides is joined by name before
  * the first round is planned, so connecting doesn't copy everything twice.
+ * Things joins where its import would land, so names made file-safe on the
+ * way in still join.
  *
- * - An area joins the folder its title names in full: "Work/People" joins
- *   `Work/People`, and "People" doesn't.
- * - An open project joins the note with its title in the folder its area
- *   joined, or at the top of the vault for a project in no area.
- * - In each joined project, an open to-do joins the first open line in the
- *   note with the same title and no ID yet, in line order. The planner gives
- *   that line the to-do's ID (its `adopt` step).
- * - A joined pair agrees on each field: the note's value when the note has
- *   one (notes, checklist, tags, a date or `#someday`, a time), and Things'
- *   when it doesn't. The to-do takes the line's place. The state records the
- *   losing side's value for each field and Things' place, so the planner's
- *   three-way merge sees the winning side as the one that changed and
- *   carries its value across. Recording the agreed value itself would make
- *   the note look unchanged and bring Things' value over the note's.
+ * - An area joins the folder its title names in full, made file-safe
+ *   (`folderFor`): "Work/People" joins `Work/People`, and "People" doesn't.
+ *   It also joins that folder when one of its projects would land on a note
+ *   there that holds no open tasks.
+ * - An open project joins the note it would come in as (`noteName` in its
+ *   area's folder, or at the top of the vault for a project in no area),
+ *   whether that note has open tasks or none.
+ * - In each joined project, an open to-do joins an open line with no ID and
+ *   the same words (trimmed, spaces evened out): under the same heading
+ *   first, then the first in line order. The planner gives that line the
+ *   to-do's ID (its `adopt` step).
+ * - A joined pair agrees on each field (`agreedFields`): the note's value
+ *   when the note has one, Things' when it doesn't, and the line's place.
+ *   Tags count without the status and priority tags, which always follow the
+ *   line's checkbox. The planner sends each side what differs from that.
+ * - A joined note's headings are its own, in its order, then the Things
+ *   headings holding to-dos that come into it (`joinedHeadings`).
+ *
+ * The state records each joined to-do so that, if the first round stops
+ * partway, the ordinary three-way merge finishes it: per field, the note's
+ * value where it differs from the agreed one, Things' value where it doesn't,
+ * and Things' place.
  *
  * Repeating to-dos and those in the Logbook or the Trash are never joined or
  * imported, and neither are done lines. Joining its own result joins the same
@@ -25,7 +35,9 @@
  * Kept free of Obsidian imports so it can be unit tested directly.
  */
 
-import type { Place, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultSnapshot, VaultTask } from './model';
+import { folderFor, noteName, statusFromTags } from './mapping';
+import { differences } from './merge';
+import type { Place, SyncedProject, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultSnapshot, VaultTask } from './model';
 
 /** Whether a to-do from Things may come into the vault: open, and not repeating, logged or trashed. */
 export function importable(todo: ThingsTodo): boolean {
@@ -38,74 +50,121 @@ export function withDeadline(todo: ThingsTodo): ThingsTodo {
     return { ...todo, fields: { ...todo.fields, when: todo.deadline } };
 }
 
-/** For each field of a joined pair, the losing side's value: Things' where the note has a value, the note's where it doesn't. */
-function joinedFields(vault: TodoFields, things: TodoFields): TodoFields {
-    const losing = <K extends keyof TodoFields>(key: K, noteWins: boolean): TodoFields[K] => noteWins ? things[key] : vault[key];
+/** A title's words, trimmed and with runs of spaces as one. */
+const words = (title: string): string => title.trim().replace(/\s+/g, ' ');
+
+/** Tags split into the status and priority tags a checkbox stands for, and the rest. */
+function splitTags(tags: string[]): { checkbox: string[]; own: string[] } {
+    const own = statusFromTags(tags).tags;
+    return { checkbox: tags.filter(tag => !own.includes(tag)), own };
+}
+
+/** The fields a joined pair agrees on: the note's where it has a value, Things' where it doesn't. */
+export function agreedFields(vault: TodoFields, things: TodoFields): TodoFields {
     const dated = vault.when !== undefined || vault.someday;
-    const when = dated ? vault.when : things.when;
-    // Titles are equal and both are open, so either side's will do for those.
+    const line = splitTags(vault.tags);
+    const own = line.own.length > 0 ? line.own : splitTags(things.tags).own;
     const fields: TodoFields = {
+        // The words match, so the line's spelling of them stands.
         title: vault.title,
-        notes: losing('notes', vault.notes.trim() !== ''),
-        checklist: losing('checklist', vault.checklist.length > 0),
-        tags: losing('tags', vault.tags.length > 0),
+        notes: vault.notes.trim() !== '' ? vault.notes : things.notes,
+        checklist: vault.checklist.length > 0 ? vault.checklist : things.checklist,
+        tags: [...new Set([...own, ...line.checkbox])].sort(),
         status: vault.status,
-        someday: losing('someday', dated)
+        someday: dated ? vault.someday : things.someday
     };
-    const lastWhen = losing('when', dated);
-    // Things' time stays when the agreed date has room for it and the line has no time of its own.
-    const lastReminder = losing('reminder', vault.reminder !== undefined || when === undefined);
-    if (lastWhen !== undefined) fields.when = lastWhen;
-    if (lastReminder !== undefined) fields.reminder = lastReminder;
+    const when = dated ? vault.when : things.when;
+    // Things' time stays on the agreed date when the line has no time of its own.
+    const reminder = vault.reminder ?? (when === undefined ? undefined : things.reminder);
+    if (when !== undefined) fields.when = when;
+    if (reminder !== undefined) fields.reminder = reminder;
     return fields;
 }
 
-/** The state with what joins by name recorded, and each line that takes a joined to-do's ID. */
-export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState): { state: ThingsState; adopted: Map<VaultTask, string> } {
+/** What the state records for a joined pair: the note's value where it differs from the agreed one, Things' where it doesn't. */
+function lastWritten(vault: TodoFields, things: TodoFields): TodoFields {
+    const written: TodoFields = { ...things, ...differences(agreedFields(vault, things), vault) };
+    if (written.when === undefined) delete written.when;
+    if (written.reminder === undefined) delete written.reminder;
+    return written;
+}
+
+/** On first connect, the headings a joined note ends with: its own, in its order, then Things' headings holding to-dos that come into it. */
+export function joinedHeadings(noteHeadings: readonly string[], project: ThingsProject, todos: readonly ThingsTodo[], incoming: (todo: ThingsTodo) => boolean): string[] {
+    const holds = (heading: string) => todos.some(t => t.projectId === project.id && t.heading === heading && incoming(t));
+    return [...noteHeadings, ...(project.headings ?? []).filter(h => !noteHeadings.includes(h) && holds(h))];
+}
+
+/**
+ * The state with what joins by name recorded, and each line that takes a
+ * joined to-do's ID. `exists` tells a note with no open tasks (left out of
+ * the snapshot) from no note at all.
+ */
+export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, exists: (path: string) => boolean = () => false): { state: ThingsState; adopted: Map<VaultTask, string> } {
+    const todos = things.todos.map(withDeadline);
     const areas = [...state.areas];
     const projects = [...state.projects];
-    const todos = new Map(state.todos.map(t => [t.id, t]));
+    const synced = new Map(state.todos.map(t => [t.id, t]));
     const adopted = new Map<VaultTask, string>();
+    const byPath = new Map(vault.notes.map(n => [n.path, n]));
+    const isNote = (path: string) => byPath.has(path) || exists(path);
+    const open = (project: ThingsProject) => !project.trashed && project.status === 'open';
+    const landing = (project: ThingsProject, folder: string) => noteName(project.title, () => false, folder);
 
     const folders = new Set([...vault.notes.map(n => n.folder), ...vault.folders].filter(Boolean));
     for (const area of things.areas) {
-        if (!folders.has(area.title) || areas.some(a => a.id === area.id || a.folder === area.title)) continue;
-        areas.push({ id: area.id, folder: area.title });
+        const folder = folderFor(area.title);
+        if (!folder || areas.some(a => a.id === area.id || a.folder === folder)) continue;
+        const lands = things.projects.some(p => p.areaId === area.id && open(p) && isNote(landing(p, folder)));
+        if (folders.has(folder) || lands) areas.push({ id: area.id, folder });
     }
 
     const lists = new Set([state.inboxNote, ...Object.values(state.looseNotes)]);
+    const joinedNow: Array<{ sp: SyncedProject; project: ThingsProject; note?: VaultNote }> = [];
     for (const project of things.projects) {
-        if (project.trashed || project.status !== 'open' || projects.some(p => p.id === project.id)) continue;
+        if (!open(project) || projects.some(p => p.id === project.id)) continue;
         const folder = project.areaId === undefined ? '' : areas.find(a => a.id === project.areaId)?.folder;
         if (folder === undefined) continue;
-        const note = vault.notes.find(n => n.folder === folder && n.title === project.title && !lists.has(n.path) && !projects.some(p => p.path === n.path));
-        if (!note) continue;
-        projects.push({ id: project.id, path: note.path, title: project.title, headings: note.headings, ...(project.areaId === undefined ? {} : { areaId: project.areaId }) });
+        const path = landing(project, folder);
+        if (lists.has(path) || projects.some(p => p.path === path) || !isNote(path)) continue;
+        const sp: SyncedProject = { id: project.id, path, title: project.title, headings: [], ...(project.areaId === undefined ? {} : { areaId: project.areaId }) };
+        projects.push(sp);
+        joinedNow.push({ sp, project, note: byPath.get(path) });
     }
 
     const onLines = new Set(vault.notes.flatMap(n => n.tasks.map(t => t.id)));
     const live = new Set(things.projects.filter(p => !p.trashed).map(p => p.id));
+    const paired = new Set<string>();
     for (const sp of projects) {
-        const note = vault.notes.find(n => n.path === sp.path);
+        const note = byPath.get(sp.path);
         if (!note || !live.has(sp.id)) continue;
-        const open = note.tasks.filter(t => t.id === undefined && t.fields.status === 'open').sort((a, b) => a.line - b.line);
-        for (const raw of things.todos) {
-            if (raw.projectId !== sp.id || !importable(raw) || onLines.has(raw.id)) continue;
-            const todo = withDeadline(raw);
-            const task = open.find(t => !adopted.has(t) && t.fields.title === todo.fields.title);
-            if (!task) continue;
+        const lines = note.tasks.filter(t => t.id === undefined && t.fields.status === 'open').sort((a, b) => a.line - b.line);
+        const candidates = todos.filter(t => t.projectId === sp.id && importable(t) && !onLines.has(t.id));
+        const free = (todo: ThingsTodo) => lines.filter(t => !adopted.has(t) && words(t.fields.title) === words(todo.fields.title));
+        const pair = (todo: ThingsTodo, task: VaultTask | undefined) => {
+            if (!task || paired.has(todo.id)) return;
+            paired.add(todo.id);
             adopted.set(task, todo.id);
             // Where Things has it, so the merge moves it to the line's place. A heading Things can't show is taken as none.
             const heading = things.capabilities.headings ? todo.heading : undefined;
             const place: Place = heading === undefined ? { path: note.path } : { path: note.path, heading };
-            todos.set(todo.id, { id: todo.id, place, fields: joinedFields(task.fields, todo.fields) });
-        }
+            synced.set(todo.id, { id: todo.id, place, fields: lastWritten(task.fields, todo.fields) });
+        };
+        if (things.capabilities.headings) for (const todo of candidates) pair(todo, free(todo).find(t => t.heading === todo.heading));
+        for (const todo of candidates) if (!paired.has(todo.id)) pair(todo, free(todo)[0]);
     }
 
-    return { state: { ...state, areas, projects, todos: [...todos.values()] }, adopted };
+    // To-dos that come into a joined note are the importable ones nothing knows yet.
+    const incoming = (todo: ThingsTodo) => importable(todo) && !synced.has(todo.id) && !onLines.has(todo.id);
+    for (const { sp, project, note } of joinedNow) {
+        const own = note?.headings ?? [];
+        sp.headings = things.capabilities.headings ? joinedHeadings(own, project, todos, incoming) : [...own];
+    }
+
+    return { state: { ...state, areas, projects, todos: [...synced.values()] }, adopted };
 }
 
 /** The state with the areas, projects and to-dos that join by name recorded, `joined` still false. */
-export function joinFirstConnect(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState): ThingsState {
-    return joinByName(vault, things, state).state;
+export function joinFirstConnect(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, exists?: (path: string) => boolean): ThingsState {
+    return joinByName(vault, things, state, exists).state;
 }

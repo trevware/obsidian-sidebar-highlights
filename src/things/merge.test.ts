@@ -1,4 +1,4 @@
-import { mergeFields } from './merge';
+import { differences, mergeFields } from './merge';
 import type { Capabilities, TodoFields } from './model';
 
 const caps: Capabilities = { headings: true, checklist: true, reminder: true, repeating: true, reorder: false };
@@ -75,5 +75,15 @@ describe('mergeFields', () => {
         const result = mergeFields(written, fields(), written, { ...caps, reminder: false });
         expect(result.toVault).toEqual({});
         expect(result.merged.reminder).toBe('15:00');
+    });
+});
+
+describe('differences', () => {
+    it('lists the fields that differ with the target\'s values, a cleared date as a present key, and lists compared by item', () => {
+        const ticked = [{ title: 'Flowers', done: true }];
+        const result = differences(fields({ checklist: ticked, tags: ['home'] }), fields({ checklist: [{ title: 'Flowers', done: true }], tags: ['work'], when: undefined }));
+        expect(result).toEqual({ tags: ['work'] });
+        expect('when' in result).toBe(true);
+        expect(differences(fields(), fields())).toEqual({});
     });
 });

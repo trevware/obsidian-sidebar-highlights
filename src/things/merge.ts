@@ -31,6 +31,17 @@ function put(target: Partial<TodoFields>, key: keyof TodoFields, value: unknown)
 }
 
 /**
+ * The fields where `from` differs from `to`, with `to`'s values: what brings
+ * one side to agreed values. A key present with an `undefined` value clears
+ * that field.
+ */
+export function differences(from: TodoFields, to: TodoFields): Partial<TodoFields> {
+    const out: Partial<TodoFields> = {};
+    for (const key of KEYS) if (!same(from[key], to[key])) put(out, key, to[key]);
+    return out;
+}
+
+/**
  * What each side needs from the other, and the fields both will hold after.
  * A key present with an `undefined` value clears that field (a date or
  * reminder taken off).

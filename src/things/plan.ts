@@ -28,10 +28,13 @@
  *   folder has no synced notes left and Things holds nothing in it outside
  *   the Trash.
  * - On first connect (`joined` false), what already exists on both sides is
- *   joined by name first (join.ts), and each joined line takes its to-do's
- *   ID (`adopt`). Headings that differ are never read as a rename then, and
- *   `counts` is what the user confirms: the to-dos made in Things and the
- *   tasks written into notes, leaving out joined pairs.
+ *   joined by name first (join.ts). Each joined line takes its to-do's ID
+ *   (`adopt`), and both sides go to the fields the pair agrees on. The note
+ *   wins on headings: its own in its order, then Things' headings holding
+ *   to-dos that come in, with one swap when Things has anything else and
+ *   never a headings step into the note. `counts` is what the user confirms:
+ *   the to-dos made in Things and the tasks written into notes, leaving out
+ *   joined pairs.
  * - A to-do with a Deadline and no When date is dated by its deadline, every
  *   round, so the date it brings to the line stays put.
  * - A note renamed or moved renames or moves its project, a project renamed or
@@ -52,9 +55,9 @@
 
 import { MISSING_LIMIT, MISSING_SHARE } from '../calendar/plan';
 import type { NoteInfo } from '../calendar/plan';
-import { importable, joinByName, withDeadline } from './join';
+import { agreedFields, importable, joinByName, joinedHeadings, withDeadline } from './join';
 import { areaName, folderFor, looseNoteName, noteName } from './mapping';
-import { mergeFields } from './merge';
+import { differences, mergeFields } from './merge';
 import type { Place, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultSnapshot, VaultTask } from './model';
 
 export type ThingsStep =
@@ -126,13 +129,13 @@ function namedAfter(base: string, title: string): boolean {
     return base === stem || (base.startsWith(`${stem} `) && /^\d+$/.test(base.slice(stem.length + 1)));
 }
 
-/** A synced note's headings as each side has them, and a heading renamed only in Things. */
-interface NoteHeadings { note: VaultNote; id: string; written: string[]; things: string[]; vaultChanged: boolean; thingsChanged: boolean; renamed: Map<string, string> }
+/** A synced note's headings as each side has them, a heading renamed only in Things, and the headings a swap rebuilds the project with. */
+interface NoteHeadings { note: VaultNote; id: string; written: string[]; things: string[]; vaultChanged: boolean; thingsChanged: boolean; renamed: Map<string, string>; target: string[] }
 
 export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, opts: ThingsPlanOptions): ThingsPlan {
     const dated: ThingsSnapshot = { ...things, todos: things.todos.map(withDeadline) };
     if (state.joined) return planRound(vault, dated, state, new Map(), opts);
-    const first = joinByName(vault, dated, state);
+    const first = joinByName(vault, dated, state, path => opts.notes.exists(path));
     return planRound(vault, dated, first.state, first.adopted, opts);
 }
 
@@ -169,7 +172,6 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     }
     // A line joined by name stands for its to-do as if it carried the ID.
     adopted.forEach((id, task) => lineById.set(id, task));
-    const joinedIds = new Set(adopted.values());
     const known = (todo: ThingsTodo) => syncedById.has(todo.id) || lineById.has(todo.id);
 
     // New notes, named so they never take a path in use or one named this round.
@@ -236,19 +238,28 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         const sp = projectByPath.get(note.path);
         const project = sp && projectById.get(sp.id);
         if (!sp || !live(project) || isListNote(note.path)) continue;
-        // A joined to-do takes its line's place, so its heading in Things holds nothing.
-        const holds = (heading: string) => things.todos.some(t => t.projectId === project.id && t.heading === heading && !t.trashed && !joinedIds.has(t.id) && (known(t) || importable(t)));
+        if (firstConnect) {
+            // The note wins: its headings in its order, then Things' headings
+            // holding to-dos that come in. One swap when Things has anything
+            // else, and never a headings step into the note.
+            const target = caps.headings ? joinedHeadings(note.headings, project, things.todos, t => importable(t) && !known(t)) : note.headings;
+            const has = caps.headings && project.headings ? project.headings.filter(h => target.includes(h)) : target;
+            headingsOf.set(note.path, { note, id: sp.id, written: target, things: target, vaultChanged: !sameList(has, target), thingsChanged: false, renamed: new Map(), target });
+            continue;
+        }
+        const holds = (heading: string) => things.todos.some(t => t.projectId === project.id && t.heading === heading && !t.trashed && (known(t) || importable(t)));
         const seen = caps.headings && project.headings ? project.headings.filter(h => sp.headings.includes(h) || holds(h)) : sp.headings;
         const vaultChanged = !sameList(note.headings, sp.headings);
         const thingsChanged = !sameList(seen, sp.headings);
         const renamed = new Map<string, string>();
-        // On first connect the two lists were never the same, so nothing was renamed.
-        if (!firstConnect && !vaultChanged && thingsChanged && seen.length === sp.headings.length) {
+        if (!vaultChanged && thingsChanged && seen.length === sp.headings.length) {
             const differ = sp.headings.map((_, i) => i).filter(i => seen[i] !== sp.headings[i]);
             if (differ.length === 1 && !sp.headings.includes(seen[differ[0]])) renamed.set(sp.headings[differ[0]], seen[differ[0]]);
         }
-        headingsOf.set(note.path, { note, id: sp.id, written: sp.headings, things: seen, vaultChanged, thingsChanged, renamed });
+        headingsOf.set(note.path, { note, id: sp.id, written: sp.headings, things: seen, vaultChanged, thingsChanged, renamed, target: note.headings });
     }
+    /** The headings a note ends this round with. */
+    const targetOf = (path: string) => headingsOf.get(path)?.target ?? noteByPath.get(path)?.headings ?? [];
     const swapping = (path: string) => headingsOf.get(path)?.vaultChanged === true;
     /** A place in the vault, with the heading Things renamed under its new name and no heading in a list note. */
     const vaultSide = (path: string, heading?: string): Place => {
@@ -307,8 +318,12 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         }
         if (gone(todo)) { retire(task); continue; }
 
+        // A line joined by name this round: both sides go to the agreed fields.
         // A line whose ID Things knows and the state doesn't: the note wins.
-        const { toThings, toVault } = mergeFields(task.fields, todo.fields, synced?.fields ?? todo.fields, caps);
+        const agreed = adopted.has(task) ? agreedFields(task.fields, todo.fields) : undefined;
+        const { toThings, toVault } = agreed
+            ? { toThings: differences(todo.fields, agreed), toVault: differences(task.fields, agreed) }
+            : mergeFields(task.fields, todo.fields, synced?.fields ?? todo.fields, caps);
         if (todo.repeating) {
             // Things won't let anything else complete or re-date a repeating to-do: its own values stand.
             if ('status' in toThings) { delete toThings.status; if (task.fields.status !== todo.fields.status) toVault.status = todo.fields.status; }
@@ -324,7 +339,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         let final = here;
         if (was && there) {
             // A heading moved to in Things that a rebuilt note no longer has gives way to the note.
-            const lost = swapping(here.path) && there.path === here.path && there.heading !== undefined && !noteByPath.get(here.path)?.headings.includes(there.heading);
+            const lost = swapping(here.path) && there.path === here.path && there.heading !== undefined && !targetOf(here.path).includes(there.heading);
             if (!samePlace(here, was) && !samePlace(here, there)) {
                 // The swap places to-dos in a note being rebuilt.
                 if (!swapping(here.path) && ready(here.path)) thingsSteps.push({ kind: 'moveTodo', id, to: here });
@@ -412,13 +427,13 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     // Areas renamed in Things get their folder's name back.
     for (const area of state.areas) {
         const current = areaById.get(area.id);
-        if (current && area.folder && current.title !== areaName(area.folder)) thingsSteps.push({ kind: 'renameArea', id: area.id, folder: area.folder });
+        if (current && area.folder && folderFor(current.title) !== area.folder) thingsSteps.push({ kind: 'renameArea', id: area.id, folder: area.folder });
     }
 
     // Headings: the swap, or Things' headings written into the note.
     const orderOf = (plan: NoteHeadings) => {
-        const { note, id } = plan;
-        const entry = (todoId: string, heading?: string) => heading !== undefined && note.headings.includes(heading) ? { id: todoId, heading } : { id: todoId };
+        const { note, id, target } = plan;
+        const entry = (todoId: string, heading?: string) => heading !== undefined && target.includes(heading) ? { id: todoId, heading } : { id: todoId };
         const order: Array<{ id: string; heading?: string }> = [];
         const listed = new Set<string>();
         finals.forEach((place, todoId) => {
@@ -441,7 +456,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         const dropped = plan.written.filter(h => !plan.things.includes(h) && !plan.renamed.has(h));
         const stays = dropped.some(h => note.tasks.some(t => t.heading === h && !leaving.has(t)));
         if (plan.vaultChanged || (plan.thingsChanged && stays)) {
-            thingsSteps.push({ kind: 'swapProject', path: note.path, id: plan.id, headings: note.headings, order: orderOf(plan) });
+            thingsSteps.push({ kind: 'swapProject', path: note.path, id: plan.id, headings: plan.target, order: orderOf(plan) });
         } else if (plan.thingsChanged) {
             vaultSteps.push({ kind: 'headings', path: note.path, from: note.headings, to: plan.things });
         }

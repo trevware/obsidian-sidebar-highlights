@@ -73,11 +73,17 @@ function snapshots(w: World): [VaultSnapshot, ThingsSnapshot] {
     ];
 }
 
-function plan(w: World): ThingsPlan {
+/** Every note that exists, with when it last changed. */
+function filesOf(w: World): Record<string, number> {
     const files: Record<string, number> = {};
     for (const n of w.notes ?? []) files[n.path] = OLD;
     Object.assign(files, w.files);
     for (const path of w.deleted ?? []) delete files[path];
+    return files;
+}
+
+function plan(w: World): ThingsPlan {
+    const files = filesOf(w);
     return planThingsSync(
         ...snapshots(w),
         w.state ?? state(),
@@ -87,7 +93,8 @@ function plan(w: World): ThingsPlan {
 
 /** What joining by name records, before anything is planned. */
 function joined(w: World): ThingsState {
-    return joinFirstConnect(...snapshots(w), w.state ?? state());
+    const files = filesOf(w);
+    return joinFirstConnect(...snapshots(w), w.state ?? state(), path => path in files);
 }
 
 const where = (place: Place): string => place.heading === undefined ? place.path : `${place.path}#${place.heading}`;
@@ -740,7 +747,52 @@ describe('planThingsSync: first connect', () => {
             projects: [planProject({ headings: ['Phone'] })],
             todos: [todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Phone' })]
         });
-        expect(show(plan(w))).toEqual(['swapProject proj1 [Calls] cccccccc', 'createTodo Call Dad', 'add Pay rent Work/Plan.md#Phone']);
+        expect(show(plan(w))).toEqual(['swapProject proj1 [Calls, Phone] cccccccc#Phone', 'createTodo Call Dad', 'add Pay rent Work/Plan.md#Phone']);
+    });
+    describe('heading order', () => {
+        const ordered = ['Calls', 'Errands', 'Later'];
+        /** Plan.md has Calls then Errands; Things has them the other way round, plus Later holding a to-do the note doesn't have. */
+        const reversed = meeting({
+            notes: [note(PLAN, [momLine(), line('Buy milk', { heading: 'Errands' })])],
+            projects: [planProject({ headings: ['Errands', 'Calls', 'Later'] })],
+            todos: [momTodo(), todo(B, 'Buy milk', { projectId: 'proj1', heading: 'Errands' }), todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Later' })]
+        });
+        /** The round after the first: what the swap and the add left on both sides. */
+        const nextRound = (first: World, headings: string[]): World => {
+            const after = joined(first);
+            const lines = [line('Call Mom', { id: A, heading: 'Calls' }), line('Buy milk', { id: B, heading: 'Errands' }), line('Pay rent', { id: C, heading: 'Later' })];
+            const kept = lines.filter(l => headings.includes(l.heading!));
+            return {
+                notes: [note(PLAN, kept)],
+                areas: [WORK],
+                projects: [planProject({ headings })],
+                todos: kept.map(l => todo(l.id!, l.fields.title, { projectId: 'proj1', areaId: 'area1', heading: l.heading })),
+                state: { ...after, joined: true, todos: kept.map(l => synced(l.id!, l.fields.title, PLAN, { heading: l.heading })) }
+            };
+        };
+
+        it('rebuilds once in the note\'s order, then Things\' headings holding to-dos that come in, and never reorders the note', () => {
+            const result = plan(reversed);
+            expect(show(result)).toEqual([
+                'swapProject proj1 [Calls, Errands, Later] aaaaaaaa#Calls bbbbbbbb#Errands cccccccc#Later',
+                'adopt Call Mom aaaaaaaa',
+                'adopt Buy milk bbbbbbbb',
+                'add Pay rent Work/Plan.md#Later'
+            ]);
+            expect(steps(result).vault.some(s => s.kind === 'headings')).toBe(false);
+            expect(result).toMatchObject({ counts: { toThings: 0, toVault: 1 } });
+            expect(joined(reversed).projects[0].headings).toEqual(ordered);
+            expect(show(plan(nextRound(reversed, ordered)))).toEqual([]);
+        });
+        it('leaves Things alone when it already has the note\'s headings in order, adding its own after them', () => {
+            const w = meeting({
+                projects: [planProject({ headings: ['Calls', 'Later'] })],
+                todos: [momTodo(), todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Later' })]
+            });
+            expect(show(plan(w))).toEqual(['adopt Call Mom aaaaaaaa', 'add Pay rent Work/Plan.md#Later']);
+            expect(joined(w).projects[0].headings).toEqual(['Calls', 'Later']);
+            expect(show(plan(nextRound(w, ['Calls', 'Later'])))).toEqual([]);
+        });
     });
     it('never imports or joins a repeating to-do, or one in the Logbook or the Trash', () => {
         const w = meeting({
@@ -790,5 +842,90 @@ describe('planThingsSync: first connect', () => {
         expect(once.todos).toHaveLength(1);
         expect(joinFirstConnect(...snapshots(w), once)).toEqual(once);
         expect(show(plan({ ...w, state: once }))).toEqual(show(plan(w)));
+    });
+    it('joins where the import would land, so names Things writes differently still join', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine()]), note('Work/Launch v2.md', [line('Write copy')])],
+            areas: [{ id: 'area1', title: 'Work ' }],
+            projects: [planProject(), project('proj9', 'Launch: v2', { areaId: 'area1' })]
+        });
+        expect(joined(w).areas).toEqual([{ id: 'area1', folder: 'Work' }]);
+        expect(joined(w).projects.map(p => [p.id, p.path])).toEqual([['proj1', PLAN], ['proj9', 'Work/Launch v2.md']]);
+        expect(show(plan(w))).toEqual(['createTodo Write copy', 'adopt Call Mom aaaaaaaa']);
+    });
+    it('joins a project to its note when the note exists with no open tasks, and brings its to-dos into it', () => {
+        const HOME_AREA: ThingsArea = { id: 'area3', title: 'Home' };
+        const w = meeting({
+            areas: [WORK, HOME_AREA],
+            projects: [planProject(), project('proj7', 'Chores', { areaId: 'area1', headings: ['Later'] }), project('proj8', 'Groceries', { areaId: 'area3' })],
+            todos: [momTodo(),
+                todo(C, 'Pay rent', { projectId: 'proj7' }),
+                todo('dddddddd', 'Call plumber', { projectId: 'proj7', heading: 'Later' }),
+                todo('eeeeeeee', 'Buy eggs', { projectId: 'proj8' })],
+            files: { 'Work/Chores.md': OLD, 'Home/Groceries.md': OLD }
+        });
+        const after = joined(w);
+        expect(after.areas).toEqual([{ id: 'area1', folder: 'Work' }, { id: 'area3', folder: 'Home' }]);
+        expect(after.projects.slice(1)).toEqual([
+            { id: 'proj7', path: 'Work/Chores.md', title: 'Chores', headings: ['Later'], areaId: 'area1' },
+            { id: 'proj8', path: 'Home/Groceries.md', title: 'Groceries', headings: [], areaId: 'area3' }
+        ]);
+        expect(show(plan(w))).toEqual([
+            'adopt Call Mom aaaaaaaa',
+            'add Pay rent Work/Chores.md',
+            'add Call plumber Work/Chores.md#Later',
+            'add Buy eggs Home/Groceries.md'
+        ]);
+        // The round after: the note holds what came in, under the heading recorded for it, and nothing changes.
+        const next: World = {
+            ...w,
+            notes: [note(PLAN, [line('Call Mom', { id: A, heading: 'Calls' })]),
+                note('Work/Chores.md', [line('Pay rent', { id: C }), line('Call plumber', { id: 'dddddddd', heading: 'Later' })]),
+                note('Home/Groceries.md', [line('Buy eggs', { id: 'eeeeeeee' })])],
+            state: { ...after, joined: true, todos: [...after.todos, synced(C, 'Pay rent', 'Work/Chores.md'), synced('dddddddd', 'Call plumber', 'Work/Chores.md', { heading: 'Later' }), synced('eeeeeeee', 'Buy eggs', 'Home/Groceries.md')] }
+        };
+        expect(show(plan(next))).toEqual([]);
+    });
+    it('keeps the to-do\'s own tags beside the status and priority the line\'s checkbox gives', () => {
+        expect(show(plan(meeting({ notes: [note(PLAN, [momLine({ f: { tags: ['In Progress'] } })])], todos: [momTodo({ f: { tags: ['home'] } })] })))).toEqual([
+            'updateTodo aaaaaaaa {"tags":["In Progress","home"]}',
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"tags":["In Progress","home"]}'
+        ]);
+        // A plain checkbox has no priority, so Things' Priority 1 goes and its own tag stays.
+        expect(show(plan(meeting({ todos: [momTodo({ f: { tags: ['Priority 1', 'home'] } })] })))).toEqual([
+            'updateTodo aaaaaaaa {"tags":["home"]}',
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"tags":["home"]}'
+        ]);
+    });
+    it('finishes a first round that stopped partway, sending each side what it still lacks', () => {
+        const first = meeting({ notes: [note(PLAN, [momLine({ f: { tags: ['In Progress'] } })])], todos: [momTodo({ f: { tags: ['home'] } })] });
+        const after = joined(first);
+        const both = ['In Progress', 'home'];
+        const retry = (lineTags: string[], thingsTags: string[]) => show(plan({
+            ...first, state: after,
+            notes: [note(PLAN, [line('Call Mom', { id: A, heading: 'Calls', f: { tags: lineTags } })])],
+            todos: [momTodo({ f: { tags: thingsTags } })]
+        }));
+        // The line was written and Things wasn't, then the other way round.
+        expect(retry(both, ['home'])).toEqual(['updateTodo aaaaaaaa {"tags":["In Progress","home"]}']);
+        expect(retry(['In Progress'], both)).toEqual(['update Call Mom {"tags":["In Progress","home"]}']);
+    });
+    it('pairs same-title to-dos with lines under the same heading first, then in line order', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine(), momLine({ heading: 'Later' })])],
+            projects: [planProject({ headings: ['Calls', 'Later'] })],
+            todos: [momTodo({ heading: 'Later' }), todo(B, 'Call Mom', { projectId: 'proj1', heading: 'Calls' })]
+        });
+        expect(show(plan(w))).toEqual(['adopt Call Mom aaaaaaaa', 'adopt Call Mom bbbbbbbb']);
+        const adopts = steps(plan(w)).vault.filter((s): s is Adopt => s.kind === 'adopt');
+        expect(adopts.map(s => [s.task.line, s.id])).toEqual([[3, A], [2, B]]);
+    });
+    it('matches titles with the spaces around and between words evened out', () => {
+        expect(show(plan(meeting({ todos: [momTodo({ f: { title: ' Call  Mom ' } })] })))).toEqual([
+            'updateTodo aaaaaaaa {"title":"Call Mom"}',
+            'adopt Call Mom aaaaaaaa'
+        ]);
     });
 });
