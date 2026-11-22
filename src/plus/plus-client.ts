@@ -36,6 +36,21 @@ export function markDevInstall(value: boolean): void {
 export function calendarAvailable(app: App): boolean {
     return CALENDAR_LAUNCHED || devInstall || app.loadLocalStorage(CALENDAR_PREVIEW_KEY) === 'true';
 }
+/**
+ * Things sync shows in settings once it is released. Until then a vault can
+ * preview it by setting the local storage key
+ * `sidebar-highlights-things-preview` to "true", and a development install
+ * always has it. Things only runs on a Mac, so everywhere else this is false
+ * and every caller can ask without checking the platform itself.
+ */
+export const THINGS_LAUNCHED = false;
+export const THINGS_PREVIEW_KEY = 'sidebar-highlights-things-preview';
+
+/** Whether Things sync is on in this vault: a Mac with Obsidian's desktop app, once launched or previewed. */
+export function thingsAvailable(app: App): boolean {
+    if (!Platform.isDesktopApp || !Platform.isMacOS) return false;
+    return THINGS_LAUNCHED || devInstall || app.loadLocalStorage(THINGS_PREVIEW_KEY) === 'true';
+}
 /** Obsidian keychain id for the license key, shared with Oriko. */
 export const LICENSE_SECRET = 'oriko-plus-license';
 /** Obsidian local storage key for this device's install id, shared with Oriko. */

@@ -24,6 +24,7 @@ import { TaskIndex } from './src/managers/task-index';
 import { REMINDER_LEADS } from './src/tasks-view/reminders';
 import { isCalendarComment } from './src/calendar/ids';
 import { isThingsComment } from './src/things/ids';
+import type { ThingsConnection } from './src/things/model';
 import { hideSyncIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
@@ -193,6 +194,7 @@ export interface CommentPluginSettings {
     calendarEventMinutes: number; // How long a timed task's event lasts
     calendarClearOnDelete: boolean; // Deleting an event clears its task's date; otherwise the event comes back
     showCalendarIds: boolean; // Show synced tasks' calendar IDs in the editor
+    things: ThingsConnection | null; // The Mac this vault syncs with Things from
     showThingsIds: boolean; // Show synced tasks' Things IDs in the editor
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
@@ -263,6 +265,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     calendarEventMinutes: 30,
     calendarClearOnDelete: true,
     showCalendarIds: false,
+    things: null, // Not connected
     showThingsIds: false,
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
