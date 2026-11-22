@@ -25,13 +25,17 @@
  *   is gone or has sat still for `settleMs`, so a task on its way to another
  *   note is never trashed before it arrives. A deleted note trashes its
  *   project; a note that only lost its tasks keeps it. An area goes once its
- *   folder has no synced notes left and Things holds nothing open in it.
+ *   folder has no synced notes left and Things holds nothing in it outside
+ *   the Trash.
  * - A note renamed or moved renames or moves its project, a project renamed or
- *   moved to a synced area in Things renames or moves its note, and when both
- *   changed the note's name wins. An area renamed in Things gets its folder's
- *   name back.
+ *   moved to another area in Things renames or moves its note (into a new
+ *   folder for a new area), and when both changed the note's name wins. An
+ *   area renamed in Things gets its folder's name back.
  * - Past the guard (more than 3, and more than a quarter, of the synced
- *   to-dos vanishing from one side at once), nothing is planned at all.
+ *   to-dos vanishing from one side at once), nothing is planned at all. A
+ *   deleted note counts once, and a project trashed in Things not at all,
+ *   since each is one deliberate act. Once the user confirms what vanished
+ *   from the vault, `acceptMissing` lets that one round past the vault side.
  *
  * Nothing here touches a note or Things. It returns the steps in the order
  * the round carries them out, and the round keeps the state. Paths in every
@@ -70,7 +74,8 @@ export type VaultStep =
     | { kind: 'retire'; task: VaultTask }
     /** A note for a new project (`projectId`), an area's loose to-dos (`areaId` alone) or the Inbox. `areaId` names the area its folder stands for. */
     | { kind: 'createNote'; path: string; title: string; headings: string[]; todos: ThingsTodo[]; projectId?: string; areaId?: string }
-    | { kind: 'renameNote'; from: string; to: string }
+    /** `areaId` is the area Things moved the note's project into, so the round can record a new area's folder. */
+    | { kind: 'renameNote'; from: string; to: string; areaId?: string }
     | { kind: 'headings'; path: string; from: string[]; to: string[] };
 
 export type ThingsPlan =
@@ -78,7 +83,13 @@ export type ThingsPlan =
     /** Too many synced to-dos vanished from one side at once to be the user's doing; nothing is changed. */
     | { ok: false; reason: 'emptied'; side: 'things' | 'vault'; missing: number };
 
-export interface ThingsPlanOptions { now: number; settleMs: number; notes: NoteInfo }
+export interface ThingsPlanOptions {
+    now: number;
+    settleMs: number;
+    notes: NoteInfo;
+    /** The user confirmed what vanished from the vault: this round skips the vault side of the guard. */
+    acceptMissing?: boolean;
+}
 
 type CreateNote = Extract<VaultStep, { kind: 'createNote' }>;
 
@@ -315,23 +326,28 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         else vaultSteps.push({ kind: 'add', todo, to });
     }
 
-    // Notes deleted from the vault, then lines.
+    // Notes deleted from the vault, then lines. For the guard, each line
+    // gone from a note still there counts, and a deleted note counts once.
     const trashing = new Set<string>();
+    const deleted = new Set<string>();
     for (const sp of state.projects) {
         if (files.exists(sp.path) || !live(projectById.get(sp.id))) continue;
         if (state.projects.some(other => other !== sp && other.id === sp.id && files.exists(other.path))) continue;
         trashing.add(sp.id);
+        deleted.add(sp.path);
         thingsSteps.push({ kind: 'trashProject', id: sp.id });
     }
-    let goneFromVault = 0;
+    let linesGone = 0;
     for (const synced of state.todos) {
         const todo = todoById.get(synced.id);
         if (lineById.has(synced.id) || !todo || gone(todo)) continue;
         const path = synced.place.path;
-        if (files.exists(path) && opts.now - files.mtime(path) < opts.settleMs) continue;
-        goneFromVault++;
+        if (!files.exists(path)) deleted.add(path);
+        else if (opts.now - files.mtime(path) >= opts.settleMs) linesGone++;
+        else continue;
         if (todo.projectId === undefined || !trashing.has(todo.projectId)) thingsSteps.push({ kind: 'trashTodo', id: synced.id });
     }
+    const goneFromVault = linesGone + deleted.size;
 
     // Renames and moves of synced notes and projects.
     for (const sp of state.projects) {
@@ -340,9 +356,11 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         const folder = folderOf(sp.path);
         const base = baseOf(sp.path);
         const wasFolder = sp.areaId === undefined ? '' : stateFolder(sp.areaId) ?? folder;
-        // The folder of the area Things has it in, or undefined for an area the vault has no folder for.
-        const thingsFolder = project.areaId === undefined ? '' : areaById.has(project.areaId) ? stateFolder(project.areaId) : undefined;
+        // The folder of the area Things has it in, or undefined for an area the vault has no folder for yet.
+        const area = project.areaId === undefined ? undefined : areaById.get(project.areaId);
+        const thingsFolder = project.areaId === undefined ? '' : area ? stateFolder(area.id) : undefined;
         const change: { title?: string; folder?: string } = {};
+        let movedTo: string | undefined;
         let title = base;
         let to = folder;
         if (!namedAfter(base, sp.title)) {
@@ -353,15 +371,17 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         if (folder !== wasFolder) {
             if (thingsFolder !== folder) { ensureArea(folder); change.folder = folder; }
         } else if ((project.areaId ?? '') !== (sp.areaId ?? '')) {
-            if (thingsFolder === undefined) change.folder = folder;
-            else to = thingsFolder;
+            // A new area's folder comes with the note; an area Things doesn't list can't be followed.
+            const target = thingsFolder ?? (area ? folderFor(area.title) : undefined);
+            if (target === undefined) change.folder = folder;
+            else { to = target; movedTo = area?.id; }
         }
         if (change.title !== undefined || change.folder !== undefined) thingsSteps.push({ kind: 'updateProject', id: sp.id, ...change });
         if (title === base && to === folder) continue;
         const path = noteName(title, other => other !== sp.path && taken(other), to);
         if (path === sp.path) continue;
         reserved.add(path);
-        vaultSteps.push({ kind: 'renameNote', from: sp.path, to: path });
+        vaultSteps.push({ kind: 'renameNote', from: sp.path, to: path, ...(movedTo === undefined ? {} : { areaId: movedTo }) });
     }
 
     // Areas renamed in Things get their folder's name back.
@@ -375,9 +395,18 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         const { note, id } = plan;
         const entry = (todoId: string, heading?: string) => heading !== undefined && note.headings.includes(heading) ? { id: todoId, heading } : { id: todoId };
         const order: Array<{ id: string; heading?: string }> = [];
-        finals.forEach((place, todoId) => { if (place.path === note.path) order.push(entry(todoId, place.heading)); });
+        const listed = new Set<string>();
+        finals.forEach((place, todoId) => {
+            if (place.path !== note.path) return;
+            order.push(entry(todoId, place.heading));
+            listed.add(todoId);
+        });
+        // Everything else still in the old project comes across too, so the
+        // old one is empty when it goes to the Trash. A to-do on its way to
+        // another note comes at its current heading, and its own moveTodo,
+        // after the swap, takes it on.
         for (const todo of things.todos) {
-            if (todo.projectId !== id || todo.trashed || lineById.has(todo.id)) continue;
+            if (todo.projectId !== id || todo.trashed || listed.has(todo.id)) continue;
             order.push(entry(todo.id, thingsPlace(todo, syncedById.get(todo.id)?.place)?.heading));
         }
         return order;
@@ -400,7 +429,8 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         if (caps.headings && raw && used) made.headings = raw.filter(h => used.has(h));
     });
 
-    // An area whose folder has no synced notes left and holds nothing open in Things.
+    // An area whose folder has no synced notes left and holds nothing in Things
+    // outside the Trash: a repeating to-do or a finished project keeps it.
     for (const area of state.areas) {
         if (!areaById.has(area.id)) continue;
         const inFolder = (path: string) => folderOf(path) === area.folder;
@@ -409,14 +439,14 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
             || state.projects.some(sp => inFolder(sp.path) && files.exists(sp.path))
             || [...newNotes.keys()].some(inFolder)
             || (loose !== undefined && files.exists(loose));
-        const holds = things.projects.some(p => p.areaId === area.id && live(p) && p.status === 'open')
-            || things.todos.some(t => t.areaId === area.id && t.projectId === undefined && importable(t));
+        const holds = things.projects.some(p => p.areaId === area.id && live(p))
+            || things.todos.some(t => t.areaId === area.id && !gone(t));
         if (!used && !holds) thingsSteps.push({ kind: 'deleteArea', id: area.id });
     }
 
     const tripped = (missing: number) => missing > MISSING_LIMIT && missing > state.todos.length * MISSING_SHARE;
     if (tripped(goneFromThings)) return { ok: false, reason: 'emptied', side: 'things', missing: goneFromThings };
-    if (tripped(goneFromVault)) return { ok: false, reason: 'emptied', side: 'vault', missing: goneFromVault };
+    if (!opts.acceptMissing && tripped(goneFromVault)) return { ok: false, reason: 'emptied', side: 'vault', missing: goneFromVault };
 
     const allVault: VaultStep[] = [...newNotes.values(), ...vaultSteps];
     const toThings = thingsSteps.filter(s => s.kind === 'createTodo' || s.kind === 'updateTodo' || s.kind === 'moveTodo' || s.kind === 'trashTodo').length;

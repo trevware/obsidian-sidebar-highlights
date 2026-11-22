@@ -62,6 +62,7 @@ interface World {
     files?: Record<string, number>;
     /** Notes that no longer exist. */
     deleted?: string[];
+    acceptMissing?: boolean;
 }
 
 function plan(w: World): ThingsPlan {
@@ -74,7 +75,7 @@ function plan(w: World): ThingsPlan {
         { notes, folders: [] },
         { areas: w.areas ?? [], projects: w.projects ?? [], todos: w.todos ?? [], capabilities: { ...caps, ...w.caps } },
         w.state ?? state(),
-        { now: NOW, settleMs: SETTLE, notes: { exists: path => path in files, mtime: path => files[path] ?? 0 } }
+        { now: NOW, settleMs: SETTLE, notes: { exists: path => path in files, mtime: path => files[path] ?? 0 }, acceptMissing: w.acceptMissing }
     );
 }
 
@@ -247,6 +248,19 @@ describe('planThingsSync: headings', () => {
             'add Pay rent Work/Plan.md'
         ]);
     });
+    it('brings a to-do on its way to another note across in the swap, so its own move takes it on', () => {
+        const both = ['Calls', 'Errands'];
+        const w = twoNotes({
+            notes: [note(PLAN, [mom()]), note(HOME, [line('Buy milk', { id: B })])],
+            projects: [planProject({ headings: both }), homeProject],
+            todos: [momTodo(), todo(B, 'Buy milk', { projectId: 'proj1', heading: 'Errands' })],
+            state: syncedState({
+                projects: [planSynced({ headings: both }), homeSynced],
+                todos: [synced(A, 'Call Mom', PLAN, { heading: 'Calls' }), synced(B, 'Buy milk', PLAN, { heading: 'Errands' })]
+            })
+        });
+        expect(show(plan(w))).toEqual(['swapProject proj1 [Calls] aaaaaaaa#Calls bbbbbbbb', 'moveTodo bbbbbbbb Work/Home.md']);
+    });
     it('writes headings added in Things into the note', () => {
         const w = world({
             projects: [planProject({ headings: ['Calls', 'Later'] })],
@@ -400,14 +414,26 @@ describe('planThingsSync: gone from the vault', () => {
     it('leaves a to-do that is gone from both sides', () => {
         expect(show(plan(world({ notes: [], files: { [PLAN]: OLD }, todos: [momTodo({ trashed: true })] })))).toEqual([]);
     });
-    it('deletes an area once its folder has no synced notes and Things holds nothing open in it', () => {
+    describe('areas', () => {
         const old: ThingsArea = { id: 'area2', title: 'Old' };
         const st = syncedState({ areas: [{ id: 'area1', folder: 'Work' }, { id: 'area2', folder: 'Old' }] });
-        expect(show(plan(world({ areas: [WORK, old], state: st })))).toEqual(['deleteArea area2']);
-        const busy = world({ areas: [WORK, old], state: st, projects: [planProject(), project('proj5', 'Still here', { areaId: 'area2' })] });
-        expect(show(plan(busy))).not.toContain('deleteArea area2');
-        const loose = world({ areas: [WORK, old], state: st, todos: [momTodo(), todo(C, 'Loose end', { areaId: 'area2', logged: true, f: { status: 'completed' } })] });
-        expect(show(plan(loose))).toEqual(['deleteArea area2']);
+        const holding = (over: World) => show(plan(world({ areas: [WORK, old], state: st, ...over })));
+
+        it('deletes an area once its folder has no synced notes and Things holds nothing in it outside the Trash', () => {
+            expect(holding({})).toEqual(['deleteArea area2']);
+            expect(holding({ todos: [momTodo(), todo(C, 'Binned', { areaId: 'area2', trashed: true })] })).toEqual(['deleteArea area2']);
+            expect(holding({ projects: [planProject(), project('proj5', 'Binned', { areaId: 'area2', trashed: true })] })).toEqual(['deleteArea area2']);
+        });
+        it('keeps an area that still holds an open project', () => {
+            expect(holding({ projects: [planProject(), project('proj5', 'Still here', { areaId: 'area2' })] })).not.toContain('deleteArea area2');
+        });
+        it('keeps an area that still holds a completed or repeating to-do', () => {
+            expect(holding({ todos: [momTodo(), todo(C, 'Loose end', { areaId: 'area2', logged: true, f: { status: 'completed' } })] })).toEqual([]);
+            expect(holding({ todos: [momTodo(), todo(C, 'Water plants', { areaId: 'area2', repeating: true })] })).toEqual([]);
+        });
+        it('keeps an area that still holds a completed project', () => {
+            expect(holding({ projects: [planProject(), project('proj5', 'Shipped', { areaId: 'area2', status: 'completed' })] })).toEqual([]);
+        });
     });
 });
 
@@ -438,15 +464,29 @@ describe('planThingsSync: renames', () => {
         });
         expect(show(plan(w))).toEqual([]);
     });
-    it('moves the note when the project moved to another synced area in Things, and moves it back otherwise', () => {
+    it('moves the note when the project moved to another synced area in Things', () => {
         const home: ThingsArea = { id: 'area2', title: 'Home' };
         const st = syncedState({ areas: [{ id: 'area1', folder: 'Work' }, { id: 'area2', folder: 'Home' }] });
-        expect(show(plan(world({ areas: [WORK, home], state: st, projects: [planProject({ areaId: 'area2' })], files: { 'Home/Other.md': OLD } })))).toEqual([
-            'renameNote Work/Plan.md Home/Plan.md'
+        const result = plan(world({ areas: [WORK, home], state: st, projects: [planProject({ areaId: 'area2' })], files: { 'Home/Other.md': OLD } }));
+        expect(show(result)).toEqual(['renameNote Work/Plan.md Home/Plan.md']);
+        expect(steps(result).vault[0]).toMatchObject({ areaId: 'area2' });
+    });
+    it('moves the note into a new folder when the project moved to a new area in Things, numbering a name in use', () => {
+        const fresh: ThingsArea = { id: 'area3', title: 'Home/Errands' };
+        const result = plan(world({ areas: [WORK, fresh], projects: [planProject({ areaId: 'area3' })] }));
+        expect(show(result)).toEqual(['renameNote Work/Plan.md Home/Errands/Plan.md']);
+        expect(steps(result).vault[0]).toMatchObject({ kind: 'renameNote', areaId: 'area3' });
+        expect(show(plan(world({ areas: [WORK, fresh], projects: [planProject({ areaId: 'area3' })], files: { 'Home/Errands/Plan.md': OLD } })))).toEqual([
+            'renameNote Work/Plan.md Home/Errands/Plan 2.md'
         ]);
-        expect(show(plan(world({ areas: [WORK, { id: 'area3', title: 'Fresh' }], projects: [planProject({ areaId: 'area3' })] })))).toEqual([
-            'updateProject proj1 folder=Work'
-        ]);
+    });
+    it('moves the note out of its folder when the project left every area in Things', () => {
+        const result = plan(world({ projects: [planProject({ areaId: undefined })] }));
+        expect(show(result)).toEqual(['renameNote Work/Plan.md Plan.md']);
+        expect(steps(result).vault[0]).not.toHaveProperty('areaId');
+    });
+    it('moves the project back when Things put it in an area it doesn\'t list', () => {
+        expect(show(plan(world({ projects: [planProject({ areaId: 'area9' })] })))).toEqual(['updateProject proj1 folder=Work']);
     });
     it('gives an area renamed in Things its folder\'s name back', () => {
         expect(show(plan(world({ areas: [{ id: 'area1', title: 'Job' }] })))).toEqual(['renameArea area1 Work']);
@@ -492,6 +532,43 @@ describe('planThingsSync: the guard', () => {
     });
     it('counts no line that is still settling', () => {
         expect(show(plan({ ...many(6), files: { [PLAN]: FRESH } }))).toEqual([]);
+    });
+
+    const twelve = Array.from({ length: 12 }, (_, i) => `t${String(i).padStart(2, '0')}xxxxxx`);
+    const task = (id: string) => `Task ${id}`;
+    it('counts a deleted note once, however many tasks it held', () => {
+        const [kept, lost] = [twelve.slice(0, 7), twelve.slice(7)];
+        const gone: SyncedProject = { id: 'projG', path: 'Work/Gone.md', title: 'Gone', headings: [], areaId: 'area1' };
+        const w = world({
+            notes: [note(PLAN, kept.map(id => line(task(id), { id, heading: 'Calls' })))],
+            projects: [planProject(), project('projG', 'Gone', { areaId: 'area1' })],
+            todos: [...kept.map(id => todo(id, task(id), { projectId: 'proj1', heading: 'Calls' })), ...lost.map(id => todo(id, task(id), { projectId: 'projG' }))],
+            state: syncedState({
+                projects: [planSynced(), gone],
+                todos: [...kept.map(id => synced(id, task(id), PLAN, { heading: 'Calls' })), ...lost.map(id => synced(id, task(id), gone.path))]
+            })
+        });
+        expect(show(plan(w))).toEqual(['trashProject projG']);
+    });
+    it('stops when 5 lines of 12 vanish across notes, unless the user confirmed it', () => {
+        const [inPlan, inHome] = [twelve.slice(0, 6), twelve.slice(6)];
+        const w = twoNotes({
+            notes: [
+                note(PLAN, inPlan.slice(0, 3).map(id => line(task(id), { id, heading: 'Calls' }))),
+                note(HOME, inHome.slice(0, 4).map(id => line(task(id), { id })))
+            ],
+            todos: [...inPlan.map(id => todo(id, task(id), { projectId: 'proj1', heading: 'Calls' })), ...inHome.map(id => todo(id, task(id), { projectId: 'proj2' }))],
+            state: syncedState({
+                projects: [planSynced(), homeSynced],
+                todos: [...inPlan.map(id => synced(id, task(id), PLAN, { heading: 'Calls' })), ...inHome.map(id => synced(id, task(id), HOME))]
+            })
+        });
+        expect(plan(w)).toEqual({ ok: false, reason: 'emptied', side: 'vault', missing: 5 });
+        expect(show(plan({ ...w, acceptMissing: true }))).toEqual(['t03xxxxxx', 't04xxxxxx', 't05xxxxxx', 't10xxxxxx', 't11xxxxxx'].map(id => `trashTodo ${id}`));
+    });
+    it('still checks the Things side when the user confirmed what vanished from the vault', () => {
+        const w = many(10);
+        expect(plan({ ...w, todos: w.todos!.slice(4), acceptMissing: true })).toEqual({ ok: false, reason: 'emptied', side: 'things', missing: 4 });
     });
 });
 
