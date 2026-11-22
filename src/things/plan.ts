@@ -27,6 +27,13 @@
  *   project; a note that only lost its tasks keeps it. An area goes once its
  *   folder has no synced notes left and Things holds nothing in it outside
  *   the Trash.
+ * - On first connect (`joined` false), what already exists on both sides is
+ *   joined by name first (join.ts), and each joined line takes its to-do's
+ *   ID (`adopt`). Headings that differ are never read as a rename then, and
+ *   `counts` is what the user confirms: the to-dos made in Things and the
+ *   tasks written into notes, leaving out joined pairs.
+ * - A to-do with a Deadline and no When date is dated by its deadline, every
+ *   round, so the date it brings to the line stays put.
  * - A note renamed or moved renames or moves its project, a project renamed or
  *   moved to another area in Things renames or moves its note (into a new
  *   folder for a new area), and when both changed the note's name wins. An
@@ -45,6 +52,7 @@
 
 import { MISSING_LIMIT, MISSING_SHARE } from '../calendar/plan';
 import type { NoteInfo } from '../calendar/plan';
+import { importable, joinByName, withDeadline } from './join';
 import { areaName, folderFor, looseNoteName, noteName } from './mapping';
 import { mergeFields } from './merge';
 import type { Place, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultSnapshot, VaultTask } from './model';
@@ -67,6 +75,8 @@ export type ThingsStep =
 export type VaultStep =
     /** Made by the round once the to-do exists, never by the planner. */
     | { kind: 'link'; task: VaultTask; id: string }
+    /** First connect: a line joined by name to a to-do takes its ID. The task is as read, without the ID. */
+    | { kind: 'adopt'; task: VaultTask; id: string }
     | { kind: 'unlink'; task: VaultTask }
     | { kind: 'update'; task: VaultTask; fields: Partial<TodoFields> }
     | { kind: 'move'; task: VaultTask; to: Place }
@@ -79,6 +89,7 @@ export type VaultStep =
     | { kind: 'headings'; path: string; from: string[]; to: string[] };
 
 export type ThingsPlan =
+    /** `counts`: on first connect, the to-dos made in Things and the tasks written into notes; after that, the to-dos and tasks changed. */
     | { ok: true; things: ThingsStep[]; vault: VaultStep[]; counts: { toThings: number; toVault: number } }
     /** Too many synced to-dos vanished from one side at once to be the user's doing; nothing is changed. */
     | { ok: false; reason: 'emptied'; side: 'things' | 'vault'; missing: number };
@@ -95,8 +106,8 @@ type CreateNote = Extract<VaultStep, { kind: 'createNote' }>;
 
 /** Areas before the projects in them, projects before their to-dos, and trash last, so nothing still being moved out goes with it. */
 const THINGS_ORDER: ReadonlyArray<ThingsStep['kind']> = ['createArea', 'renameArea', 'createProject', 'updateProject', 'swapProject', 'createTodo', 'updateTodo', 'moveTodo', 'trashTodo', 'trashProject', 'deleteArea'];
-/** Notes before the task steps that write into them. */
-const VAULT_ORDER: ReadonlyArray<VaultStep['kind']> = ['createNote', 'renameNote', 'headings', 'unlink', 'update', 'move', 'add', 'retire', 'link'];
+/** Notes before the task steps that write into them, and a joined line's ID before anything else changes the line. */
+const VAULT_ORDER: ReadonlyArray<VaultStep['kind']> = ['createNote', 'renameNote', 'headings', 'adopt', 'unlink', 'update', 'move', 'add', 'retire', 'link'];
 
 function byKind<T extends { kind: string }>(steps: T[], order: readonly string[]): T[] {
     return [...steps].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
@@ -119,7 +130,16 @@ function namedAfter(base: string, title: string): boolean {
 interface NoteHeadings { note: VaultNote; id: string; written: string[]; things: string[]; vaultChanged: boolean; thingsChanged: boolean; renamed: Map<string, string> }
 
 export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, opts: ThingsPlanOptions): ThingsPlan {
+    const dated: ThingsSnapshot = { ...things, todos: things.todos.map(withDeadline) };
+    if (state.joined) return planRound(vault, dated, state, new Map(), opts);
+    const first = joinByName(vault, dated, state);
+    return planRound(vault, dated, first.state, first.adopted, opts);
+}
+
+/** One round from `state`, with `adopted` the lines joined by name to a to-do this round. */
+function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, adopted: ReadonlyMap<VaultTask, string>, opts: ThingsPlanOptions): ThingsPlan {
     const caps = things.capabilities;
+    const firstConnect = !state.joined;
     const files = opts.notes;
     const thingsSteps: ThingsStep[] = [];
     const vaultSteps: VaultStep[] = [];
@@ -147,8 +167,10 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         if (lineById.has(task.id)) copies.push(task);
         else lineById.set(task.id, task);
     }
+    // A line joined by name stands for its to-do as if it carried the ID.
+    adopted.forEach((id, task) => lineById.set(id, task));
+    const joinedIds = new Set(adopted.values());
     const known = (todo: ThingsTodo) => syncedById.has(todo.id) || lineById.has(todo.id);
-    const importable = (todo: ThingsTodo) => !todo.trashed && !todo.logged && !todo.repeating && todo.fields.status === 'open';
 
     // New notes, named so they never take a path in use or one named this round.
     const reserved = new Set<string>();
@@ -214,12 +236,14 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         const sp = projectByPath.get(note.path);
         const project = sp && projectById.get(sp.id);
         if (!sp || !live(project) || isListNote(note.path)) continue;
-        const holds = (heading: string) => things.todos.some(t => t.projectId === project.id && t.heading === heading && !t.trashed && (known(t) || importable(t)));
+        // A joined to-do takes its line's place, so its heading in Things holds nothing.
+        const holds = (heading: string) => things.todos.some(t => t.projectId === project.id && t.heading === heading && !t.trashed && !joinedIds.has(t.id) && (known(t) || importable(t)));
         const seen = caps.headings && project.headings ? project.headings.filter(h => sp.headings.includes(h) || holds(h)) : sp.headings;
         const vaultChanged = !sameList(note.headings, sp.headings);
         const thingsChanged = !sameList(seen, sp.headings);
         const renamed = new Map<string, string>();
-        if (!vaultChanged && thingsChanged && seen.length === sp.headings.length) {
+        // On first connect the two lists were never the same, so nothing was renamed.
+        if (!firstConnect && !vaultChanged && thingsChanged && seen.length === sp.headings.length) {
             const differ = sp.headings.map((_, i) => i).filter(i => seen[i] !== sp.headings[i]);
             if (differ.length === 1 && !sp.headings.includes(seen[differ[0]])) renamed.set(sp.headings[differ[0]], seen[differ[0]]);
         }
@@ -261,7 +285,8 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
         vaultSteps.push({ kind: 'unlink', task });
         createTodo(withoutId(task));
     }
-    for (const task of lines) if (task.id === undefined) createTodo(task);
+    for (const task of lines) if (task.id === undefined && !adopted.has(task)) createTodo(task);
+    adopted.forEach((id, task) => vaultSteps.push({ kind: 'adopt', task, id }));
 
     // Lines with an ID: fields and place, or retired when the to-do is gone.
     const finals = new Map<string, Place>();
@@ -449,7 +474,9 @@ export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, sta
     if (!opts.acceptMissing && tripped(goneFromVault)) return { ok: false, reason: 'emptied', side: 'vault', missing: goneFromVault };
 
     const allVault: VaultStep[] = [...newNotes.values(), ...vaultSteps];
-    const toThings = thingsSteps.filter(s => s.kind === 'createTodo' || s.kind === 'updateTodo' || s.kind === 'moveTodo' || s.kind === 'trashTodo').length;
-    const toVault = allVault.reduce((sum, s) => sum + (s.kind === 'createNote' ? s.todos.length : s.kind === 'update' || s.kind === 'move' || s.kind === 'add' || s.kind === 'retire' ? 1 : 0), 0);
+    const toThingsKinds: ReadonlyArray<ThingsStep['kind']> = firstConnect ? ['createTodo'] : ['createTodo', 'updateTodo', 'moveTodo', 'trashTodo'];
+    const toVaultKinds: ReadonlyArray<VaultStep['kind']> = firstConnect ? ['add'] : ['update', 'move', 'add', 'retire'];
+    const toThings = thingsSteps.filter(s => toThingsKinds.includes(s.kind)).length;
+    const toVault = allVault.reduce((sum, s) => sum + (s.kind === 'createNote' ? s.todos.length : toVaultKinds.includes(s.kind) ? 1 : 0), 0);
     return { ok: true, things: byKind(thingsSteps, THINGS_ORDER), vault: byKind(allVault, VAULT_ORDER), counts: { toThings, toVault } };
 }

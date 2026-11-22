@@ -1,5 +1,6 @@
+import { joinFirstConnect } from './join';
 import { EMPTY_STATE } from './model';
-import type { Capabilities, Place, SyncedProject, SyncedTodo, ThingsArea, ThingsProject, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultTask } from './model';
+import type { Capabilities, Place, SyncedProject, SyncedTodo, ThingsArea, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultSnapshot, VaultTask } from './model';
 import { planThingsSync } from './plan';
 import type { ThingsPlan, ThingsStep, VaultStep } from './plan';
 
@@ -65,18 +66,28 @@ interface World {
     acceptMissing?: boolean;
 }
 
+function snapshots(w: World): [VaultSnapshot, ThingsSnapshot] {
+    return [
+        { notes: w.notes ?? [], folders: [] },
+        { areas: w.areas ?? [], projects: w.projects ?? [], todos: w.todos ?? [], capabilities: { ...caps, ...w.caps } }
+    ];
+}
+
 function plan(w: World): ThingsPlan {
-    const notes = w.notes ?? [];
     const files: Record<string, number> = {};
-    for (const n of notes) files[n.path] = OLD;
+    for (const n of w.notes ?? []) files[n.path] = OLD;
     Object.assign(files, w.files);
     for (const path of w.deleted ?? []) delete files[path];
     return planThingsSync(
-        { notes, folders: [] },
-        { areas: w.areas ?? [], projects: w.projects ?? [], todos: w.todos ?? [], capabilities: { ...caps, ...w.caps } },
+        ...snapshots(w),
         w.state ?? state(),
         { now: NOW, settleMs: SETTLE, notes: { exists: path => path in files, mtime: path => files[path] ?? 0 }, acceptMissing: w.acceptMissing }
     );
+}
+
+/** What joining by name records, before anything is planned. */
+function joined(w: World): ThingsState {
+    return joinFirstConnect(...snapshots(w), w.state ?? state());
 }
 
 const where = (place: Place): string => place.heading === undefined ? place.path : `${place.path}#${place.heading}`;
@@ -100,6 +111,7 @@ function thingsLine(step: ThingsStep): string {
 function vaultLine(step: VaultStep): string {
     switch (step.kind) {
         case 'link': return `link ${step.id}`;
+        case 'adopt': return `adopt ${step.task.fields.title} ${step.id}`;
         case 'unlink': return `unlink ${step.task.fields.title}`;
         case 'update': return `update ${step.task.fields.title} ${JSON.stringify(step.fields)}`;
         case 'move': return `move ${step.task.fields.title} ${where(step.to)}`;
@@ -602,5 +614,181 @@ describe('planThingsSync: order and counts', () => {
             todos: [momTodo({ f: { when: '2026-11-30' } }), todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Calls' }), todo('dddddddd', 'Call plumber', { inbox: true })]
         });
         expect(plan(w)).toMatchObject({ ok: true, counts: { toThings: 2, toVault: 3 } });
+    });
+});
+
+describe('planThingsSync: first connect', () => {
+    const fresh = (over: Partial<ThingsState> = {}) => state({ joined: false, ...over });
+    const PEOPLE: ThingsArea = { id: 'area2', title: 'People' };
+    const SAM = 'Work/People/Sam.md';
+    const flowers = [{ title: 'Flowers', done: false }];
+    const momLine = (over: Partial<VaultTask> & { f?: Partial<TodoFields> } = {}) => line('Call Mom', { heading: 'Calls', ...over });
+    /** Never synced: Work/Plan.md has Call Mom under Calls, and Things has project Plan in area Work with a Call Mom of its own. */
+    const meeting = (over: World = {}): World => ({
+        notes: [note(PLAN, [momLine()])], areas: [WORK], projects: [planProject()], todos: [momTodo()], state: fresh(), ...over
+    });
+    type Adopt = Extract<VaultStep, { kind: 'adopt' }>;
+    type Add = Extract<VaultStep, { kind: 'add' }>;
+
+    it('joins the area, project and to-do that share names, and gives the line the to-do\'s ID', () => {
+        const w = meeting();
+        expect(show(plan(w))).toEqual(['adopt Call Mom aaaaaaaa']);
+        const adopt = steps(plan(w)).vault[0] as Adopt;
+        expect(adopt).toMatchObject({ kind: 'adopt', id: A, task: { path: PLAN, line: 2 } });
+        expect(adopt.task.id).toBeUndefined();
+        expect(joined(w)).toEqual(fresh({
+            areas: [{ id: 'area1', folder: 'Work' }],
+            projects: [{ id: 'proj1', path: PLAN, title: 'Plan', headings: ['Calls'], areaId: 'area1' }],
+            todos: [synced(A, 'Call Mom', PLAN, { heading: 'Calls' })]
+        }));
+    });
+    it('joins an area only to the folder its title names in full: "People" doesn\'t join Work/People', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine()]), note(SAM, [line('Lunch')])],
+            areas: [WORK, PEOPLE],
+            projects: [planProject(), project('proj3', 'Team', { areaId: 'area2' })]
+        });
+        expect(joined(w).areas).toEqual([{ id: 'area1', folder: 'Work' }]);
+        expect(show(plan(w))).toEqual([
+            'createArea Work/People',
+            'createProject Work/People/Sam.md []',
+            'createTodo Lunch',
+            'createNote People/Team.md []',
+            'adopt Call Mom aaaaaaaa'
+        ]);
+    });
+    it('joins an open project to the note with its title in its area\'s folder, or at the top for a project in no area', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine()]), note('Chores.md', [line('Water plants')]), note('Work/Shipped.md', [line('Wrap up')])],
+            areas: [WORK, PEOPLE],
+            projects: [planProject(), project('proj4', 'Chores'), project('proj5', 'Plan', { areaId: 'area2' }), project('proj6', 'Shipped', { areaId: 'area1', status: 'completed' })]
+        });
+        expect(joined(w).projects).toEqual([
+            { id: 'proj1', path: PLAN, title: 'Plan', headings: ['Calls'], areaId: 'area1' },
+            { id: 'proj4', path: 'Chores.md', title: 'Chores', headings: [] }
+        ]);
+        expect(show(plan(w))).toEqual([
+            'createProject Work/Shipped.md []',
+            'createTodo Water plants',
+            'createTodo Wrap up',
+            'createNote People/Plan.md []',
+            'adopt Call Mom aaaaaaaa'
+        ]);
+    });
+    it('joins each open to-do to the first open line with its title, in line order', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine(), momLine(), line('Buy milk', { heading: 'Calls' })])],
+            todos: [momTodo(), todo(B, 'Call Mom', { projectId: 'proj1', heading: 'Calls' }), todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Calls' })]
+        });
+        expect(show(plan(w))).toEqual(['createTodo Buy milk', 'adopt Call Mom aaaaaaaa', 'adopt Call Mom bbbbbbbb', 'add Pay rent Work/Plan.md#Calls']);
+        const adopts = steps(plan(w)).vault.filter((s): s is Adopt => s.kind === 'adopt');
+        expect(adopts.map(s => [s.task.line, s.id])).toEqual([[2, A], [3, B]]);
+    });
+    it('never joins or sends a done or cancelled line', () => {
+        const w = meeting({ notes: [note(PLAN, [momLine({ f: { status: 'completed' } }), line('Old', { heading: 'Calls', f: { status: 'canceled' } })])] });
+        expect(show(plan(w))).toEqual(['add Call Mom Work/Plan.md#Calls']);
+    });
+    it('gives a joined to-do with no date the line\'s date', () => {
+        expect(show(plan(meeting({ notes: [note(PLAN, [momLine({ f: { when: '2026-11-25' } })])] })))).toEqual([
+            'updateTodo aaaaaaaa {"when":"2026-11-25"}',
+            'adopt Call Mom aaaaaaaa'
+        ]);
+    });
+    it('gives a line with no notes the joined to-do\'s notes', () => {
+        expect(show(plan(meeting({ todos: [momTodo({ f: { notes: 'Ask about the trip' } })] })))).toEqual([
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"notes":"Ask about the trip"}'
+        ]);
+    });
+    it('takes each field from the note when the note has it and from Things when it doesn\'t, and sends it to the other side', () => {
+        const mixed = meeting({
+            notes: [note(PLAN, [momLine({ f: { notes: 'Bring cake', tags: ['family'], when: '2026-11-25' } })])],
+            todos: [momTodo({ f: { notes: 'Ask about the trip', checklist: flowers, when: '2026-11-30', reminder: '09:00' } })]
+        });
+        expect(show(plan(mixed))).toEqual([
+            'updateTodo aaaaaaaa {"notes":"Bring cake","tags":["family"],"when":"2026-11-25"}',
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"checklist":[{"title":"Flowers","done":false}],"reminder":"09:00"}'
+        ]);
+        const fromThings = meeting({ todos: [momTodo({ f: { notes: 'Ask about the trip', checklist: flowers, tags: ['family'], when: '2026-11-30', reminder: '09:00' } })] });
+        expect(show(plan(fromThings))).toEqual([
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"notes":"Ask about the trip","checklist":[{"title":"Flowers","done":false}],"tags":["family"],"when":"2026-11-30","reminder":"09:00"}'
+        ]);
+        const fromNote = meeting({ notes: [note(PLAN, [momLine({ f: { notes: 'Bring cake', checklist: flowers, tags: ['family'], when: '2026-11-25', reminder: '18:00' } })])] });
+        expect(show(plan(fromNote))).toEqual([
+            'updateTodo aaaaaaaa {"notes":"Bring cake","checklist":[{"title":"Flowers","done":false}],"tags":["family"],"when":"2026-11-25","reminder":"18:00"}',
+            'adopt Call Mom aaaaaaaa'
+        ]);
+    });
+    it('counts a line\'s #someday as its date, so the to-do goes to Someday', () => {
+        const w = meeting({ notes: [note(PLAN, [momLine({ f: { someday: true } })])], todos: [momTodo({ f: { when: '2026-11-30' } })] });
+        const update = steps(plan(w)).things[0];
+        expect(update).toMatchObject({ kind: 'updateTodo', id: A, fields: { someday: true } });
+        expect(Object.keys((update as Extract<ThingsStep, { kind: 'updateTodo' }>).fields)).toEqual(['when', 'someday']);
+    });
+    it('moves the to-do to the line\'s heading, and a Things heading holding only joined to-dos never reaches the note', () => {
+        const w = meeting({ projects: [planProject({ headings: ['Calls', 'Later'] })], todos: [momTodo({ heading: 'Later' })] });
+        expect(show(plan(w))).toEqual(['moveTodo aaaaaaaa Work/Plan.md#Calls', 'adopt Call Mom aaaaaaaa']);
+        expect(show(plan(meeting({ todos: [momTodo({ heading: undefined })], caps: { headings: false } })))).toEqual([
+            'moveTodo aaaaaaaa Work/Plan.md#Calls', 'adopt Call Mom aaaaaaaa'
+        ]);
+    });
+    it('keeps the note\'s headings where Things has others, never reading the difference as a rename', () => {
+        const w = meeting({
+            notes: [note(PLAN, [line('Call Dad', { heading: 'Calls' })])],
+            projects: [planProject({ headings: ['Phone'] })],
+            todos: [todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Phone' })]
+        });
+        expect(show(plan(w))).toEqual(['swapProject proj1 [Calls] cccccccc', 'createTodo Call Dad', 'add Pay rent Work/Plan.md#Phone']);
+    });
+    it('never imports or joins a repeating to-do, or one in the Logbook or the Trash', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine(), line('Water plants', { heading: 'Calls' }), line('Old report', { heading: 'Calls' })])],
+            todos: [momTodo(),
+                todo(C, 'Water plants', { projectId: 'proj1', heading: 'Calls', repeating: true }),
+                todo('dddddddd', 'Old report', { projectId: 'proj1', heading: 'Calls', logged: true, f: { status: 'completed' } }),
+                todo('eeeeeeee', 'Binned', { projectId: 'proj1', trashed: true }),
+                todo('ffffffff', 'Weekly review', { projectId: 'proj1', repeating: true })]
+        });
+        expect(show(plan(w))).toEqual(['createTodo Water plants', 'createTodo Old report', 'adopt Call Mom aaaaaaaa']);
+        expect(joined(w).todos.map(t => t.id)).toEqual([A]);
+    });
+    it('dates a to-do with a deadline and no When date by its deadline as it comes in', () => {
+        const w = meeting({
+            todos: [momTodo(),
+                todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Calls', deadline: '2026-11-30' }),
+                todo('dddddddd', 'File taxes', { projectId: 'proj1', heading: 'Calls', deadline: '2026-12-15', f: { when: '2026-12-01' } })]
+        });
+        const adds = steps(plan(w)).vault.filter((s): s is Add => s.kind === 'add');
+        expect(adds.map(s => [s.todo.fields.title, s.todo.fields.when])).toEqual([['Pay rent', '2026-11-30'], ['File taxes', '2026-12-01']]);
+        expect(show(plan(meeting({ todos: [momTodo({ deadline: '2026-11-28' })] })))).toEqual([
+            'adopt Call Mom aaaaaaaa',
+            'update Call Mom {"when":"2026-11-28"}'
+        ]);
+    });
+    it('keeps a deadline-only to-do dated on later rounds', () => {
+        const st = syncedState({ todos: [synced(A, 'Call Mom', PLAN, { heading: 'Calls', f: { when: '2026-11-28' } })] });
+        const w = world({ state: st, notes: [note(PLAN, [mom({ f: { when: '2026-11-28' } })])], todos: [momTodo({ deadline: '2026-11-28' })] });
+        expect(show(plan(w))).toEqual([]);
+    });
+    it('counts the to-dos going to Things and the tasks coming into the vault, not the joined ones', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine({ f: { when: '2026-11-25' } }), line('Buy milk', { heading: 'Calls' }), line('Pay bills', { heading: 'Calls' })])],
+            projects: [planProject(), project('proj9', 'Launch', { areaId: 'area1' })],
+            todos: [momTodo({ f: { notes: 'Ask about the trip' } }),
+                todo(C, 'Pay rent', { projectId: 'proj1', heading: 'Calls' }),
+                todo('dddddddd', 'Call plumber', { inbox: true }),
+                todo('eeeeeeee', 'Write copy', { projectId: 'proj9' })]
+        });
+        expect(plan(w)).toMatchObject({ ok: true, counts: { toThings: 2, toVault: 3 } });
+    });
+    it('joins the same pairs again from its own result, so the round and the planner can both join', () => {
+        const w = meeting({ notes: [note(PLAN, [momLine({ f: { when: '2026-11-25' } }), line('Buy milk', { heading: 'Calls' })])], todos: [momTodo({ f: { notes: 'Ask' } })] });
+        const once = joined(w);
+        expect(once.joined).toBe(false);
+        expect(once.todos).toHaveLength(1);
+        expect(joinFirstConnect(...snapshots(w), once)).toEqual(once);
+        expect(show(plan({ ...w, state: once }))).toEqual(show(plan(w)));
     });
 });
