@@ -2,7 +2,7 @@
  * Tests for Tasks-plugin metadata stripping (issue #101).
  */
 
-import { stripTasksPluginMetadata } from './task-metadata';
+import { stripTasksPluginMetadata, tasksPluginMetadata } from './task-metadata';
 
 describe('stripTasksPluginMetadata', () => {
     describe('Dataview-style fields', () => {
@@ -132,5 +132,12 @@ describe('stripTasksPluginMetadata', () => {
         it('should handle text that is only metadata', () => {
             expect(stripTasksPluginMetadata('\u{1F4C5} 2026-08-20')).toBe('');
         });
+    });
+});
+
+describe('tasksPluginMetadata', () => {
+    it('lists the pieces the strip takes out, in order', () => {
+        expect(tasksPluginMetadata('Water plants #home \u{1F501} every week \u23EB [due:: 2026-11-25]')).toEqual(['\u{1F501} every week', '\u23EB', '[due:: 2026-11-25]']);
+        expect(tasksPluginMetadata('Plain words with an emoji \u{1F389}')).toEqual([]);
     });
 });

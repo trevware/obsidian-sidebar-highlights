@@ -1,7 +1,7 @@
 import type { Task } from '../../main';
 import { parseTaskLine } from '../tasks-view/task-line';
 import { readTimeAfter } from '../tasks-view/times';
-import { areaName, fieldsFromTask, folderFor, lineTag, looseNoteName, noteName, relink, statusFromTags, thingsTag } from './mapping';
+import { areaName, checklistLines, fieldsFromTask, folderFor, lineTag, lineTagsIn, looseNoteName, noteName, relink, statusFromTags, thingsTag } from './mapping';
 
 /** Builds a Task from the line at `index`, the way TaskManager.tasksInContent would. */
 function taskAt(lines: string[], index = 0): Task {
@@ -81,12 +81,30 @@ describe('fieldsFromTask', () => {
     });
 });
 
+describe('checklistLines', () => {
+    it('gives each checklist item with its line, after the task\'s notes', () => {
+        const lines = ['- [ ] Trip', '\tPack light', '\t- [x] Book train', '\t\t- [ ] Seat', '- [ ] Next'];
+        expect(checklistLines(lines, 0)).toEqual([
+            { line: 2, item: { title: 'Book train', done: true } },
+            { line: 3, item: { title: 'Seat', done: false } }
+        ]);
+        expect(checklistLines(lines, 4)).toEqual([]);
+    });
+});
+
 describe('status and tags', () => {
     it('reads the checkbox a to-do\'s tags imply and leaves the rest', () => {
         expect(statusFromTags(['Question', 'home'])).toEqual({ state: '?', tags: ['home'] });
         expect(statusFromTags(['In Progress'])).toEqual({ state: '/', tags: [] });
         expect(statusFromTags(['Priority 2', 'x'])).toEqual({ state: '!2', tags: ['x'] });
         expect(statusFromTags(['home'])).toEqual({ state: ' ', tags: ['home'] });
+    });
+
+    it('finds a line\'s tags, marking the ones that read as status or priority', () => {
+        expect(lineTagsIn('Ask #Question about #deep-work, not #1')).toEqual([
+            { start: 4, end: 13, name: 'Question', reserved: true },
+            { start: 20, end: 30, name: 'deep-work', reserved: false }
+        ]);
     });
 
     it('swaps spaces and hyphens in tags', () => {

@@ -85,3 +85,15 @@ export function stripTasksPluginMetadata(text: string): string {
     // Collapse whitespace left behind by removals from the middle of a line.
     return stripped.replace(/\s{2,}/g, ' ').trim();
 }
+
+/**
+ * The pieces of Tasks-plugin metadata in a task's text, trimmed, in the order
+ * they appear: what `stripTasksPluginMetadata` takes out.
+ */
+export function tasksPluginMetadata(text: string): string[] {
+    const found: Array<{ at: number; piece: string }> = [];
+    for (const pattern of [DATAVIEW_PATTERN, DATE_PATTERN, TOKEN_PATTERN, PRIORITY_PATTERN, RECURRENCE_PATTERN]) {
+        for (const match of text.matchAll(pattern)) found.push({ at: match.index ?? 0, piece: match[0].trim() });
+    }
+    return found.sort((a, b) => a.at - b.at).map(entry => entry.piece);
+}

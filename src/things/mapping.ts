@@ -60,26 +60,41 @@ function splitTags(title: string): { title: string; tags: string[] } {
     return { title: words || tags.join(' '), tags };
 }
 
+/**
+ * Each `#tag` in a line's words: where it starts and ends, its name without
+ * the `#`, and whether it reads as a status or priority tag, which stays part
+ * of the title.
+ */
+export function lineTagsIn(text: string): Array<{ start: number; end: number; name: string; reserved: boolean }> {
+    return [...text.matchAll(LINE_TAG)].map(match => {
+        const start = (match.index ?? 0) + match[1].length;
+        return { start, end: start + 1 + match[2].length, name: match[2], reserved: RESERVED.has(thingsTag(match[2]).toLowerCase()) };
+    });
+}
+
 /** Strips a callout prefix the way `contextRange` reads lines under a task in a callout. */
 function withoutPrefix(line: string, prefix: string): string {
     return prefix && line.startsWith(prefix) ? line.slice(prefix.length).replace(/^ /, '') : line;
 }
 
-/** The checkboxes under a task, after its notes: direct children and anything deeper, in line order. */
-function checklistUnder(lines: string[], index: number, from: number): ChecklistItem[] {
+/**
+ * The checkboxes under a task, after its notes, each with its line: direct
+ * children and anything deeper, in line order.
+ */
+export function checklistLines(lines: string[], index: number): Array<{ line: number; item: ChecklistItem }> {
     const parsed = parseTaskLine(lines[index] ?? '');
     if (!parsed) return [];
     const prefix = parsed.prefix.trimEnd();
     const base = indentWidth(parsed.indent);
-    const items: ChecklistItem[] = [];
-    for (let i = from; i < lines.length; i++) {
+    const items: Array<{ line: number; item: ChecklistItem }> = [];
+    for (let i = contextRange(lines, index)[1]; i < lines.length; i++) {
         const line = withoutPrefix(lines[i], prefix);
         if (line.trim() === '') continue;
         const child = parseTaskLine(line);
         if (child) {
             if (indentWidth(child.indent) <= base) break;
             const title = splitTags(reminderTitle(child.text, undefined, false)).title;
-            items.push({ title, done: child.state.toLowerCase() === 'x' });
+            items.push({ line: i, item: { title, done: child.state.toLowerCase() === 'x' } });
         } else if (indentWidth(line) <= base) {
             break;
         }
@@ -110,7 +125,7 @@ export function fieldsFromTask(task: Task, lines: string[], opts: { hideMetadata
     const fields: TodoFields = {
         title,
         notes: notesText(lines.slice(start, end)),
-        checklist: checklistUnder(lines, task.lineNumber, end),
+        checklist: checklistLines(lines, task.lineNumber).map(entry => entry.item),
         tags: [...tags].sort(),
         status: taskStatus(task),
         someday
