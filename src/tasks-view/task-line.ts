@@ -201,7 +201,7 @@ export function insertionLine(lines: string[], heading?: string, near?: number):
     return insertAt;
 }
 
-function indentWidth(text: string): number {
+export function indentWidth(text: string): number {
     return (text.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '    ').length;
 }
 
