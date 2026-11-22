@@ -55,7 +55,7 @@
 
 import { MISSING_LIMIT, MISSING_SHARE } from '../calendar/plan';
 import type { NoteInfo } from '../calendar/plan';
-import { agreedFields, importable, joinByName, joinedHeadings, withDeadline } from './join';
+import { agreedFields, importable, joinByName, joinedHeadings, titleWords, withDeadline } from './join';
 import { areaName, folderFor, looseNoteName, noteName } from './mapping';
 import { differences, mergeFields } from './merge';
 import type { Place, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultNote, VaultSnapshot, VaultTask } from './model';
@@ -123,10 +123,10 @@ const samePlace = (a: Place, b: Place): boolean => a.path === b.path && a.headin
 const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, i) => item === b[i]);
 const withoutId = (task: VaultTask): VaultTask => { const copy = { ...task }; delete copy.id; return copy; };
 
-/** Whether a note's file name still stands for a project title: the title made file-safe, maybe numbered. */
+/** Whether a note's file name still stands for a project title: the title as is, with spaces evened out, or made file-safe, maybe numbered. */
 function namedAfter(base: string, title: string): boolean {
-    const stem = noteName(title, () => false, '').replace(/\.md$/, '');
-    return base === stem || (base.startsWith(`${stem} `) && /^\d+$/.test(base.slice(stem.length + 1)));
+    const stems = [title, titleWords(title), noteName(title, () => false, '').replace(/\.md$/, '')];
+    return stems.some(stem => base === stem || (base.startsWith(`${stem} `) && /^\d+$/.test(base.slice(stem.length + 1))));
 }
 
 /** A synced note's headings as each side has them, a heading renamed only in Things, and the headings a swap rebuilds the project with. */
@@ -427,7 +427,8 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     // Areas renamed in Things get their folder's name back.
     for (const area of state.areas) {
         const current = areaById.get(area.id);
-        if (current && area.folder && folderFor(current.title) !== area.folder) thingsSteps.push({ kind: 'renameArea', id: area.id, folder: area.folder });
+        // An area keeps a folder's exact name, or one that makes the same folder.
+        if (current && area.folder && current.title !== areaName(area.folder) && folderFor(current.title) !== area.folder) thingsSteps.push({ kind: 'renameArea', id: area.id, folder: area.folder });
     }
 
     // Headings: the swap, or Things' headings written into the note.

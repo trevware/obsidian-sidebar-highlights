@@ -1,16 +1,18 @@
 /**
  * First connect: what already exists on both sides is joined by name before
  * the first round is planned, so connecting doesn't copy everything twice.
- * Things joins where its import would land, so names made file-safe on the
- * way in still join.
+ * A name joins when it matches exactly, and also where Things' import would
+ * land, so names made file-safe on the way in still join.
  *
- * - An area joins the folder its title names in full, made file-safe
- *   (`folderFor`): "Work/People" joins `Work/People`, and "People" doesn't.
- *   It also joins that folder when one of its projects would land on a note
- *   there that holds no open tasks.
- * - An open project joins the note it would come in as (`noteName` in its
- *   area's folder, or at the top of the vault for a project in no area),
- *   whether that note has open tasks or none.
+ * - An area joins the folder its title names in full, exactly or made
+ *   file-safe (`folderFor`): "Work/People" joins `Work/People`, "C#" joins
+ *   `C#`, and "People" doesn't join `Work/People`. It also joins that folder
+ *   when one of its projects would land on a note there that holds no open
+ *   tasks.
+ * - An open project joins the note in its area's folder (or at the top of
+ *   the vault, for a project in no area) named exactly by its title, by that
+ *   title with spaces evened out, or as its import would name it
+ *   (`noteName`), whether that note has open tasks or none.
  * - In each joined project, an open to-do joins an open line with no ID and
  *   the same words (trimmed, spaces evened out): under the same heading
  *   first, then the first in line order. The planner gives that line the
@@ -51,7 +53,7 @@ export function withDeadline(todo: ThingsTodo): ThingsTodo {
 }
 
 /** A title's words, trimmed and with runs of spaces as one. */
-const words = (title: string): string => title.trim().replace(/\s+/g, ' ');
+export const titleWords = (title: string): string => title.trim().replace(/\s+/g, ' ');
 
 /** Tags split into the status and priority tags a checkbox stands for, and the rest. */
 function splitTags(tags: string[]): { checkbox: string[]; own: string[] } {
@@ -109,14 +111,19 @@ export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: 
     const byPath = new Map(vault.notes.map(n => [n.path, n]));
     const isNote = (path: string) => byPath.has(path) || exists(path);
     const open = (project: ThingsProject) => !project.trashed && project.status === 'open';
-    const landing = (project: ThingsProject, folder: string) => noteName(project.title, () => false, folder);
+    /** The notes a project would join in a folder, best first: its exact title, that title with spaces evened out, then where its import would land. */
+    const notesFor = (project: ThingsProject, folder: string): string[] => {
+        const exact = [project.title, titleWords(project.title)].filter(name => name !== '' && !name.includes('/'));
+        return [...new Set([...exact.map(name => `${folder ? `${folder}/` : ''}${name}.md`), noteName(project.title, () => false, folder)])];
+    };
 
+    // An area joins the folder named exactly by its title, else the one its import would make.
     const folders = new Set([...vault.notes.map(n => n.folder), ...vault.folders].filter(Boolean));
     for (const area of things.areas) {
-        const folder = folderFor(area.title);
-        if (!folder || areas.some(a => a.id === area.id || a.folder === folder)) continue;
-        const lands = things.projects.some(p => p.areaId === area.id && open(p) && isNote(landing(p, folder)));
-        if (folders.has(folder) || lands) areas.push({ id: area.id, folder });
+        if (areas.some(a => a.id === area.id)) continue;
+        const lands = (folder: string) => things.projects.some(p => p.areaId === area.id && open(p) && notesFor(p, folder).some(isNote));
+        const folder = [area.title, folderFor(area.title)].find(f => f !== '' && !areas.some(a => a.folder === f) && (folders.has(f) || lands(f)));
+        if (folder !== undefined) areas.push({ id: area.id, folder });
     }
 
     const lists = new Set([state.inboxNote, ...Object.values(state.looseNotes)]);
@@ -125,8 +132,8 @@ export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: 
         if (!open(project) || projects.some(p => p.id === project.id)) continue;
         const folder = project.areaId === undefined ? '' : areas.find(a => a.id === project.areaId)?.folder;
         if (folder === undefined) continue;
-        const path = landing(project, folder);
-        if (lists.has(path) || projects.some(p => p.path === path) || !isNote(path)) continue;
+        const path = notesFor(project, folder).find(p => isNote(p) && !lists.has(p) && !projects.some(sp => sp.path === p));
+        if (path === undefined) continue;
         const sp: SyncedProject = { id: project.id, path, title: project.title, headings: [], ...(project.areaId === undefined ? {} : { areaId: project.areaId }) };
         projects.push(sp);
         joinedNow.push({ sp, project, note: byPath.get(path) });
@@ -140,7 +147,7 @@ export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: 
         if (!note || !live.has(sp.id)) continue;
         const lines = note.tasks.filter(t => t.id === undefined && t.fields.status === 'open').sort((a, b) => a.line - b.line);
         const candidates = todos.filter(t => t.projectId === sp.id && importable(t) && !onLines.has(t.id));
-        const free = (todo: ThingsTodo) => lines.filter(t => !adopted.has(t) && words(t.fields.title) === words(todo.fields.title));
+        const free = (todo: ThingsTodo) => lines.filter(t => !adopted.has(t) && titleWords(t.fields.title) === titleWords(todo.fields.title));
         const pair = (todo: ThingsTodo, task: VaultTask | undefined) => {
             if (!task || paired.has(todo.id)) return;
             paired.add(todo.id);

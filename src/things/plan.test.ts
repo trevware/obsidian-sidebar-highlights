@@ -507,6 +507,22 @@ describe('planThingsSync: renames', () => {
     it('moves the project back when Things put it in an area it doesn\'t list', () => {
         expect(show(plan(world({ projects: [planProject({ areaId: 'area9' })] })))).toEqual(['updateProject proj1 folder=Work']);
     });
+    it('leaves synced areas and notes alone whose names a new note\'s file-safe name would change', () => {
+        const CS = 'C#/C# notes.md';
+        const MINE = 'My  Work/Plan.md';
+        const w = world({
+            notes: [note(PLAN, [mom()]), note(CS, [line('Tune', { id: B })]), note(MINE, [line('Ship', { id: C })])],
+            areas: [WORK, { id: 'area4', title: 'C#' }, { id: 'area5', title: 'My  Work' }],
+            projects: [planProject(), project('proj4', 'C# notes', { areaId: 'area4' }), project('proj5', 'Plan', { areaId: 'area5' })],
+            todos: [momTodo(), todo(B, 'Tune', { projectId: 'proj4' }), todo(C, 'Ship', { projectId: 'proj5' })],
+            state: syncedState({
+                areas: [{ id: 'area1', folder: 'Work' }, { id: 'area4', folder: 'C#' }, { id: 'area5', folder: 'My  Work' }],
+                projects: [planSynced(), { id: 'proj4', path: CS, title: 'C# notes', headings: [], areaId: 'area4' }, { id: 'proj5', path: MINE, title: 'Plan', headings: [], areaId: 'area5' }],
+                todos: [synced(A, 'Call Mom', PLAN, { heading: 'Calls' }), synced(B, 'Tune', CS), synced(C, 'Ship', MINE)]
+            })
+        });
+        expect(show(plan(w))).toEqual([]);
+    });
     it('gives an area renamed in Things its folder\'s name back', () => {
         expect(show(plan(world({ areas: [{ id: 'area1', title: 'Job' }] })))).toEqual(['renameArea area1 Work']);
     });
@@ -927,5 +943,17 @@ describe('planThingsSync: first connect', () => {
             'updateTodo aaaaaaaa {"title":"Call Mom"}',
             'adopt Call Mom aaaaaaaa'
         ]);
+    });
+    it('still joins names that match exactly where the file-safe form would differ', () => {
+        const w = meeting({
+            notes: [note(PLAN, [momLine()]), note('C#/Plan.md', [line('Tune')]), note('C#/C# notes.md', [line('Read')])],
+            areas: [WORK, { id: 'area4', title: 'C#' }],
+            projects: [planProject(), project('proj4', 'Plan', { areaId: 'area4' }), project('proj5', 'C#  notes', { areaId: 'area4' })],
+            todos: [momTodo(), todo(B, 'Tune', { projectId: 'proj4' }), todo(C, 'Read', { projectId: 'proj5' })]
+        });
+        const after = joined(w);
+        expect(after.areas).toEqual([{ id: 'area1', folder: 'Work' }, { id: 'area4', folder: 'C#' }]);
+        expect(after.projects.map(p => [p.id, p.path])).toEqual([['proj1', PLAN], ['proj4', 'C#/Plan.md'], ['proj5', 'C#/C# notes.md']]);
+        expect(show(plan(w))).toEqual(['adopt Call Mom aaaaaaaa', 'adopt Tune bbbbbbbb', 'adopt Read cccccccc']);
     });
 });
