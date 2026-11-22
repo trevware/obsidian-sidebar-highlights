@@ -39,14 +39,25 @@ function taskStatus(task: Task): TodoStatus {
     return 'open';
 }
 
-/** The words of a line with its `#tags` taken out, and the tags it had. */
+const RESERVED = new Set([...Object.values(STATUS_TAGS), ...PRIORITY_TAGS].map(tag => tag.toLowerCase()));
+
+/**
+ * The words of a line with its `#tags` taken out, and the tags it had. A tag
+ * that reads as a status or priority tag stays in the words, since Things
+ * would turn it into the checkbox. A line of nothing but tags keeps their
+ * words as its title, so a to-do is never untitled.
+ */
 function splitTags(title: string): { title: string; tags: string[] } {
     const tags: string[] = [];
-    const words = title.replace(LINE_TAG, (_, space: string, tag: string) => {
-        tags.push(tag);
-        return space;
-    });
-    return { title: words.replace(/\s+/g, ' ').trim(), tags };
+    const words = title
+        .replace(LINE_TAG, (whole, space: string, tag: string) => {
+            if (RESERVED.has(thingsTag(tag).toLowerCase())) return whole;
+            tags.push(tag);
+            return space;
+        })
+        .replace(/\s+/g, ' ')
+        .trim();
+    return { title: words || tags.join(' '), tags };
 }
 
 /** Strips a callout prefix the way `contextRange` reads lines under a task in a callout. */

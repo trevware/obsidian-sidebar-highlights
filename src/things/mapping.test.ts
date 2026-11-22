@@ -43,6 +43,18 @@ describe('fieldsFromTask', () => {
         expect(fields('- [ ] Plan #home #Deep-Work #home').tags).toEqual(['Deep Work', 'home']);
     });
 
+    it('keeps the tag words as the title when a line is only tags', () => {
+        expect(fields('- [ ] #work #home')).toMatchObject({ title: 'work home', tags: ['home', 'work'] });
+        const lines = ['- [ ] Trip', '\t- [ ] #errand'];
+        expect(fieldsFromTask(taskAt(lines), lines, opts).checklist).toEqual([{ title: 'errand', done: false }]);
+    });
+
+    it('leaves a status or priority look-alike in the title, not in the tags', () => {
+        expect(fields('- [ ] Fix #Question')).toMatchObject({ title: 'Fix #Question', tags: [] });
+        expect(fields('- [ ] Ship #priority-1 #In-Progress #home')).toMatchObject({ title: 'Ship #priority-1 #In-Progress', tags: ['home'] });
+        expect(fields('- [?] Fix #Question').tags).toEqual(['Question']);
+    });
+
     it('gives an undated task in a daily note its note\'s day', () => {
         expect(fields('- [ ] Water plants', { hideMetadata: false, impliedWhen: '2026-11-22' }).when).toBe('2026-11-22');
         expect(fields('- [ ] Water plants 2026-11-25', { hideMetadata: false, impliedWhen: '2026-11-22' }).when).toBe('2026-11-25');
