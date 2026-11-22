@@ -30,6 +30,7 @@ import type { DateLabel, DateWords } from './dates';
 import { TIME_PRESETS, displayTime, formatTime, parseTime } from './times';
 import { openNoteAt } from './open-note';
 import { stripCalendarRef } from '../calendar/ids';
+import { stripThingsId } from '../things/ids';
 import {
     breadcrumbFor,
     buildGroups,
@@ -2642,8 +2643,8 @@ export class TasksTabView extends ItemView {
     private async copyTasks(tasks: Task[]): Promise<void> {
         const lines = tasks.map(task => {
             const state = task.priority ? `!${task.priority}` : task.marker ?? statusToCheckboxState(statusOf(task));
-            // A copied ID would give the pasted task the same event as this one.
-            return `- [${state}] ${stripCalendarRef(task.text)}`;
+            // A copied ID would give the pasted task the same event and to-do as this one.
+            return `- [${state}] ${stripThingsId(stripCalendarRef(task.text))}`;
         });
         await navigator.clipboard.writeText(lines.join('\n'));
         this.toast(this.countLabel('copied', tasks), false);

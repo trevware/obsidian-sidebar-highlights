@@ -23,7 +23,8 @@ import { ReminderManager } from './src/managers/reminder-manager';
 import { TaskIndex } from './src/managers/task-index';
 import { REMINDER_LEADS } from './src/tasks-view/reminders';
 import { isCalendarComment } from './src/calendar/ids';
-import { hideCalendarIds } from './src/calendar/hide-ids';
+import { isThingsComment } from './src/things/ids';
+import { hideSyncIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
 import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
@@ -192,6 +193,7 @@ export interface CommentPluginSettings {
     calendarEventMinutes: number; // How long a timed task's event lasts
     calendarClearOnDelete: boolean; // Deleting an event clears its task's date; otherwise the event comes back
     showCalendarIds: boolean; // Show synced tasks' calendar IDs in the editor
+    showThingsIds: boolean; // Show synced tasks' Things IDs in the editor
     collapsedGroups: string[]; // Highlight and task groups the user has collapsed, persisted across reloads
     displayModes: DisplayMode[]; // Saved display mode configurations
     currentDisplayModeId: string | null; // Currently active display mode ID
@@ -261,6 +263,7 @@ const DEFAULT_SETTINGS: CommentPluginSettings = {
     calendarEventMinutes: 30,
     calendarClearOnDelete: true,
     showCalendarIds: false,
+    showThingsIds: false,
     collapsedGroups: [], // Nothing collapsed by default
     displayModes: [], // Empty array by default
     currentDisplayModeId: null, // No active display mode by default
@@ -843,7 +846,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     /** Hides synced tasks' calendar IDs in every editor, or shows them while Show calendar IDs is on. */
     applyCalendarIdVisibility(): void {
         this.calendarIdExtension.length = 0;
-        if (!this.settings.showCalendarIds) this.calendarIdExtension.push(...hideCalendarIds);
+        this.calendarIdExtension.push(...hideSyncIds({ calendar: !this.settings.showCalendarIds, things: !this.settings.showThingsIds }));
         this.app.workspace.updateOptions();
     }
 
@@ -2464,8 +2467,8 @@ export default class HighlightCommentsPlugin extends Plugin {
         
         // Find all comment matches
         while ((match = commentHighlightRegex.exec(content)) !== null) {
-            // A synced task's calendar ID is the plugin's own bookkeeping, never a comment of yours.
-            if (isCalendarComment(match[1])) {
+            // A synced task's calendar or Things ID is the plugin's own bookkeeping, never a comment of yours.
+            if (isCalendarComment(match[1]) || isThingsComment(match[1])) {
                 continue;
             }
 
@@ -3965,7 +3968,7 @@ class HighlightSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
         this.plugin.taskSettingsChanged();
         if (key === 'taskReminders') this.update();
-        if (key === 'showCalendarIds') this.plugin.applyCalendarIdVisibility();
+        if (key === 'showCalendarIds' || key === 'showThingsIds') this.plugin.applyCalendarIdVisibility();
 
         switch (SETTING_EFFECTS[key as keyof CommentPluginSettings]) {
             case 'styles':
