@@ -60,21 +60,38 @@ function splitTags(title: string): { title: string; tags: string[] } {
     return { title: words || tags.join(' '), tags };
 }
 
+/** Comments, `[[links]]` and `[links](urls)`: a `#` inside one is never a line's tag, since the title reads them away first. */
+const TAGLESS = /%%.*?%%|\[\[[^\]]*\]\]|!?\[[^\]]*\]\([^)]*\)/g;
+
+/** Where each comment and link in a line's words starts and ends. */
+function taglessSpans(text: string): Array<[number, number]> {
+    return [...text.matchAll(TAGLESS)].map(match => [match.index ?? 0, (match.index ?? 0) + match[0].length]);
+}
+
 /**
- * Each `#tag` in a line's words: where it starts and ends, its name without
- * the `#`, and whether it reads as a status or priority tag, which stays part
- * of the title.
+ * Each `#tag` in a line's words, outside comments and links: where it starts
+ * and ends, its name without the `#`, and whether it reads as a status or
+ * priority tag, which stays part of the title.
  */
 export function lineTagsIn(text: string): Array<{ start: number; end: number; name: string; reserved: boolean }> {
-    return [...text.matchAll(LINE_TAG)].map(match => {
+    const spans = taglessSpans(text);
+    return [...text.matchAll(LINE_TAG)].flatMap(match => {
         const start = (match.index ?? 0) + match[1].length;
-        return { start, end: start + 1 + match[2].length, name: match[2], reserved: RESERVED.has(thingsTag(match[2]).toLowerCase()) };
+        if (spans.some(([from, to]) => start >= from && start < to)) return [];
+        return [{ start, end: start + 1 + match[2].length, name: match[2], reserved: RESERVED.has(thingsTag(match[2]).toLowerCase()) }];
     });
 }
 
 /** Strips a callout prefix the way `contextRange` reads lines under a task in a callout. */
 function withoutPrefix(line: string, prefix: string): string {
     return prefix && line.startsWith(prefix) ? line.slice(prefix.length).replace(/^ /, '') : line;
+}
+
+/** A task's notes as plain Markdown, without the callout prefix of a task in a callout. */
+export function notesUnder(lines: string[], index: number): string {
+    const prefix = parseTaskLine(lines[index] ?? '')?.prefix.trimEnd() ?? '';
+    const [start, end] = contextRange(lines, index);
+    return notesText(lines.slice(start, end).map(line => withoutPrefix(line, prefix)));
 }
 
 /**
@@ -121,10 +138,9 @@ export function fieldsFromTask(task: Task, lines: string[], opts: { hideMetadata
     else if (task.status === 'question') tags.add(STATUS_TAGS['?']);
     if (task.priority) tags.add(PRIORITY_TAGS[task.priority - 1]);
 
-    const [start, end] = contextRange(lines, task.lineNumber);
     const fields: TodoFields = {
         title,
-        notes: notesText(lines.slice(start, end)),
+        notes: notesUnder(lines, task.lineNumber),
         checklist: checklistLines(lines, task.lineNumber).map(entry => entry.item),
         tags: [...tags].sort(),
         status: taskStatus(task),
@@ -183,9 +199,9 @@ export function statusFromTags(tags: string[]): { state: string; tags: string[] 
 
 const WORD = /[\p{L}\p{N}]/u;
 
-/** Where `needle` first stands as whole words in `text`, outside any `[[link]]`, or -1. */
+/** Where `needle` first stands as whole words in `text`, outside any `[[link]]` or `[link](url)`, or -1. */
 function findOutsideLinks(text: string, needle: string): number {
-    const links = [...text.matchAll(/\[\[[^\]]*\]\]/g)].map(m => [m.index!, m.index! + m[0].length]);
+    const links = [...text.matchAll(/\[\[[^\]]*\]\]|!?\[[^\]]*\]\([^)]*\)/g)].map(m => [m.index!, m.index! + m[0].length]);
     for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) {
         const stop = at + needle.length;
         if (links.some(([from, to]) => at < to && stop > from)) continue;
@@ -196,15 +212,17 @@ function findOutsideLinks(text: string, needle: string): number {
 }
 
 /**
- * A new title with the `[[links]]` the old text had put back. Things holds
- * plain words, so a reworded to-do comes back without them; a link whose
- * display words still stand in the new title is wrapped around them again.
+ * A new title with the `[[links]]` and `[links](urls)` the old text had put
+ * back. Things holds plain words, so a reworded to-do comes back without
+ * them; a link whose display words still stand in the new title is wrapped
+ * around them again. Other formatting (bold, code, highlights) isn't.
  */
 export function relink(newTitle: string, oldText: string): string {
     let title = newTitle;
-    for (const link of oldText.matchAll(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g)) {
-        const display = link[2] ?? link[1];
-        if (!display) continue;
+    for (const link of oldText.matchAll(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]|!?\[([^\]]*)\]\([^)]*\)/g)) {
+        const display = link[3] ?? link[2] ?? link[1];
+        // A label with no words, like a sync tool's `[↗](…)` marker, stays where withTitle keeps it.
+        if (!display || !WORD.test(display)) continue;
         const at = findOutsideLinks(title, display);
         if (at !== -1) title = `${title.slice(0, at)}${link[0]}${title.slice(at + display.length)}`;
     }

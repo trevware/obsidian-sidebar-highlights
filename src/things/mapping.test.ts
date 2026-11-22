@@ -81,6 +81,13 @@ describe('fieldsFromTask', () => {
     });
 });
 
+describe('callout notes', () => {
+    it('reads a callout task\'s notes without the callout prefix', () => {
+        const lines = ['> - [ ] Trip', '> \tPack light', '>', '> \tBring snacks', '> \t- [ ] Book train'];
+        expect(fieldsFromTask(taskAt(lines), lines, opts)).toMatchObject({ notes: 'Pack light\n\nBring snacks', checklist: [{ title: 'Book train', done: false }] });
+    });
+});
+
 describe('checklistLines', () => {
     it('gives each checklist item with its line, after the task\'s notes', () => {
         const lines = ['- [ ] Trip', '\tPack light', '\t- [x] Book train', '\t\t- [ ] Seat', '- [ ] Next'];
@@ -98,6 +105,10 @@ describe('status and tags', () => {
         expect(statusFromTags(['In Progress'])).toEqual({ state: '/', tags: [] });
         expect(statusFromTags(['Priority 2', 'x'])).toEqual({ state: '!2', tags: ['x'] });
         expect(statusFromTags(['home'])).toEqual({ state: ' ', tags: ['home'] });
+    });
+
+    it('finds no tags inside comments or links', () => {
+        expect(lineTagsIn('Call #home %%see #foo%% [[A#b]] [[A|c #d]] [x](https://x.com/a #e)').map(tag => tag.name)).toEqual(['home']);
     });
 
     it('finds a line\'s tags, marking the ones that read as status or priority', () => {
@@ -141,5 +152,12 @@ describe('relink', () => {
     it('drops a link whose words are gone and leaves existing links alone', () => {
         expect(relink('Ask Bob', 'Ask [[Sarah Chen]]')).toBe('Ask Bob');
         expect(relink('Ask [[Sarah Chen]]', 'Ask [[Sarah Chen]]')).toBe('Ask [[Sarah Chen]]');
+    });
+
+    it('re-wraps Markdown links whose label is still in the new title, and nothing else', () => {
+        expect(relink('Read the docs and fix it today', 'Read [the docs](https://example.com/a) and **fix** it')).toBe('Read [the docs](https://example.com/a) and fix it today');
+        expect(relink('Skim the notes', 'Read [the docs](https://example.com/a)')).toBe('Skim the notes');
+        expect(relink('Read [the docs](https://example.com/a)', 'Read [the docs](https://example.com/a)')).toBe('Read [the docs](https://example.com/a)');
+        expect(relink('See docs and [[Docs]]', 'See [docs](https://x.com) and [[Docs]]')).toBe('See [docs](https://x.com) and [[Docs]]');
     });
 });

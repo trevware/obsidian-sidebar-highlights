@@ -146,6 +146,23 @@ describe('applyThingsEdits: update', () => {
         expect(out).toEqual([`- [ ] Water the plants #home 🔁 every week %%things:${A}%%`]);
     });
 
+    it('never takes a #tag from a comment or a link', () => {
+        const lines = [`- [ ] Call Mom #home %%see #foo later%% %%things:${A}%%`];
+        expect(updated(lines, 'Call Mom', { title: 'Call Mom today' })).toEqual([`- [ ] Call Mom today #home %%see #foo later%% %%things:${A}%%`]);
+        const tagged = updated(lines, 'Call Mom', { tags: ['work'] });
+        expect(tagged).toEqual([`- [ ] Call Mom %%see #foo later%% #work %%things:${A}%%`]);
+        expect(read(tagged)[0].fields.tags).toEqual(['work']);
+        const linked = [`- [ ] Read [notes](https://x.com/a #b) %%things:${A}%%`];
+        expect(updated(linked, 'Read notes', { title: 'Read the notes' })).toEqual([`- [ ] Read the [notes](https://x.com/a #b) %%things:${A}%%`]);
+    });
+
+    it('keeps a Markdown link whose words are still in the new title', () => {
+        const lines = [`- [ ] Read [the docs](https://example.com/a) and **fix** it %%things:${A}%%`];
+        const out = updated(lines, 'Read the docs and fix it', { title: 'Read the docs and fix it today' });
+        expect(out).toEqual([`- [ ] Read [the docs](https://example.com/a) and fix it today %%things:${A}%%`]);
+        expect(read(out)[0].fields.title).toBe('Read the docs and fix it today');
+    });
+
     it('writes a Things title with newlines on one line', () => {
         const lines = [`- [ ] Pay rent %%things:${A}%%`, '- [ ] Next'];
         expect(updated(lines, 'Pay rent', { title: 'Pay rent\nand bills\r\n' })).toEqual([`- [ ] Pay rent and bills %%things:${A}%%`, '- [ ] Next']);
@@ -210,6 +227,16 @@ describe('applyThingsEdits: update', () => {
         expect(result).toEqual({ lines, missed: 1 });
     });
 
+    it('writes a callout task\'s notes once, edit after edit', () => {
+        let lines = [`> - [ ] Trip %%things:${A}%%`, '> \tPack light', '', '- [ ] Next'];
+        lines = updated(lines, 'Trip', { notes: `${task(lines, 'Trip').fields.notes}\nBring snacks` });
+        expect(lines).toEqual([`> - [ ] Trip %%things:${A}%%`, '> \tPack light', '> \tBring snacks', '', '- [ ] Next']);
+        expect(task(lines, 'Trip').fields.notes).toBe('Pack light\nBring snacks');
+        lines = updated(lines, 'Trip', { notes: `${task(lines, 'Trip').fields.notes}\nCharge phone` });
+        expect(lines).toEqual([`> - [ ] Trip %%things:${A}%%`, '> \tPack light', '> \tBring snacks', '> \tCharge phone', '', '- [ ] Next']);
+        expect(task(lines, 'Trip').fields.notes).toBe('Pack light\nBring snacks\nCharge phone');
+    });
+
     it('replaces the notes under a task and leaves its checklist', () => {
         const lines = [`- [ ] Trip %%things:${A}%%`, '\tPack light', '\t- [ ] Book train', '- [ ] Next'];
         expect(updated(lines, 'Trip', { notes: 'Pack light\nBring snacks' })).toEqual([`- [ ] Trip %%things:${A}%%`, '\tPack light', '\tBring snacks', '\t- [ ] Book train', '- [ ] Next']);
@@ -229,10 +256,26 @@ describe('applyThingsEdits: checklist', () => {
         expect(task(out, 'Trip').fields.checklist).toEqual(list);
     });
 
-    it('keeps an item Things deleted as a plain bullet, and the others on their lines', () => {
+    it('keeps an item Things deleted as a plain bullet after the items that remain', () => {
         const out = updated(trip, 'Trip', { checklist: [item('Book train'), item('Pack')] });
-        expect(out).toEqual([`- [ ] Trip %%things:${A}%%`, '\t- [ ] Book train', '\t- Book hotel', '\t- [ ] Pack', '- [ ] Next']);
+        expect(out).toEqual([`- [ ] Trip %%things:${A}%%`, '\t- [ ] Book train', '\t- [ ] Pack', '\t- Book hotel', '- [ ] Next']);
         expect(task(out, 'Trip').fields.checklist).toEqual([item('Book train'), item('Pack')]);
+        const added = updated(trip, 'Trip', { checklist: [item('Book train'), item('Pack'), item('Buy snacks')] });
+        expect(added).toEqual([`- [ ] Trip %%things:${A}%%`, '\t- [ ] Book train', '\t- [ ] Pack', '\t- [ ] Buy snacks', '\t- Book hotel', '- [ ] Next']);
+    });
+
+    it('never turns a deleted first item into notes while other items remain', () => {
+        const lines = [`- [ ] Trip %%things:${A}%%`, '\tPack light', '\t- [ ] Book hotel', '\t\tnear the station', '\t- [ ] Pack', '- [ ] Next'];
+        const out = updated(lines, 'Trip', { checklist: [item('Pack')] });
+        expect(out).toEqual([`- [ ] Trip %%things:${A}%%`, '\tPack light', '\t- [ ] Pack', '\t- Book hotel', '\t\tnear the station', '- [ ] Next']);
+        expect(task(out, 'Trip').fields).toMatchObject({ notes: 'Pack light', checklist: [item('Pack')] });
+    });
+
+    it('keeps the only item Things deleted at the end of the task, where it reads as notes', () => {
+        const lines = [`- [ ] Trip %%things:${A}%%`, '\t- [ ] Book hotel', '- [ ] Next'];
+        const out = updated(lines, 'Trip', { checklist: [] });
+        expect(out).toEqual([`- [ ] Trip %%things:${A}%%`, '\t- Book hotel', '- [ ] Next']);
+        expect(task(out, 'Trip').fields).toMatchObject({ notes: '- Book hotel', checklist: [] });
     });
 
     it('puts an item Things added in the middle where Things has it', () => {
@@ -271,6 +314,18 @@ describe('applyThingsEdits: move within the note', () => {
         const callout = [`> - [ ] In a callout %%things:${A}%%`, '', '## Doing', '- [ ] Other'];
         expect(applyThingsEdits(callout, [{ kind: 'move', task: task(callout, 'In a callout'), to: { path: PATH, heading: 'Doing' } }], fmt)).toEqual({ lines: callout, missed: 1 });
         expect(applyThingsEdits(callout, [{ kind: 'move', task: task(callout, 'In a callout'), to: { path: PATH, heading: 'Later' } }], fmt)).toEqual({ lines: callout, missed: 1 });
+    });
+
+    it('treats a blank heading name as no heading, so the same move settles after one round', () => {
+        let lines = plan;
+        const rounds = [1, 2, 3].map(() => {
+            const result = applyThingsEdits(lines, [{ kind: 'move', task: task(lines, 'Write spec'), to: { path: PATH, heading: '  ' } }], fmt);
+            lines = result.lines;
+            return result;
+        });
+        expect(rounds[0]).toEqual({ lines: ['# Plan', `- [ ] Loose %%things:${A}%%`, `- [ ] Write spec %%things:${B}%%`, '', '## Doing', '', '## Done'], missed: 0 });
+        expect(rounds[1]).toEqual(rounds[0]);
+        expect(rounds[2]).toEqual(rounds[0]);
     });
 
     it('counts a task already under the heading, in any case, as moved', () => {
@@ -321,6 +376,13 @@ describe('applyThingsEdits: add', () => {
             .toEqual({ lines: ['# Plan', '', '## doing', '- [ ] Write spec', '- [ ] Loose'], missed: 0 });
     });
 
+    it('adds nothing for a blank heading name', () => {
+        const lines = ['# Plan', '- [ ] Loose'];
+        expect(applyThingsEdits(lines, [{ kind: 'add', todo: todo(A, 'New'), to: { path: PATH, heading: ' ' } }], fmt).lines).toEqual(['# Plan', `- [ ] New %%things:${A}%%`, '- [ ] Loose']);
+        const sections = ['# Plan', '## Design', '- [ ] a'];
+        expect(applyThingsEdits(sections, [{ kind: 'headings', path: PATH, from: ['Design'], to: [' '] }], fmt).lines).toEqual(sections);
+    });
+
     it('writes a Things title with newlines on one line', () => {
         const { lines } = applyThingsEdits([], [{ kind: 'add', todo: todo(A, 'Line one\nLine two', { checklist: [{ title: 'a\nb', done: false }] }), to: { path: PATH } }], fmt);
         expect(lines).toEqual([`- [ ] Line one Line two %%things:${A}%%`, '\t- [ ] a b']);
@@ -331,6 +393,29 @@ describe('applyThingsEdits: add', () => {
         const { lines } = applyThingsEdits([], [{ kind: 'add', todo: done, to: { path: PATH } }], fmt);
         expect(lines).toEqual([`- [x] Old idea #Deep-Work #someday %%things:${A}%%`]);
         expect(task(lines, 'Old idea').fields).toEqual(done.fields);
+    });
+});
+
+describe('applyThingsEdits: titles that break Markdown or URLs', () => {
+    // `#1` has no letter so it stays words, and a link reads as the words it shows (mapping.test.ts reads this same line).
+    const title = 'Fix #1 & 50% of [[A|b]] 🎉';
+    const readsAs = 'Fix #1 & 50% of b 🎉';
+
+    it('writes one on one line through add, and reads it back as the vault reads that text', () => {
+        const { lines } = applyThingsEdits(['- [ ] Next'], [{ kind: 'add', todo: todo(A, title), to: { path: PATH } }], fmt);
+        expect(lines).toEqual(['- [ ] Next', `- [ ] ${title} %%things:${A}%%`]);
+        expect(task(lines, readsAs).fields).toMatchObject({ title: readsAs, tags: [] });
+    });
+
+    it('writes one on one line through update, and Things\' own words come back unchanged', () => {
+        const lines = [`- [ ] Fix it %%things:${A}%%`, '- [ ] Next'];
+        const literal = updated(lines, 'Fix it', { title });
+        expect(literal).toEqual([`- [ ] ${title} %%things:${A}%%`, '- [ ] Next']);
+        expect(task(literal, readsAs).fields).toMatchObject({ title: readsAs, tags: [] });
+        const linked = [`- [ ] Fix #1 of [[A|b]] %%things:${A}%%`];
+        const out = updated(linked, 'Fix #1 of b', { title: readsAs });
+        expect(out).toEqual([`- [ ] ${title} %%things:${A}%%`]);
+        expect(read(out)[0].fields.title).toBe(readsAs);
     });
 });
 
@@ -424,6 +509,11 @@ describe('newNoteContent', () => {
         const sketch = todo(C, 'Sketch', { notes: 'Rough is fine', checklist: [{ title: 'Paper', done: true }] }, { heading: 'Design' });
         const added = applyThingsEdits(['# Launch plan'], [{ kind: 'add', todo: sketch, to: { path: PATH, heading: 'Design' } }], fmt).lines;
         expect(newNoteContent('Launch plan', ['Design'], [sketch], fmt)).toBe(`${added.join('\n')}\n`);
+    });
+
+    it('leaves out blank and repeated headings, so no to-do is written twice', () => {
+        const content = newNoteContent('Plan', ['', 'Build', 'Build'], [todo(A, 'Loose', {}, { heading: '' }), todo(B, 'Ship', {}, { heading: 'Build' })], fmt);
+        expect(content).toBe(`# Plan\n- [ ] Loose %%things:${A}%%\n\n## Build\n- [ ] Ship %%things:${B}%%\n`);
     });
 
     it('puts a to-do whose heading the note doesn\'t list under the title', () => {

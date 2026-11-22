@@ -22,12 +22,12 @@
  */
 
 import { renameHeading } from '../tasks-view/heading-edit';
-import { addNotes, buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from '../tasks-view/task-line';
+import { addNotes, buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, parseTaskLine, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from '../tasks-view/task-line';
 import { addUnderNewHeading, bodyStart, moveHeading, moveTasks, newHeadingLevel, noteHeadings, titleOf, trimBack } from '../tasks-view/task-move';
 import type { MovePlan, NoteHeading } from '../tasks-view/task-move';
 import { tasksPluginMetadata } from '../utils/task-metadata';
 import { withThingsId } from './ids';
-import { checklistLines, lineTag, lineTagsIn, relink, statusFromTags, thingsTag } from './mapping';
+import { checklistLines, lineTag, lineTagsIn, notesUnder, relink, statusFromTags, thingsTag } from './mapping';
 import type { ChecklistItem, ThingsTodo, TodoFields, TodoStatus, VaultTask } from './model';
 import type { VaultStep } from './plan';
 
@@ -42,6 +42,12 @@ export interface ThingsFormats {
 
 /** Things text on one line: a newline in a title would end the task there. */
 const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+
+/** A heading name from Things, on one line. A blank one is no heading: `## ` never reads back as one. */
+function headingName(name: string | undefined): string | undefined {
+    const line = name === undefined ? '' : oneLine(name);
+    return line === '' ? undefined : line;
+}
 
 /** The checkbox for a status and tags: done, cancelled, or the status or priority the tags carry. */
 function checkbox(status: TodoStatus, tags: readonly string[]): string {
@@ -78,11 +84,16 @@ function writeTodo(lines: string[], at: number, todo: ThingsTodo, fmt: ThingsFor
 /** The text of a new note for a project: its title, its loose to-dos, then each heading with its to-dos. */
 export function newNoteContent(title: string, headings: readonly string[], todos: readonly ThingsTodo[], fmt: ThingsFormats): string {
     const lines = [`# ${oneLine(title)}`];
-    const listed = (todo: ThingsTodo) => todo.heading !== undefined && headings.includes(todo.heading);
-    for (const todo of todos) if (!listed(todo)) writeTodo(lines, lines.length, todo, fmt);
-    for (const heading of headings) {
-        lines.push('', `## ${oneLine(heading)}`);
-        for (const todo of todos) if (todo.heading === heading) writeTodo(lines, lines.length, todo, fmt);
+    // Each heading once, so no to-do is written twice.
+    const names = headings.map(headingName).filter((name, i, all): name is string => name !== undefined && all.indexOf(name) === i);
+    const under = (todo: ThingsTodo) => {
+        const name = headingName(todo.heading);
+        return name !== undefined && names.includes(name) ? name : undefined;
+    };
+    for (const todo of todos) if (under(todo) === undefined) writeTodo(lines, lines.length, todo, fmt);
+    for (const name of names) {
+        lines.push('', `## ${name}`);
+        for (const todo of todos) if (under(todo) === name) writeTodo(lines, lines.length, todo, fmt);
     }
     return `${lines.join('\n')}\n`;
 }
@@ -126,6 +137,21 @@ function apply(note: Note, step: VaultStep, fmt: ThingsFormats): boolean {
 interface Spot { line: number; text: string }
 
 const keyOf = (task: VaultTask): string => `${task.line}\n${task.text}`;
+
+/** A note's own heading with this name, never its title; in another case when that's all it has, as `addUnderNewHeading` finds it. */
+function ownHeading(lines: string[], name: string): NoteHeading | undefined {
+    const all = noteHeadings(lines);
+    const title = titleOf(all);
+    const own = all.filter(heading => heading !== title);
+    return own.find(heading => heading.title === name) ?? own.find(heading => heading.title.toLowerCase() === name.toLowerCase());
+}
+
+/** The lines that add a heading the note lacks, at its end at the level of its sections, or null when it has it. */
+function headingAddition(lines: string[], name: string): { at: number; added: string[] } | null {
+    if (ownHeading(lines, name)) return null;
+    const result = addUnderNewHeading(lines, name, newHeadingLevel(noteHeadings(lines), undefined), 'bottom', []);
+    return result.added.length ? { at: result.at, added: result.added } : null;
+}
 
 /** The note's lines as the steps change them, and where each step's task is. */
 class Note {
@@ -195,19 +221,14 @@ class Note {
         for (const spot of this.spots.values()) if (spot.line !== -1) spot.line = plan.lineMap.get(spot.line) ?? -1;
     }
 
-    /** The note's own heading with this name, never its title; in another case when that's all it has, as `addUnderNewHeading` finds it. */
     heading(name: string): NoteHeading | undefined {
-        const all = noteHeadings(this.lines);
-        const title = titleOf(all);
-        const own = all.filter(heading => heading !== title);
-        return own.find(heading => heading.title === name) ?? own.find(heading => heading.title.toLowerCase() === name.toLowerCase());
+        return ownHeading(this.lines, name);
     }
 
     /** A heading the note lacks, added at its end at the level of the note's sections. */
     ensureHeading(name: string): void {
-        if (this.heading(name)) return;
-        const added = addUnderNewHeading(this.lines, name, newHeadingLevel(noteHeadings(this.lines), undefined), 'bottom', []);
-        this.splice(added.at, 0, added.added);
+        const extra = headingAddition(this.lines, name);
+        if (extra) this.splice(extra.at, 0, extra.added);
     }
 
     /** The heading a line sits under: the nearest above it that isn't the title. */
@@ -308,7 +329,7 @@ function update(note: Note, task: VaultTask, f: Partial<TodoFields>, fmt: Things
     const lines = note.lines;
     const [start, end] = contextRange(lines, spot.line);
     // Notes or a checklist changed since the read are the user's until the next round.
-    if ('notes' in f && notesText(lines.slice(start, end)) !== task.fields.notes) return false;
+    if ('notes' in f && notesUnder(lines, spot.line) !== task.fields.notes) return false;
     if ('checklist' in f && !sameItems(checklistLines(lines, spot.line).map(entry => entry.item), task.fields.checklist)) return false;
 
     let line = withText(lines[spot.line], updatedText(spot.text, task, f, fmt)) ?? lines[spot.line];
@@ -348,8 +369,11 @@ function sameTitles(a: readonly string[], b: readonly string[]): Array<[number, 
  * A task's checklist made Things' list. Items are matched by title, so one
  * Things added, renamed or deleted in the middle never shifts the others: an
  * item with the same title keeps its line, unmatched items between the same
- * neighbours are renamed in place in order, a new one goes in after the item
- * before it, and one Things deleted becomes a plain bullet with its words.
+ * neighbours are renamed in place in order, and a new one goes in after the
+ * item before it. One Things deleted becomes a plain bullet with its words
+ * and moves, with any notes under it, to the end of the task's block: after
+ * the items that remain, so it never reads as the task's notes while there
+ * are any. With none left it does, which keeps its words as the record.
  */
 function checklist(note: Note, index: number, list: readonly ChecklistItem[]): void {
     const lines = note.lines;
@@ -373,14 +397,24 @@ function checklist(note: Note, index: number, list: readonly ChecklistItem[]): v
         fromNew = newAt + 1;
     }
 
-    // Where each run of new items goes, read before any line changes.
-    const runs = [...inserts].map(([after, items]) => {
+    // Every line that moves, read before any line changes. Applied from the
+    // bottom; at one spot the deleted items go in first, so new ones land above them.
+    const edits: Array<{ at: number; remove: number; insert: string[]; order: number }> = [...inserts].map(([after, items]) => {
         const ref = children[Math.max(after, 0)];
         const parsed = ref && parseTaskLine(lines[ref.line]);
         const made = items.map(j => itemLine(list[j]));
-        if (!ref || !parsed) return subtaskLines(lines, index, made) ?? { at: lines.length, lines: [] };
-        return { at: after === -1 ? ref.line : contextRange(lines, ref.line)[1], lines: made.map(line => `${parsed.prefix}${parsed.indent}${line}`) };
+        const placed = !ref || !parsed
+            ? subtaskLines(lines, index, made) ?? { at: lines.length, lines: [] }
+            : { at: after === -1 ? ref.line : contextRange(lines, ref.line)[1], lines: made.map(line => `${parsed.prefix}${parsed.indent}${line}`) };
+        return { at: placed.at, remove: 0, insert: placed.lines, order: 2 };
     });
+    const moved: string[] = [];
+    for (const i of dropped) {
+        const [start, end] = [children[i].line, contextRange(lines, children[i].line)[1]];
+        moved.push(plainBullet(lines[start]), ...lines.slice(start + 1, end));
+        edits.push({ at: start, remove: end - start, insert: [], order: 1 });
+    }
+    if (moved.length) edits.push({ at: taskBlockEnd(lines, index), remove: 0, insert: moved, order: 0 });
 
     for (const [i, j] of renames) {
         const at = children[i].line;
@@ -389,23 +423,27 @@ function checklist(note: Note, index: number, list: readonly ChecklistItem[]): v
         if (before[i].done !== list[j].done) line = withState(line, list[j].done ? 'x' : ' ') ?? line;
         lines[at] = line;
     }
-    for (const i of dropped) lines[children[i].line] = plainBullet(lines[children[i].line]);
-    for (const run of runs.sort((a, b) => b.at - a.at)) note.splice(run.at, 0, run.lines);
+    for (const edit of edits.sort((a, b) => b.at - a.at || a.order - b.order)) note.splice(edit.at, edit.remove, edit.insert);
 }
 
-/** Moves a task under another heading of the same note, adding the heading when the note lacks it. */
+/**
+ * Moves a task under another heading of the same note, adding the heading
+ * when the note lacks it. The move is worked out on the note as it would be
+ * first, so one that can't happen (a task in a callout) adds nothing.
+ */
 function move(note: Note, task: VaultTask, heading: string | undefined): boolean {
     const spot = note.find(task);
     if (!spot) return false;
-    const name = heading === undefined ? undefined : oneLine(heading);
+    const name = headingName(heading);
     if (note.headingAbove(spot.line) === (name === undefined ? undefined : note.heading(name)?.title ?? name)) return true;
-    // A task in a callout can't leave it, so no heading is added for it.
-    if (parseTaskLine(note.lines[spot.line])?.prefix) return false;
-    if (name !== undefined) note.ensureHeading(name);
-    const into = name === undefined ? titleOf(noteHeadings(note.lines)) : note.heading(name);
+    const extra = name === undefined ? null : headingAddition(note.lines, name);
+    const lines = extra ? [...note.lines.slice(0, extra.at), ...extra.added, ...note.lines.slice(extra.at)] : note.lines;
+    const into = name === undefined ? titleOf(noteHeadings(lines)) : ownHeading(lines, name);
     if (name !== undefined && !into) return false;
-    const plan = moveTasks(note.lines, [{ line: spot.line, text: spot.text }], into ? { kind: 'heading', heading: into.title, line: into.line } : { kind: 'heading', heading: '' });
+    const line = extra && spot.line >= extra.at ? spot.line + extra.added.length : spot.line;
+    const plan = moveTasks(lines, [{ line, text: spot.text }], into ? { kind: 'heading', heading: into.title, line: into.line } : { kind: 'heading', heading: '' });
     if (!plan) return false;
+    if (extra) note.splice(extra.at, 0, extra.added);
     note.take(plan);
     return true;
 }
@@ -431,7 +469,7 @@ function placeFor(note: Note, heading: string | undefined): number {
 }
 
 function add(note: Note, todo: ThingsTodo, heading: string | undefined, fmt: ThingsFormats): void {
-    const name = heading === undefined ? undefined : oneLine(heading);
+    const name = headingName(heading);
     if (name !== undefined) note.ensureHeading(name);
     const at = placeFor(note, name);
     note.grow(at, lines => writeTodo(lines, at, todo, fmt));
@@ -461,16 +499,18 @@ function retire(note: Note, task: VaultTask, today: string): boolean {
  * Things' order. A heading Things dropped is never deleted.
  */
 function headings(note: Note, from: readonly string[], to: readonly string[]): void {
-    const names = to.map(oneLine);
-    if (from.length === names.length) {
+    const named = to.map(headingName);
+    if (from.length === named.length) {
         from.forEach((name, i) => {
-            const next = names[i];
-            if (name === next || names.includes(name) || from.includes(next)) return;
+            const next = named[i];
+            if (next === undefined || name === next || named.includes(name) || from.includes(next)) return;
             const heading = note.heading(name);
             const edit = heading && renameHeading(note.lines, { line: heading.line, title: heading.title }, next);
             if (edit) note.lines.splice(0, note.lines.length, ...edit.lines);
         });
     }
+    // A blank name is no heading, so it is neither added nor ordered.
+    const names = named.filter((name): name is string => name !== undefined);
     for (const name of names) note.ensureHeading(name);
     // From the back, each heading goes just above the one after it when it isn't above it already.
     for (let i = names.length - 2; i >= 0; i--) {
