@@ -36,7 +36,7 @@ describe('vaultSnapshot', () => {
         const n = snap.notes[0];
         expect(n).toMatchObject({ path: 'Work/Plan.md', folder: 'Work', title: 'Plan', headings: ['A', 'C'], mtime: 7 });
         expect(n.tasks.map(t => [t.text, t.heading, t.line, t.id])).toEqual([
-            ['Top', undefined, 1, undefined], ['One', 'A', 3, undefined], ['Done with id', 'C', 7, 'abcdefgh12']
+            ['Top', undefined, 1, undefined], ['One', 'A', 3, undefined], ['Done with id %%things:abcdefgh12%%', 'C', 7, 'abcdefgh12']
         ]);
         expect(snap.folders).toEqual(['Work']);
     });
