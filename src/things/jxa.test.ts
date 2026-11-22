@@ -1,5 +1,5 @@
 import type { BridgeOp } from './bridge';
-import { EXPERIMENTAL, LISTS, parseRead, readScript, writeScript } from './jxa';
+import { CHANGED_DURING_READ, EXPERIMENTAL, LISTS, parseRead, readScript, writeScript } from './jxa';
 import type { ThingsSnapshot, TodoFields } from './model';
 
 /** A name carrying everything that could break out of a script: quotes, a backslash, a newline, `${`, a line separator. */
@@ -130,12 +130,41 @@ describe('parseRead', () => {
         expect(EXPERIMENTAL.heading).toContain('heading');
         expect(EXPERIMENTAL.checklist).toContain('checklistItems');
         expect(EXPERIMENTAL.reminder).toContain('reminderTime');
+        expect(EXPERIMENTAL.nested).toBe('attributes');
+        expect(EXPERIMENTAL.title).toContain('title');
+        expect(EXPERIMENTAL.checklistItem.done).toContain('completed');
+    });
+
+    it('keeps a capability off when a value it carried is unusable, and leaves that field unread', () => {
+        const sample = withExperimental();
+        const plan = sample.todos.find(t => t.id === 'TodoPlan01');
+        if (!plan) throw new Error('No plan');
+        plan.json = JSON.stringify({ heading: 'Next week', checklistItems: 3, reminderTime: true });
+        const snapshot = parseRead(JSON.stringify(sample));
+        expect(snapshot.capabilities).toEqual({ headings: true, checklist: false, reminder: false, repeating: false, reorder: false });
+        const read = snapshot.todos.find(t => t.id === 'TodoPlan01');
+        expect(read?.heading).toBe('Next week');
+        expect(read?.fields.checklist).toEqual([]);
+        expect(read?.fields.reminder).toBeUndefined();
+    });
+
+    it('keeps the checklist off when an item has no title, and headings off when a heading is no title', () => {
+        const sample = withExperimental();
+        sample.todos[1].json = JSON.stringify({ heading: 5, checklistItems: [{ title: 'Ok' }, { completed: true }], reminderTime: null });
+        const snapshot = parseRead(JSON.stringify(sample));
+        expect(snapshot.capabilities).toMatchObject({ headings: false, checklist: false, reminder: true });
+        expect(snapshot.todos.some(t => t.heading !== undefined)).toBe(false);
+        expect(snapshot.projects[0].headings).toBeUndefined();
+    });
+
+    it('reads a to-do with no name as untitled, so one odd to-do never stops a round', () => {
+        const sample = { ...SAMPLE, todos: [{ ...raw('TodoBlank1', ''), name: null }] };
+        expect(parseRead(JSON.stringify(sample)).todos[0].fields.title).toBe('');
     });
 
     it('turns down output it cannot read rather than guess', () => {
         expect(() => parseRead('execution error')).toThrow();
         expect(() => parseRead(JSON.stringify({ ...SAMPLE, todos: [raw('TodoBad001', 'x', { status: 'someday' })] }))).toThrow();
-        expect(() => parseRead(JSON.stringify({ ...SAMPLE, todos: [{ ...raw('TodoBad001', 'x'), name: null }] }))).toThrow();
         expect(() => parseRead(JSON.stringify({ ...SAMPLE, inbox: undefined }))).toThrow();
     });
 });
@@ -146,7 +175,7 @@ describe('parseRead', () => {
 // element specifier, a missing value comes back as null.
 
 interface Item { id: string; name: string; status?: string; notes?: string; tags?: string; when?: Date; due?: Date; kind?: 'toDo' | 'project'; project?: string; area?: string; json?: string }
-interface World { areas: Array<{ id: string; name: string }>; items: Item[]; lists: Record<string, string[]>; spelling?: string }
+interface World { areas: Array<{ id: string; name: string }>; items: Item[]; lists: Record<string, string[]>; spelling?: string; noWhose?: boolean }
 
 type Spec = Record<string, unknown>;
 
@@ -168,12 +197,19 @@ function mockThings(world: World, calls: string[]): (name: string) => Spec {
         };
         spec.project = () => { const i = need(); return i.project ? element(byId.get(i.project)) : null; };
         spec.area = () => { const i = need(); return i.area ? area(i.area) : null; };
-        spec.toDos = collection(() => world.items.filter(i => i.project === item?.id));
+        // A project lists its open to-dos; its done ones are in the Logbook.
+        spec.toDos = collection(() => world.items.filter(i => i.project === item?.id && (i.status ?? 'open') === 'open'));
         return spec;
     }
     function collection(items: () => Item[]): Spec {
         const spec: Spec = { byId: (id: string) => element(items().find(i => i.id === id)) };
         for (const key of Object.keys(read)) spec[key] = () => { calls.push(`bulk ${key}`); return items().map(read[key]); };
+        spec.project = () => items().map(i => i.project ? element(byId.get(i.project)) : null);
+        spec.whose = (filter: { _match: [unknown, string] }) => {
+            if (world.noWhose) throw new Error("Can't filter.");
+            expect(filter._match[0]).toBe('project.id');
+            return collection(() => items().filter(i => i.project === filter._match[1]));
+        };
         return spec;
     }
     const projects = () => world.items.filter(i => i.kind === 'project');
@@ -222,7 +258,7 @@ function world(open = 2): World {
 describe('readScript', () => {
     it('takes its known IDs from one JSON literal and compiles', () => {
         const script = readScript(['TodoDone01', 'TodoDone01', 'TodoGone01']);
-        expect(inputOf(script)).toMatchObject({ known: ['TodoDone01', 'TodoGone01'] });
+        expect(inputOf(script)).toMatchObject({ known: ['TodoDone01', 'TodoGone01'], changed: CHANGED_DURING_READ });
         expect(() => new Function(script)).not.toThrow();
     });
 
@@ -345,12 +381,23 @@ describe('writeScript', () => {
 
     it('makes a to-do, then puts it in its project by ID', () => {
         const made = `${APP}.make({new: "toDo", withProperties: {name: "Call", notes: "", tagNames: "Errands, Home"}})`;
+        const exists = `${APP}.projects.byId(ProjQ4Plan).exists()`;
         const { result, log } = runWrite(
             { kind: 'makeTodo', name: 'Call', notes: '', tags: ['Errands', 'Home'], projectId: 'ProjQ4Plan' },
-            { [`${made}.id()`]: 'TodoNew001' }
+            { [`${made}.id()`]: 'TodoNew001', [exists]: true }
         );
         expect(result).toBe('TodoNew001');
-        expect(log).toEqual([made, `${made}.id()`, `${APP}.toDos.byId(TodoNew001).project = ${APP}.projects.byId(ProjQ4Plan)`]);
+        expect(log).toEqual([exists, made, `${made}.id()`, `${APP}.toDos.byId(TodoNew001).project = ${APP}.projects.byId(ProjQ4Plan)`]);
+    });
+
+    it.each([
+        ['project', { projectId: 'ProjGone01' }, `${APP}.projects.byId(ProjGone01).exists()`],
+        ['area', { areaId: 'AreaGone01' }, `${APP}.areas.byId(AreaGone01).exists()`]
+    ])('makes nothing when the to-do\'s %s is gone, so no stray to-do lands in the Inbox', (_what, target, exists) => {
+        const { Application, log } = recorder({ [exists]: false });
+        const script = writeScript({ kind: 'makeTodo', name: 'Call', notes: '', tags: [], ...target });
+        expect(() => new Function('Application', `${script}\nreturn run();`)(Application)).toThrow(/Gone01 is gone from Things/);
+        expect(log).toEqual([exists]);
     });
 
     it('makes a to-do in an area, or leaves it in the Inbox', () => {
@@ -405,5 +452,39 @@ describe('writeScript', () => {
         const answers = { [`${APP}.projects.id()`]: ['ProjA00001', 'ProjB00001'], [`${APP}.projects.notes()`]: ['', 'Notes\nsync-marker-42'] };
         expect(runWrite({ kind: 'findProjectByNotes', marker: 'sync-marker-42' }, answers).result).toBe('ProjB00001');
         expect(runWrite({ kind: 'findProjectByNotes', marker: 'other' }, answers).result).toBe('');
+    });
+});
+
+describe('projectTodoIds script', () => {
+    /** JXA's ObjectSpecifier(), as far as the script uses it. */
+    const objectSpecifier = () => ({ project: { id: 'project.id' } });
+
+    function swapWorld(): World {
+        const w = world(0);
+        w.items.push(
+            { id: 'TodoDone02', name: 'Shipped', status: 'completed', project: 'ProjQ4Plan' },
+            { id: 'TodoGone02', name: 'Dropped', status: 'canceled', project: 'ProjQ4Plan' },
+            { id: 'TodoTrash2', name: 'Binned', project: 'ProjQ4Plan' },
+            { id: 'TodoLoose2', name: 'Loose', status: 'completed' }
+        );
+        w.lists[LISTS.logbook] = [...w.lists[LISTS.logbook], 'TodoDone02', 'TodoGone02', 'TodoLoose2'];
+        w.lists[LISTS.trash] = [...w.lists[LISTS.trash], 'TodoTrash2'];
+        return w;
+    }
+
+    function idsIn(w: World): string[] {
+        const script = writeScript({ kind: 'projectTodoIds', id: 'ProjQ4Plan' });
+        const output = new Function('Application', 'ObjectSpecifier', `${script}\nreturn run();`)(mockThings(w, []), objectSpecifier) as string;
+        return (JSON.parse(output) as string[]).sort();
+    }
+
+    it('lists a project\'s to-dos with its done and cancelled ones from the Logbook, and none from the Trash', () => {
+        expect(idsIn(swapWorld())).toEqual(['TodoDone02', 'TodoGone02', 'TodoPlan01']);
+    });
+
+    it('looks through the Logbook one to-do at a time when Things can\'t filter it by project', () => {
+        const w = swapWorld();
+        w.noWhose = true;
+        expect(idsIn(w)).toEqual(['TodoDone02', 'TodoGone02', 'TodoPlan01']);
     });
 });

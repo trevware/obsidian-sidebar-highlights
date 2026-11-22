@@ -22,6 +22,15 @@ describe('thingsErrorFrom', () => {
         expect(thingsErrorFrom(failed('Command failed'), 'execution error: Error: AppleEvent timed out. (-1712)').kind).toBe('timeout');
     });
 
+    it('reads an error thrown inside a script as other, not as a missing app', () => {
+        const changed = thingsErrorFrom(failed('Command failed'), 'execution error: Error: Error: Things changed during the read (-2700)\n');
+        expect(changed.kind).toBe('other');
+        expect(changed.message).toContain('Things changed during the read');
+        const typeError = thingsErrorFrom(failed('Command failed'), "execution error: TypeError: undefined is not an object (evaluating 'item.name') (-2700)\n");
+        expect(typeError.kind).toBe('other');
+        expect(typeError.message).toContain('TypeError: undefined is not an object');
+    });
+
     it('keeps what osascript said about anything else', () => {
         const error = thingsErrorFrom(failed('Command failed'), "execution error: Error: Error: Can't get object. (-1728)\n");
         expect(error.kind).toBe('other');
@@ -34,7 +43,8 @@ describe('thingsErrorFrom', () => {
     });
 });
 
-function runner(output: string | Error): Runner & { scripts: Array<{ script: string; timeoutMs: number }>; opened: string[] } {
+/** A runner answering each script with the next output in turn, the last one from then on. */
+function runner(...outputs: Array<string | Error>): Runner & { scripts: Array<{ script: string; timeoutMs: number }>; opened: string[] } {
     const scripts: Array<{ script: string; timeoutMs: number }> = [];
     const opened: string[] = [];
     return {
@@ -42,6 +52,7 @@ function runner(output: string | Error): Runner & { scripts: Array<{ script: str
         opened,
         async jxa(script, timeoutMs) {
             scripts.push({ script, timeoutMs });
+            const output = outputs[Math.min(scripts.length, outputs.length) - 1];
             if (output instanceof Error) throw output;
             return output;
         },
@@ -58,6 +69,19 @@ describe('ScriptBridge', () => {
         const snapshot = await new ScriptBridge(r).read(['TodoDone01']);
         expect(r.scripts).toEqual([{ script: readScript(['TodoDone01']), timeoutMs: READ_TIMEOUT_MS }]);
         expect(snapshot).toEqual({ areas: [], projects: [], todos: [], capabilities: { headings: false, checklist: false, reminder: false, repeating: false, reorder: false } });
+    });
+
+    it('reads again once when Things changed during the read', async () => {
+        const changed = thingsErrorFrom(failed('Command failed'), 'execution error: Error: Error: Things changed during the read (-2700)');
+        const r = runner(changed, EMPTY_READ);
+        await expect(new ScriptBridge(r).read([])).resolves.toMatchObject({ todos: [] });
+        expect(r.scripts).toHaveLength(2);
+        const twice = runner(changed);
+        await expect(new ScriptBridge(twice).read([])).rejects.toBe(changed);
+        expect(twice.scripts).toHaveLength(2);
+        const other = runner(new ThingsError('other', 'TypeError'));
+        await expect(new ScriptBridge(other).read([])).rejects.toMatchObject({ message: 'TypeError' });
+        expect(other.scripts).toHaveLength(1);
     });
 
     it('turns output it cannot read into a ThingsError', async () => {
@@ -237,5 +261,54 @@ describe('FakeThings', () => {
         const headings = jsonCreateLink([{ type: 'project', operation: 'update', id: projectId, attributes: { items: [{ type: 'heading', attributes: { title: 'New' } }] } }], TOKEN);
         await expect(things.open(headings)).rejects.toThrow(/heading/);
         await expect(things.run({ kind: 'setTodo', id, when: '2026-11-23@15:00' })).rejects.toThrow(/link/);
+    });
+
+    it('can hold links until they settle, as Things acts after open returns', async () => {
+        const things = new FakeThings(TOKEN);
+        things.deferLinks = true;
+        const id = things.addTodo({ title: 'Call' });
+        await things.open(jsonCreateLink([{ type: 'project', attributes: { title: 'P', notes: 'marker-3' } }]));
+        await things.open(updateLink(id, { title: 'Call Mom' }, TOKEN));
+        expect(await things.run({ kind: 'findProjectByNotes', marker: 'marker-3' })).toBeNull();
+        expect((await things.read([])).todos.map(t => t.fields.title)).toEqual(['Call']);
+        expect(things.links).toHaveLength(2);
+        things.settleLinks();
+        expect(await things.run({ kind: 'findProjectByNotes', marker: 'marker-3' })).toMatch(/^FakeProj/);
+        expect(things.todos.get(id)?.fields.title).toBe('Call Mom');
+        things.settleLinks();
+        expect(things.projects.size).toBe(1);
+    });
+
+    it('reads with the capabilities it is given, leaving out what they hide', async () => {
+        const things = new FakeThings(TOKEN);
+        const projectId = things.addProject({ title: 'Plan', headings: ['Now'] });
+        things.addTodo({ title: 'Call', projectId, heading: 'Now', when: '2026-11-23', reminder: '15:00', checklist: [{ title: 'Dial', done: false }] });
+        things.capabilities = { headings: false, checklist: false, reminder: false, repeating: false, reorder: false };
+        const snapshot = await things.read([]);
+        expect(snapshot.capabilities).toEqual(things.capabilities);
+        expect(snapshot.projects[0].headings).toBeUndefined();
+        expect(snapshot.todos[0].heading).toBeUndefined();
+        expect(snapshot.todos[0].fields).toMatchObject({ when: '2026-11-23', checklist: [] });
+        expect(snapshot.todos[0].fields.reminder).toBeUndefined();
+    });
+
+    it('makes nothing when a to-do\'s project or area is gone, so no stray to-do lands in the Inbox', async () => {
+        const things = new FakeThings(TOKEN);
+        await expect(things.run({ kind: 'makeTodo', name: 'A', notes: '', tags: [], projectId: 'ProjGone01' })).rejects.toThrow(/ProjGone01 is gone from Things/);
+        await expect(things.run({ kind: 'makeTodo', name: 'A', notes: '', tags: [], areaId: 'AreaGone01' })).rejects.toMatchObject({ kind: 'other' });
+        expect(things.todos.size).toBe(0);
+    });
+
+    it('lists every to-do in a project, done and cancelled too, but not the trashed', async () => {
+        const things = new FakeThings(TOKEN);
+        const projectId = things.addProject({ title: 'Plan' });
+        const open = things.addTodo({ title: 'Open', projectId });
+        const done = things.addTodo({ title: 'Done', projectId, status: 'completed' });
+        const dropped = things.addTodo({ title: 'Dropped', projectId, status: 'canceled' });
+        things.addTodo({ title: 'Binned', projectId, trashed: true });
+        things.addTodo({ title: 'Elsewhere' });
+        const ids = await things.run({ kind: 'projectTodoIds', id: projectId });
+        expect(JSON.parse(ids ?? '')).toEqual([open, done, dropped]);
+        await expect(things.run({ kind: 'projectTodoIds', id: 'ProjGone01' })).rejects.toBeInstanceOf(ThingsError);
     });
 });

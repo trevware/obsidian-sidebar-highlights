@@ -9,8 +9,8 @@
  * Kept free of Obsidian imports so it can be unit tested directly.
  */
 
-import { parseRead, readScript, writeScript } from './jxa';
-import type { ChecklistItem, ThingsArea, ThingsSnapshot, ThingsTodo, TodoFields, TodoStatus } from './model';
+import { CHANGED_DURING_READ, parseRead, readScript, writeScript } from './jxa';
+import type { Capabilities, ChecklistItem, ThingsArea, ThingsSnapshot, ThingsTodo, TodoFields, TodoStatus } from './model';
 
 /** One AppleScript-side change. Headings, checklists and reminders go through links instead. */
 export type BridgeOp =
@@ -23,12 +23,14 @@ export type BridgeOp =
     | { kind: 'deleteTodo'; id: string } | { kind: 'deleteProject'; id: string } | { kind: 'deleteArea'; id: string }
     /** An empty `areaId` takes the project out of its area. */
     | { kind: 'setProject'; id: string; name?: string; areaId?: string; notes?: string; status?: TodoStatus }
-    | { kind: 'findProjectByNotes'; marker: string };
+    | { kind: 'findProjectByNotes'; marker: string }
+    /** A JSON array of every to-do ID in the project, done and cancelled too (the Logbook's), none trashed: what a heading swap moves. */
+    | { kind: 'projectTodoIds'; id: string };
 
 export interface ThingsBridge {
     /** `knownIds`: the to-do and project IDs the round still cares about, found even when done or trashed since. */
     read(knownIds: string[]): Promise<ThingsSnapshot>;
-    /** The ID an op made or found, else null. */
+    /** The ID an op made or found (for `projectTodoIds`, its JSON array), else null. */
     run(op: BridgeOp): Promise<string | null>;
     /** A things:/// link, Things kept in the background. */
     open(link: string): Promise<void>;
@@ -62,7 +64,8 @@ export function thingsErrorFrom(error: unknown, stderr = ''): ThingsError {
     const all = `${stderr}\n${message}`;
     if (/-1743\b|not authori[sz]ed to send apple events/i.test(all)) return new ThingsError('permission', said);
     if (failure.killed === true || failure.signal === 'SIGTERM' || /-1712\b|timed out/i.test(all)) return new ThingsError('timeout', said);
-    if (/-2700\b|-10814\b|application can.t be found|no application knows how to open|unable to find application/i.test(all)) return new ThingsError('not-installed', said);
+    // Not -2700 alone: JXA reports every uncaught error in a script with it.
+    if (/-10814\b|application can.t be found|no application knows how to open|unable to find application/i.test(all)) return new ThingsError('not-installed', said);
     return new ThingsError('other', said);
 }
 
@@ -74,8 +77,14 @@ export const WRITE_TIMEOUT_MS = 20_000;
 export class ScriptBridge implements ThingsBridge {
     constructor(private readonly runner: Runner) {}
 
+    /** Reads again once when Things changed during the read. */
     async read(knownIds: string[]): Promise<ThingsSnapshot> {
-        const output = await this.call(() => this.runner.jxa(readScript(knownIds), READ_TIMEOUT_MS));
+        const script = readScript(knownIds);
+        const once = () => this.call(() => this.runner.jxa(script, READ_TIMEOUT_MS));
+        const output = await once().catch((error: unknown) => {
+            if (error instanceof ThingsError && error.message.includes(CHANGED_DURING_READ)) return once();
+            throw error;
+        });
         try {
             return parseRead(output);
         } catch (error) {
@@ -119,6 +128,7 @@ const PROJECT_ATTRIBUTES = ['title', 'notes', 'area-id', 'items', 'completed', '
 const UPDATE_PARAMS = ['id', 'auth-token', 'reveal', ...TODO_ATTRIBUTES];
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+const ALL_CAPABILITIES: Capabilities = { headings: true, checklist: true, reminder: true, repeating: false, reorder: false };
 const sortedTags = (names: string[]): string[] => [...new Set(names.map(name => name.trim()).filter(name => name !== ''))].sort();
 const missing = (what: string): ThingsError => new ThingsError('other', `Can't get ${what}. (-1728)`);
 const flag = (attributes: Attributes, key: string): boolean => attributes[key] === true || attributes[key] === 'true';
@@ -163,6 +173,9 @@ function checklistFrom(value: unknown): ChecklistItem[] {
  * with the wrong token, or any link while URLs are off, is refused and
  * recorded. Anything Things has no attribute for throws, so a builder typo
  * fails a test instead of passing silently. `fail` makes chosen calls throw.
+ * With `deferLinks`, links wait in `pending` until `settleLinks()`, as real
+ * Things acts on a link after `open` returns. `capabilities` sets what reads
+ * report, and a read leaves out what they hide, as the real read does.
  */
 export class FakeThings implements ThingsBridge {
     readonly areas = new Map<string, ThingsArea>();
@@ -177,6 +190,10 @@ export class FakeThings implements ThingsBridge {
     readonly refused: string[] = [];
     running = true;
     urlsEnabled = true;
+    /** Holds links in `pending` until `settleLinks()`. */
+    deferLinks = false;
+    readonly pending: string[] = [];
+    capabilities: Capabilities = { ...ALL_CAPABILITIES };
     private made = 0;
     private failures: Array<{ on: FakeCall; error: Error; once: boolean }> = [];
 
@@ -219,11 +236,16 @@ export class FakeThings implements ThingsBridge {
         this.check('read');
         const known = new Set(knownIds);
         const listed = (todo: FakeTodo) => !todo.trashed && todo.fields.status === 'open' && this.projects.get(todo.projectId ?? '')?.trashed !== true;
+        const caps = this.capabilities;
+        const todo = (t: FakeTodo): ThingsTodo => {
+            const fields = { ...t.fields, checklist: caps.checklist ? t.fields.checklist : [], reminder: caps.reminder ? t.fields.reminder : undefined };
+            return { ...t, heading: caps.headings ? t.heading : undefined, fields, logged: t.fields.status !== 'open' };
+        };
         return clone({
             areas: [...this.areas.values()],
-            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: p.headings, status: p.status, trashed: p.trashed })),
-            todos: [...this.todos.values()].filter(t => listed(t) || known.has(t.id)).map(t => ({ ...t, logged: t.fields.status !== 'open' })),
-            capabilities: { headings: true, checklist: true, reminder: true, repeating: false, reorder: false }
+            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: caps.headings ? p.headings : undefined, status: p.status, trashed: p.trashed })),
+            todos: [...this.todos.values()].filter(t => listed(t) || known.has(t.id)).map(todo),
+            capabilities: caps
         });
     }
 
@@ -238,6 +260,16 @@ export class FakeThings implements ThingsBridge {
     async open(link: string): Promise<void> {
         this.check('open');
         this.links.push(link);
+        if (this.deferLinks) this.pending.push(link);
+        else this.carryOut(link);
+    }
+
+    /** Carries out the links held while `deferLinks` is on, in order. */
+    settleLinks(): void {
+        for (const link of this.pending.splice(0)) this.carryOut(link);
+    }
+
+    private carryOut(link: string): void {
         const url = new URL(link);
         const command = url.pathname.replace(/^\/+/, '');
         if (url.protocol !== 'things:' || (command !== 'json' && command !== 'update')) throw new Error(`FakeThings: Things has no command ${link}`);
@@ -300,9 +332,11 @@ export class FakeThings implements ThingsBridge {
             case 'makeArea': return this.addArea(op.name);
             case 'renameArea': this.area(op.id).title = op.name; return null;
             case 'makeTodo': {
+                if (op.projectId && !this.projects.has(op.projectId)) throw new ThingsError('other', `Project ${op.projectId} is gone from Things`);
+                if (!op.projectId && op.areaId && !this.areas.has(op.areaId)) throw new ThingsError('other', `Area ${op.areaId} is gone from Things`);
                 const id = this.addTodo({ title: op.name, notes: op.notes, tags: op.tags });
-                if (op.projectId) this.place(this.todo(id), this.project(op.projectId).id);
-                else if (op.areaId) this.place(this.todo(id), this.area(op.areaId).id);
+                const target = op.projectId || op.areaId;
+                if (target) this.place(this.todo(id), target);
                 return id;
             }
             case 'setTodo': {
@@ -341,6 +375,10 @@ export class FakeThings implements ThingsBridge {
             case 'findProjectByNotes': {
                 for (const project of this.projects.values()) if (project.notes.includes(op.marker)) return project.id;
                 return null;
+            }
+            case 'projectTodoIds': {
+                const id = this.project(op.id).id;
+                return JSON.stringify([...this.todos.values()].filter(t => t.projectId === id && !t.trashed).map(t => t.id));
             }
         }
     }

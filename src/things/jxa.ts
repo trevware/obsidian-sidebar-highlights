@@ -12,15 +12,17 @@
  *
  * Things' dictionary has no headings, checklist items or reminder times. Its
  * hidden `_private_experimental_ json` property may carry them, and
- * `EXPERIMENTAL` is the one place that says where to look. A capability is on
- * only when every to-do read came with that JSON and it carried the field.
- * Repeating to-dos aren't told apart until the JSON is confirmed to say so.
+ * `EXPERIMENTAL` is the one place that says where to look and what shape a
+ * usable value has. A capability is on only when every to-do read came with
+ * that JSON, some carried the field, and every value it carried is usable; a
+ * field whose capability is off is left unread. Repeating to-dos aren't told
+ * apart until the JSON is confirmed to say so.
  *
  * Kept free of Obsidian imports so it can be unit tested directly.
  */
 
 import type { BridgeOp } from './bridge';
-import type { ChecklistItem, ThingsProject, ThingsSnapshot, ThingsTodo, TodoFields, TodoStatus } from './model';
+import type { Capabilities, ChecklistItem, ThingsProject, ThingsSnapshot, ThingsTodo, TodoFields, TodoStatus } from './model';
 
 /** Things' built-in lists, by the IDs its dictionary answers to. */
 export const LISTS = {
@@ -43,15 +45,24 @@ const OPEN_LISTS = [LISTS.inbox, LISTS.today, LISTS.anytime, LISTS.upcoming, LIS
 export const EXPERIMENTAL = {
     /** JXA spellings tried for the hidden `_private_experimental_ json` property, in order. */
     property: ['_private_experimental_Json', '_privateExperimentalJson', 'privateExperimentalJson', '_private_experimental_json'],
-    /** On a to-do: its heading's title, or an object with one. */
+    /** An object the fields may also sit under, as in the link format: `{ "attributes": { … } }`. Also looked in on headings and checklist items. */
+    nested: 'attributes',
+    /** Where an object (a heading, a checklist item) keeps its title. */
+    title: ['title', 'name'],
+    /** On a to-do. Usable: a title, or an object with one (`title`). An empty title is no heading. */
     heading: ['heading', 'headingTitle'],
-    /** On a to-do: its checklist, as titles or objects with a title and a done mark. */
+    /** On a to-do. Usable: an array whose every item is a title or an object with one. */
     checklist: ['checklistItems', 'checklist', 'checklist-items'],
-    /** On a to-do: its reminder time. */
+    /** On a checklist item object: done when any `done` key is true, or a `status` key holds one of `doneStatuses`. */
+    checklistItem: { done: ['completed', 'done'], status: ['status'], doneStatuses: ['completed', 'canceled', 2, 3] },
+    /** On a to-do. Usable: a time of day, as "15:00", a date-time string, seconds since midnight, or Things' packed hour << 26 | minute << 20. */
     reminder: ['reminder', 'reminderTime'],
-    /** On a project: its headings, in order. Absent, the planner takes Things' headings as unchanged. */
+    /** On a project. Usable: an array of titles or objects with one, in order. Absent or unusable, the planner takes Things' headings as unchanged. */
     projectHeadings: ['headings']
 } as const;
+
+/** The read's own guard against Things changing under it, which `ScriptBridge` reads again for. */
+export const CHANGED_DURING_READ = 'Things changed during the read';
 
 /** A script's inputs as one JSON literal on its first line. Line and paragraph separators are escaped, which older JavaScript reads as line ends. */
 function withInput(input: unknown, body: string): string {
@@ -64,7 +75,7 @@ const READ = `function run() {
     const attempt = f => { try { return f(); } catch (e) { return undefined; } };
     const pad = n => ('0' + n).slice(-2);
     const day = d => d ? d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) : null;
-    const changed = () => new Error('Things changed during the read');
+    const changed = () => new Error(input.changed);
     const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
     let spelling = null;
     const experimental = item => {
@@ -157,13 +168,15 @@ const READ = `function run() {
  * on a line): each one missing from the lists costs a lookup of its own.
  */
 export function readScript(knownIds: string[]): string {
-    return withInput({ known: [...new Set(knownIds)], open: OPEN_LISTS, lists: LISTS, spellings: EXPERIMENTAL.property }, READ);
+    return withInput({ known: [...new Set(knownIds)], open: OPEN_LISTS, lists: LISTS, spellings: EXPERIMENTAL.property, changed: CHANGED_DURING_READ }, READ);
 }
 
 const WRITES: Record<BridgeOp['kind'], string> = {
     makeArea: `return app.make({ new: 'area', withProperties: { name: op.name } }).id();`,
     renameArea: `app.areas.byId(op.id).name = op.name;`,
-    makeTodo: `const id = app.make({ new: 'toDo', withProperties: { name: op.name, notes: op.notes, tagNames: op.tags.join(', ') } }).id();
+    makeTodo: `if (op.projectId && !app.projects.byId(op.projectId).exists()) throw new Error('Project ' + op.projectId + ' is gone from Things');
+    else if (!op.projectId && op.areaId && !app.areas.byId(op.areaId).exists()) throw new Error('Area ' + op.areaId + ' is gone from Things');
+    const id = app.make({ new: 'toDo', withProperties: { name: op.name, notes: op.notes, tagNames: op.tags.join(', ') } }).id();
     const todo = app.toDos.byId(id);
     if (op.projectId) todo.project = app.projects.byId(op.projectId);
     else if (op.areaId) todo.area = app.areas.byId(op.areaId);
@@ -193,7 +206,20 @@ const WRITES: Record<BridgeOp['kind'], string> = {
     findProjectByNotes: `const ids = app.projects.id();
     const notes = app.projects.notes();
     const at = notes.findIndex(text => typeof text === 'string' && text.indexOf(op.marker) !== -1);
-    return at === -1 || ids.length !== notes.length ? '' : ids[at];`
+    return at === -1 || ids.length !== notes.length ? '' : ids[at];`,
+    projectTodoIds: `const own = app.projects.byId(op.id).toDos.id();
+    const trash = new Set(app.lists.byId(lists.trash).toDos.id());
+    const logbook = app.lists.byId(lists.logbook).toDos;
+    let logged;
+    try {
+        logged = logbook.whose({ _match: [ObjectSpecifier().project.id, op.id] }).id();
+    } catch (e) {
+        const ids = logbook.id();
+        const owners = logbook.project();
+        if (owners.length !== ids.length) throw new Error('Things changed during the lookup');
+        logged = ids.filter((id, i) => owners[i] !== null && owners[i].id() === op.id);
+    }
+    return JSON.stringify(Array.from(new Set(own.concat(logged))).filter(id => !trash.has(id)));`
 };
 
 /** A When value AppleScript can set: a date, Someday, or none (Anytime). A reminder needs the update link. */
@@ -203,6 +229,10 @@ const SCRIPT_WHEN = /^(?:\d{4}-\d{2}-\d{2}|someday|anytime)$/;
  * One JXA program for an op. It prints the ID an op made or found, or
  * nothing. `setTodo`'s `when` is a date, `someday`, or null or `anytime` for
  * no date; `setProject`'s empty `areaId` takes the project out of its area.
+ * `makeTodo` makes nothing when its project or area is gone, so a failed
+ * make never leaves a stray to-do in the Inbox. `projectTodoIds` prints a
+ * JSON array of every to-do in the project, done and cancelled ones from the
+ * Logbook too, none from the Trash.
  */
 export function writeScript(op: BridgeOp): string {
     if (op.kind === 'setTodo' && typeof op.when === 'string' && !SCRIPT_WHEN.test(op.when)) {
@@ -242,13 +272,18 @@ const dayOf = (value: unknown, what: string): string | undefined => {
 const statusOf = (value: unknown, what: string): TodoStatus => STATUSES.includes(value as string) ? value as TodoStatus : unreadable(what);
 const idSet = (value: unknown, what: string): Set<string> => new Set(listOf(value, what).map(id => textOf(id, what)));
 
-/** The experimental JSON as an object, its `attributes` (the link format's nesting) spread in; undefined when missing or unreadable. */
+/** An object with what it keeps under `EXPERIMENTAL.nested` spread in. */
+const unnested = (value: Data): Data => {
+    const inner = value[EXPERIMENTAL.nested];
+    return isData(inner) ? { ...value, ...inner } : value;
+};
+
+/** The experimental JSON as an object; undefined when missing or unreadable. */
 function experimentalOf(json: unknown): Data | undefined {
     if (typeof json !== 'string') return undefined;
     let value: unknown;
     try { value = JSON.parse(json); } catch { return undefined; }
-    if (!isData(value)) return undefined;
-    return isData(value.attributes) ? { ...value, ...value.attributes } : value;
+    return isData(value) ? unnested(value) : undefined;
 }
 
 const carried = (data: Data, keys: readonly string[]): boolean => keys.some(key => key in data);
@@ -258,21 +293,26 @@ function first(data: Data | undefined, keys: readonly string[]): unknown {
     return undefined;
 }
 
-/** A title, from a string or an object carrying one. */
+// Each reader returns undefined for a value that isn't usable.
+
+/** A title, or an object with one. */
 function titleOf(value: unknown): string | undefined {
-    if (typeof value === 'string') return value === '' ? undefined : value;
+    if (typeof value === 'string') return value;
     if (!isData(value)) return undefined;
-    return titleOf(isData(value.attributes) ? value.attributes : value.title ?? value.name);
+    const title = first(unnested(value), EXPERIMENTAL.title);
+    return typeof title === 'string' ? title : undefined;
 }
 
-function checklistOf(value: unknown): ChecklistItem[] {
-    if (!Array.isArray(value)) return [];
+/** Checklist items, each a title or an object with one and a done mark. */
+function checklistOf(value: unknown): ChecklistItem[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const marks = EXPERIMENTAL.checklistItem;
     const items: ChecklistItem[] = [];
     for (const entry of value) {
         const title = titleOf(entry);
-        if (title === undefined) continue;
-        const data = isData(entry) ? { ...entry, ...(isData(entry.attributes) ? entry.attributes : {}) } : {};
-        const done = data.completed === true || data.done === true || ['completed', 'canceled', 2, 3].includes(data.status as string);
+        if (title === undefined) return undefined;
+        const data = isData(entry) ? unnested(entry) : {};
+        const done = marks.done.some(key => data[key] === true) || (marks.doneStatuses as readonly unknown[]).includes(first(data, marks.status));
         items.push({ title, done });
     }
     return items;
@@ -280,7 +320,7 @@ function checklistOf(value: unknown): ChecklistItem[] {
 
 const pad = (n: number): string => `0${n}`.slice(-2);
 
-/** A time of day as HH:mm: from "15:00" or a date-time string, seconds since midnight, or Things' packed hour << 26 | minute << 20. */
+/** A time of day as HH:mm. */
 function reminderOf(value: unknown): string | undefined {
     if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
         const packed = value >= 1 << 20;
@@ -293,16 +333,11 @@ function reminderOf(value: unknown): string | undefined {
     return match && Number(match[1]) < 24 ? `${pad(Number(match[1]))}:${match[2]}` : undefined;
 }
 
-/** A project's headings from its experimental JSON: titles, or objects with one (skipping items that aren't headings). */
+/** A project's headings, in order. */
 function headingsOf(value: unknown): string[] | undefined {
     if (!Array.isArray(value)) return undefined;
-    const titles: string[] = [];
-    for (const entry of value) {
-        if (isData(entry) && typeof entry.type === 'string' && entry.type !== 'heading') continue;
-        const title = titleOf(entry);
-        if (title !== undefined) titles.push(title);
-    }
-    return titles;
+    const titles = value.map(titleOf);
+    return titles.every((title): title is string => title !== undefined) ? titles : undefined;
 }
 
 /** "Errands, Home" as sorted, unique tag names. */
@@ -310,15 +345,15 @@ const tagsOf = (names: string): string[] => [...new Set(names.split(',').map(nam
 
 interface Lists { inbox: Set<string>; someday: Set<string>; trash: Set<string> }
 
-function todoOf(raw: Data, data: Data | undefined, lists: Lists): ThingsTodo {
+function todoOf(raw: Data, data: Data | undefined, lists: Lists, caps: Capabilities): ThingsTodo {
     const id = textOf(raw.id, 'a to-do without an ID');
     const what = `to-do ${id}`;
     const status = statusOf(raw.status, what);
     const someday = lists.someday.has(id);
     const fields: TodoFields = {
-        title: textOf(raw.name, what),
+        title: optionalText(raw.name, what),
         notes: optionalText(raw.notes, what),
-        checklist: checklistOf(first(data, EXPERIMENTAL.checklist)),
+        checklist: caps.checklist ? checklistOf(first(data, EXPERIMENTAL.checklist)) ?? [] : [],
         tags: tagsOf(optionalText(raw.tags, what)),
         status,
         someday
@@ -326,7 +361,7 @@ function todoOf(raw: Data, data: Data | undefined, lists: Lists): ThingsTodo {
     const when = someday ? undefined : dayOf(raw.when, what);
     if (when !== undefined) {
         fields.when = when;
-        const reminder = reminderOf(first(data, EXPERIMENTAL.reminder));
+        const reminder = caps.reminder ? reminderOf(first(data, EXPERIMENTAL.reminder)) : undefined;
         if (reminder !== undefined) fields.reminder = reminder;
     }
     const todo: ThingsTodo = { id, inbox: lists.inbox.has(id), fields, repeating: false, trashed: lists.trash.has(id), logged: raw.byId === true && status !== 'open' };
@@ -334,8 +369,8 @@ function todoOf(raw: Data, data: Data | undefined, lists: Lists): ThingsTodo {
     const areaId = idOf(raw.area, what);
     if (projectId !== undefined) {
         todo.projectId = projectId;
-        const heading = titleOf(first(data, EXPERIMENTAL.heading));
-        if (heading !== undefined) todo.heading = heading;
+        const heading = caps.headings ? titleOf(first(data, EXPERIMENTAL.heading)) : undefined;
+        if (heading) todo.heading = heading;
     } else if (areaId !== undefined) {
         todo.areaId = areaId;
     }
@@ -344,13 +379,13 @@ function todoOf(raw: Data, data: Data | undefined, lists: Lists): ThingsTodo {
     return todo;
 }
 
-function projectOf(raw: Data, trash: Set<string>): ThingsProject {
+function projectOf(raw: Data, trash: Set<string>, caps: Capabilities): ThingsProject {
     const id = textOf(raw.id, 'a project without an ID');
     const what = `project ${id}`;
-    const project: ThingsProject = { id, title: textOf(raw.name, what), status: statusOf(raw.status, what), trashed: trash.has(id) };
+    const project: ThingsProject = { id, title: optionalText(raw.name, what), status: statusOf(raw.status, what), trashed: trash.has(id) };
     const areaId = idOf(raw.area, what);
     if (areaId !== undefined) project.areaId = areaId;
-    const headings = headingsOf(first(experimentalOf(raw.json), EXPERIMENTAL.projectHeadings));
+    const headings = caps.headings ? headingsOf(first(experimentalOf(raw.json), EXPERIMENTAL.projectHeadings)) : undefined;
     if (headings !== undefined) project.headings = headings;
     return project;
 }
@@ -363,21 +398,30 @@ export function parseRead(output: string): ThingsSnapshot {
     const lists: Lists = { inbox: idSet(raw.inbox, 'inbox'), someday: idSet(raw.someday, 'someday'), trash: idSet(raw.trash, 'trash') };
     const areas = listOf(raw.areas, 'areas').map(value => {
         const area = dataOf(value, 'an area');
-        return { id: textOf(area.id, 'an area without an ID'), title: textOf(area.name, 'an area without a name') };
+        return { id: textOf(area.id, 'an area without an ID'), title: optionalText(area.name, 'an area') };
     });
-    const projects = listOf(raw.projects, 'projects').map(value => projectOf(dataOf(value, 'a project'), lists.trash));
     const read = listOf(raw.todos, 'to-dos').map(value => {
         const todo = dataOf(value, 'a to-do');
         return { todo, data: experimentalOf(todo.json) };
     });
-    // A field counts only when every to-do came with the JSON: a to-do without
-    // it would otherwise read as having lost its heading, checklist or reminder.
+    // A field counts only when every to-do came with the JSON and every value
+    // it carried is usable: a to-do without it, or with a value that can't be
+    // read, would otherwise read as having lost its heading, checklist or reminder.
     const every = read.length > 0 && read.every(r => r.data !== undefined);
-    const has = (keys: readonly string[]) => every && read.some(r => r.data !== undefined && carried(r.data, keys));
+    const usable = (keys: readonly string[], parse: (value: unknown) => unknown) => every
+        && read.some(r => r.data !== undefined && carried(r.data, keys))
+        && read.every(r => { const value = first(r.data, keys); return value === undefined || parse(value) !== undefined; });
+    const capabilities: Capabilities = {
+        headings: usable(EXPERIMENTAL.heading, titleOf),
+        checklist: usable(EXPERIMENTAL.checklist, checklistOf),
+        reminder: usable(EXPERIMENTAL.reminder, reminderOf),
+        repeating: false,
+        reorder: false
+    };
     return {
         areas,
-        projects,
-        todos: read.map(r => todoOf(r.todo, r.data, lists)),
-        capabilities: { headings: has(EXPERIMENTAL.heading), checklist: has(EXPERIMENTAL.checklist), reminder: has(EXPERIMENTAL.reminder), repeating: false, reorder: false }
+        projects: listOf(raw.projects, 'projects').map(value => projectOf(dataOf(value, 'a project'), lists.trash, capabilities)),
+        todos: read.map(r => todoOf(r.todo, r.data, lists, capabilities)),
+        capabilities
     };
 }
