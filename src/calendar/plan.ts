@@ -108,8 +108,8 @@ export type SyncPlan =
  * once mean the calendar was emptied or swapped, never that the user deleted
  * them one by one, so the round stops and no task is cleared.
  */
-const MISSING_LIMIT = 3;
-const MISSING_SHARE = 0.25;
+export const MISSING_LIMIT = 3;
+export const MISSING_SHARE = 0.25;
 
 /**
  * How long a note must sit unchanged before an event whose task left it is
