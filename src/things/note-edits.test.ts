@@ -3,6 +3,7 @@ jest.mock('obsidian', () => ({ moment: jest.requireActual('moment') }), { virtua
 
 import type HighlightCommentsPlugin from '../../main';
 import { TaskManager } from '../managers/task-manager';
+import { parseTaskLine } from '../tasks-view/task-line';
 import type { ThingsTodo, TodoFields, VaultTask } from './model';
 import { applyThingsEdits, newNoteContent } from './note-edits';
 import type { VaultStep } from './plan';
@@ -338,9 +339,17 @@ describe('applyThingsEdits: retire', () => {
         const lines = [`- [ ] Trip %%things:${A}%% %%cal:0fq7k2m9vd3a%%`, '\tPack light', '\t- [ ] Book train', '- [ ] Next'];
         const result = applyThingsEdits(lines, [{ kind: 'retire', task: task(lines, 'Trip') }], fmt);
         expect(result).toEqual({
-            lines: ['- Trip %%cal:0fq7k2m9vd3a%%', '\tPack light', '\t- [ ] Book train', '\t- 2026-11-22: deleted in Things, no longer synced.', '- [ ] Next'],
+            lines: ['- Trip %%cal:0fq7k2m9vd3a%%', '\tPack light', '\t- Book train', '\t- 2026-11-22: deleted in Things, no longer synced.', '- [ ] Next'],
             missed: 0
         });
+    });
+
+    it('makes every checkbox under a retired line a plain bullet, done or not, at any depth', () => {
+        const lines = [`- [ ] Trip %%things:${A}%%`, '\t- [ ] Book hotel', '\t- [x] Book train', '\t\t- [ ] Pick a seat', '- [ ] Next'];
+        const { lines: out } = applyThingsEdits(lines, [{ kind: 'retire', task: task(lines, 'Trip') }], fmt);
+        expect(out).toEqual(['- Trip', '\t- Book hotel', '\t- Book train', '\t\t- Pick a seat', '\t- 2026-11-22: deleted in Things, no longer synced.', '- [ ] Next']);
+        expect(out.slice(0, 5).filter(line => parseTaskLine(line))).toEqual([]);
+        expect(read(out).map(t => t.fields.title)).toEqual(['Next']);
     });
 
     it('keeps a callout line in its callout', () => {

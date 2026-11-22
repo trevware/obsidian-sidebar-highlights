@@ -14,15 +14,15 @@
  * for the next round to retry.
  *
  * Notes are the record, so nothing here takes out the user's words: a line
- * Things deleted becomes a plain bullet with a dated note under it, a
- * checklist item Things deleted becomes a plain bullet, a heading Things
- * dropped stays, and a rename from Things keeps the tags, comments and Tasks
- * plugin metadata Things never saw. Kept free of Obsidian imports so it can
- * be unit tested directly.
+ * Things deleted becomes a plain bullet with a dated note under it, and so
+ * do the checkboxes under it; a checklist item Things deleted becomes a
+ * plain bullet; a heading Things dropped stays; and a rename from Things
+ * keeps the tags, comments and Tasks plugin metadata Things never saw. Kept
+ * free of Obsidian imports so it can be unit tested directly.
  */
 
 import { renameHeading } from '../tasks-view/heading-edit';
-import { addNotes, buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDueInText, subtaskLines, withState, withText, withTitle } from '../tasks-view/task-line';
+import { addNotes, buildTaskLine, contextRange, editableTitle, insertionLine, locateTaskLine, notesLines, notesText, parseTaskLine, setDueInText, subtaskLines, taskBlockEnd, withState, withText, withTitle } from '../tasks-view/task-line';
 import { addUnderNewHeading, bodyStart, moveHeading, moveTasks, newHeadingLevel, noteHeadings, titleOf, trimBack } from '../tasks-view/task-move';
 import type { MovePlan, NoteHeading } from '../tasks-view/task-move';
 import { tasksPluginMetadata } from '../utils/task-metadata';
@@ -437,11 +437,18 @@ function add(note: Note, todo: ThingsTodo, heading: string | undefined, fmt: Thi
     note.grow(at, lines => writeTodo(lines, at, todo, fmt));
 }
 
-/** A line whose to-do Things deleted: a plain bullet without its Things ID, with a dated note under it. */
+/**
+ * A line whose to-do Things deleted: a plain bullet without its Things ID,
+ * with a dated note under it. Every checkbox under it, its checklist at any
+ * depth, becomes a plain bullet too, so nothing left there reads as a task
+ * and comes back as a new to-do.
+ */
 function retire(note: Note, task: VaultTask, today: string): boolean {
     const spot = note.find(task);
     if (!spot) return false;
     const placed = subtaskLines(note.lines, spot.line, [`- ${today}: deleted in Things, no longer synced.`]);
+    const end = taskBlockEnd(note.lines, spot.line);
+    for (let i = spot.line + 1; i < end; i++) note.lines[i] = plainBullet(note.lines[i]);
     note.setLine(spot, plainBullet(note.lines[spot.line], withThingsId(spot.text, null)));
     if (placed) note.splice(placed.at, 0, placed.lines);
     return true;
