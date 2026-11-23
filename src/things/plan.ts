@@ -97,10 +97,19 @@ export type ThingsPlan =
     /** Too many synced to-dos vanished from one side at once to be the user's doing; nothing is changed. */
     | { ok: false; reason: 'emptied'; side: 'things' | 'vault'; missing: number };
 
+/**
+ * Whether a note exists and when it changed, and whether it's one sync reads
+ * at all: a note excluded from tasks in settings is never written to,
+ * joined, or counted as deleted. Without `included`, every note is.
+ */
+export interface ThingsNoteInfo extends NoteInfo {
+    included?: (path: string) => boolean;
+}
+
 export interface ThingsPlanOptions {
     now: number;
     settleMs: number;
-    notes: NoteInfo;
+    notes: ThingsNoteInfo;
     /** The user confirmed what vanished from the vault: this round skips the vault side of the guard. */
     acceptMissing?: boolean;
 }
@@ -135,7 +144,8 @@ interface NoteHeadings { note: VaultNote; id: string; written: string[]; things:
 export function planThingsSync(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsState, opts: ThingsPlanOptions): ThingsPlan {
     const dated: ThingsSnapshot = { ...things, todos: things.todos.map(withDeadline) };
     if (state.joined) return planRound(vault, dated, state, new Map(), opts);
-    const first = joinByName(vault, dated, state, path => opts.notes.exists(path));
+    const included = (path: string) => opts.notes.included?.(path) ?? true;
+    const first = joinByName(vault, dated, state, path => opts.notes.exists(path) && included(path));
     return planRound(vault, dated, first.state, first.adopted, opts);
 }
 
@@ -144,6 +154,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     const caps = things.capabilities;
     const firstConnect = !state.joined;
     const files = opts.notes;
+    const included = (path: string) => files.included?.(path) ?? true;
     const thingsSteps: ThingsStep[] = [];
     const vaultSteps: VaultStep[] = [];
 
@@ -185,6 +196,8 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         const area = project.areaId === undefined ? undefined : areaById.get(project.areaId);
         const folder = area ? stateFolder(area.id) ?? folderFor(area.title) : '';
         const path = noteName(project.title, taken, folder);
+        // A project whose note would land where sync doesn't read stays in Things alone.
+        if (!included(path)) continue;
         reserved.add(path);
         projectPath.set(project.id, path);
         newNotes.set(path, { kind: 'createNote', path, title: project.title, headings: [], todos: [], projectId: project.id, ...(area ? { areaId: area.id } : {}) });
@@ -192,11 +205,12 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     const looseNamed = new Map<string, string>();
     const loosePath = (areaId: string): string | undefined => {
         const path = state.looseNotes[areaId] ?? looseNamed.get(areaId);
-        if (path !== undefined) return path;
+        if (path !== undefined) return included(path) ? path : undefined;
         const area = areaById.get(areaId);
         if (!area) return undefined;
         const folder = stateFolder(areaId) ?? folderFor(area.title);
         const named = noteName(looseNoteName(areaName(folder)), taken, folder);
+        if (!included(named)) return undefined;
         reserved.add(named);
         looseNamed.set(areaId, named);
         looseAreaByPath.set(named, areaId);
@@ -209,7 +223,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         newNotes.set(path, { kind: 'createNote', path, title: baseOf(path), headings: [], todos: [], ...(areaId === undefined ? {} : { areaId }) });
     };
     /** Whether a to-do from Things can land in this note: one that exists, a list note, or one made this round. */
-    const canTake = (path: string) => files.exists(path) || isListNote(path) || newNotes.has(path);
+    const canTake = (path: string) => included(path) && (files.exists(path) || isListNote(path) || newNotes.has(path));
     const wantHeading = (place: Place) => {
         if (place.heading === undefined || !newNotes.has(place.path)) return;
         const set = noteHeadings.get(place.path) ?? new Set<string>();
@@ -227,7 +241,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
             const path = loosePath(todo.areaId);
             return path === undefined ? undefined : at(path);
         }
-        return at(state.inboxNote);
+        return included(state.inboxNote) ? at(state.inboxNote) : undefined;
     };
 
     // Each synced note's headings, three ways. Things' count when they were
@@ -371,7 +385,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     const trashing = new Set<string>();
     const deleted = new Set<string>();
     for (const sp of state.projects) {
-        if (files.exists(sp.path) || !live(projectById.get(sp.id))) continue;
+        if (files.exists(sp.path) || !included(sp.path) || !live(projectById.get(sp.id))) continue;
         if (state.projects.some(other => other !== sp && other.id === sp.id && files.exists(other.path))) continue;
         trashing.add(sp.id);
         deleted.add(sp.path);
@@ -382,6 +396,8 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
         const todo = todoById.get(synced.id);
         if (lineById.has(synced.id) || !todo || gone(todo)) continue;
         const path = synced.place.path;
+        // A note sync no longer reads (excluded since) isn't a note whose lines were deleted.
+        if (!included(path)) continue;
         if (!files.exists(path)) deleted.add(path);
         else if (opts.now - files.mtime(path) >= opts.settleMs) linesGone++;
         else continue;
@@ -392,7 +408,7 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     // Renames and moves of synced notes and projects.
     for (const sp of state.projects) {
         const project = projectById.get(sp.id);
-        if (!files.exists(sp.path) || !live(project)) continue;
+        if (!files.exists(sp.path) || !included(sp.path) || !live(project)) continue;
         const folder = folderOf(sp.path);
         const base = baseOf(sp.path);
         const wasFolder = sp.areaId === undefined ? '' : stateFolder(sp.areaId) ?? folder;

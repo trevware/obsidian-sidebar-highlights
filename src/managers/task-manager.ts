@@ -55,7 +55,7 @@ export class TaskManager {
     /**
      * Check if a file path is in the excluded files list
      */
-    private isFileExcluded(filePath: string): boolean {
+    isFileExcluded(filePath: string): boolean {
         const filters = this.plugin.settings.fileFilters;
 
         if (!filters || filters.length === 0) {

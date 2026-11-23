@@ -64,7 +64,11 @@ interface World {
     /** Notes that no longer exist. */
     deleted?: string[];
     acceptMissing?: boolean;
+    /** Folders (or notes) excluded from tasks in settings. */
+    excluded?: string[];
 }
+
+const includedBy = (w: World) => (path: string) => !(w.excluded ?? []).some(out => path === out || path.startsWith(`${out}/`));
 
 function snapshots(w: World): [VaultSnapshot, ThingsSnapshot] {
     return [
@@ -87,14 +91,15 @@ function plan(w: World): ThingsPlan {
     return planThingsSync(
         ...snapshots(w),
         w.state ?? state(),
-        { now: NOW, settleMs: SETTLE, notes: { exists: path => path in files, mtime: path => files[path] ?? 0 }, acceptMissing: w.acceptMissing }
+        { now: NOW, settleMs: SETTLE, notes: { exists: path => path in files, mtime: path => files[path] ?? 0, included: includedBy(w) }, acceptMissing: w.acceptMissing }
     );
 }
 
 /** What joining by name records, before anything is planned. */
 function joined(w: World): ThingsState {
     const files = filesOf(w);
-    return joinFirstConnect(...snapshots(w), w.state ?? state(), path => path in files);
+    const included = includedBy(w);
+    return joinFirstConnect(...snapshots(w), w.state ?? state(), path => path in files && included(path));
 }
 
 const where = (place: Place): string => place.heading === undefined ? place.path : `${place.path}#${place.heading}`;
@@ -955,5 +960,42 @@ describe('planThingsSync: first connect', () => {
         expect(after.areas).toEqual([{ id: 'area1', folder: 'Work' }, { id: 'area4', folder: 'C#' }]);
         expect(after.projects.map(p => [p.id, p.path])).toEqual([['proj1', PLAN], ['proj4', 'C#/Plan.md'], ['proj5', 'C#/C# notes.md']]);
         expect(show(plan(w))).toEqual(['adopt Call Mom aaaaaaaa', 'adopt Tune bbbbbbbb', 'adopt Read cccccccc']);
+    });
+});
+
+
+describe('notes excluded from tasks', () => {
+    const work: ThingsArea = { id: 'areaW', title: 'Work' };
+    const nothing = (result: ThingsPlan) => {
+        const { things, vault } = steps(result);
+        return { things, vault };
+    };
+
+    it('leaves a Things project alone when its note would land in an excluded folder', () => {
+        const p = plan({ areas: [work], projects: [project('projQ', 'Q4', { areaId: 'areaW' })], todos: [todo(A, 'Draft deck', { projectId: 'projQ' })], excluded: ['Work'] });
+        expect(nothing(p)).toEqual({ things: [], vault: [] });
+    });
+
+    it('leaves the Things Inbox alone when the inbox note is excluded', () => {
+        const p = plan({ todos: [todo(A, 'Buy milk', { inbox: true })], excluded: ['Things Inbox.md'] });
+        expect(nothing(p)).toEqual({ things: [], vault: [] });
+    });
+
+    it('never trashes the to-dos of a synced note that became excluded', () => {
+        const p = plan({
+            projects: [project('projP', 'Plan', { areaId: 'areaW' })],
+            areas: [work],
+            todos: [todo(A, 'Call', { projectId: 'projP' }), todo(B, 'Email', { projectId: 'projP' })],
+            files: { [PLAN]: OLD },
+            excluded: ['Work'],
+            state: state({ areas: [{ id: 'areaW', folder: 'Work' }], projects: [{ id: 'projP', path: PLAN, title: 'Plan', headings: [], areaId: 'areaW' }], todos: [synced(A, 'Call', PLAN), synced(B, 'Email', PLAN)] })
+        });
+        expect(nothing(p)).toEqual({ things: [], vault: [] });
+    });
+
+    it('never joins a project to an excluded note on first connect', () => {
+        const w: World = { areas: [work], projects: [project('projP', 'Plan', { areaId: 'areaW' })], files: { [PLAN]: OLD }, excluded: ['Work'], state: state({ joined: false }) };
+        expect(joined(w).projects).toEqual([]);
+        expect(nothing(plan(w))).toEqual({ things: [], vault: [] });
     });
 });

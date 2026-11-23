@@ -34,7 +34,6 @@
  */
 
 import { SETTLE_MS } from '../calendar/plan';
-import type { NoteInfo } from '../calendar/plan';
 import { ThingsError } from './bridge';
 import type { BridgeOp, ThingsBridge, ThingsErrorKind } from './bridge';
 import { joinFirstConnect, withDeadline } from './join';
@@ -45,7 +44,7 @@ import type { Capabilities, ChecklistItem, PendingProject, Place, SyncedTodo, Th
 import { newNoteContent } from './note-edits';
 import type { ThingsFormats } from './note-edits';
 import { planThingsSync } from './plan';
-import type { ThingsStep, VaultStep } from './plan';
+import type { ThingsNoteInfo, ThingsStep, VaultStep } from './plan';
 import { swapProject } from './swap';
 
 export interface ThingsRoundDeps {
@@ -55,8 +54,8 @@ export interface ThingsRoundDeps {
     token: string;
     now: number;
     fmt: ThingsFormats;
-    /** Whether a note exists and when it last changed: the snapshot leaves out notes with no tasks. */
-    notes: NoteInfo;
+    /** Whether a note exists, when it last changed, and whether sync reads it: the snapshot leaves out notes with no tasks. */
+    notes: ThingsNoteInfo;
     /** The user confirmed what vanished from the vault: this round skips the vault side of the guard. */
     acceptMissing?: boolean;
     /** Writes the steps into one note; resolves to how many found no line to write to. */
@@ -179,7 +178,7 @@ async function recoverPending(deps: ThingsRoundDeps, state: ThingsState, read: T
         const project = read.projects.find(p => p.id === id);
         if (!project || project.trashed || next.projects.some(sp => sp.id === id)) continue;
         try {
-            if (entry.swapOf === undefined && deps.notes.exists(entry.path) && !next.projects.some(sp => sp.path === entry.path)) {
+            if (entry.swapOf === undefined && deps.notes.exists(entry.path) && (deps.notes.included?.(entry.path) ?? true) && !next.projects.some(sp => sp.path === entry.path)) {
                 const area = project.areaId === undefined ? {} : { areaId: project.areaId };
                 next.projects.push({ id, path: entry.path, title: project.title, headings: [...(project.headings ?? entry.headings ?? [])], ...area });
                 await deps.bridge.run({ kind: 'setProject', id, notes: '' });

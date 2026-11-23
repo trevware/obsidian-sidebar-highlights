@@ -2,7 +2,6 @@ import { FileSystemAdapter, TFile, TFolder, moment } from 'obsidian';
 import type { TAbstractFile } from 'obsidian';
 import type HighlightCommentsPlugin from '../../main';
 import { SETTLE_MS } from '../calendar/plan';
-import type { NoteInfo } from '../calendar/plan';
 import { TaskManager } from '../managers/task-manager';
 import { thingsAvailable } from '../plus/plus-client';
 import { formatTime } from '../tasks-view/times';
@@ -17,6 +16,7 @@ import { applyThingsEdits } from './note-edits';
 import type { ThingsFormats } from './note-edits';
 import { canConnect, ownerFile, readOwner, releaseOwner, writeOwner } from './owner';
 import { planThingsSync } from './plan';
+import type { ThingsNoteInfo } from './plan';
 import { runThingsRound } from './round';
 import type { ThingsRoundResult } from './round';
 import { parseState, renameInState } from './state';
@@ -234,9 +234,16 @@ export class ThingsSync {
         );
     }
 
-    private noteInfo(): NoteInfo {
+    /** Whether a path is one the Tasks tab reads: not excluded in settings, and not an Excalidraw drawing. */
+    private included(path: string): boolean {
+        if (this.plugin.settings.excludeExcalidraw && path.endsWith('.excalidraw.md')) return false;
+        return !this.taskManager.isFileExcluded(path);
+    }
+
+    private noteInfo(): ThingsNoteInfo {
         const { vault } = this.plugin.app;
         return {
+            included: (path) => this.included(path),
             exists: (path) => vault.getAbstractFileByPath(path) instanceof TFile,
             mtime: (path) => {
                 const file = vault.getAbstractFileByPath(path);
