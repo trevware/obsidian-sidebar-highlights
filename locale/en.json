@@ -355,7 +355,7 @@
       },
       "connect": {
         "name": "Connect Things",
-        "desc": "Every task in this vault shows up in Things, and everything open in Things comes into the vault. A change on either side, on your Mac or your iPhone, reaches the other. Folders become areas, notes become projects, and headings stay headings. The first time, macOS asks whether Obsidian can control Things: choose Allow.",
+        "desc": "Every task in this vault shows up in Things, and everything open in Things comes into the vault. A change on either side, on your Mac or your iPhone, reaches the other. Headings, subtasks and reminder times go one way, from your notes to Things. Folders become areas, notes become projects, and headings stay headings. The first time, macOS asks whether Obsidian can control Things: choose Allow.",
         "button": "Connect",
         "reading": "Reading Things…"
       },

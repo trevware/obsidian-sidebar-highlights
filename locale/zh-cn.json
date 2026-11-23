@@ -355,7 +355,7 @@
       },
       "connect": {
         "name": "连接 Things",
-        "desc": "此仓库中的每个任务都会出现在 Things 中，Things 中所有未完成的内容也会进入仓库。无论在 Mac 还是 iPhone 上，一边的更改都会同步到另一边。文件夹会成为区域，笔记会成为项目，标题仍是标题。首次连接时，macOS 会询问 Obsidian 能否控制 Things：请选择“允许”。",
+        "desc": "此仓库中的每个任务都会出现在 Things 中，Things 中所有未完成的内容也会进入仓库。无论在 Mac 还是 iPhone 上，一边的更改都会同步到另一边。标题、子任务和提醒时间只会从笔记同步到 Things。文件夹会成为区域，笔记会成为项目，标题仍是标题。首次连接时，macOS 会询问 Obsidian 能否控制 Things：请选择“允许”。",
         "button": "连接",
         "reading": "正在读取 Things…"
       },
