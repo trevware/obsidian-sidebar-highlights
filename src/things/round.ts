@@ -85,6 +85,9 @@ export interface ThingsRoundResult {
 
 /** How long to wait before each further look for a project a link made. */
 const FIND_WAITS_MS = [250, 500, 1000, 2000, 2000];
+/** How many to-dos sync trashed itself it remembers, newest kept. */
+const TRASHED_KEPT = 500;
+
 /** Rounds in a row a change sent by link can go unseen before the round says Things is turning changes away. */
 const STUCK_ROUNDS = 3;
 
@@ -154,7 +157,10 @@ export async function runThingsRound(deps: ThingsRoundDeps): Promise<{ result: T
     const round = new Round(tagged, things, base, plan.things, plan.vault);
     await round.carryOutThings();
     await round.writeNotes();
-    return round.finish();
+    const done = round.finish();
+    if (plan.absent.length) done.state.absent = plan.absent;
+    else delete done.state.absent;
+    return done;
 }
 
 /**
@@ -339,6 +345,7 @@ export class Round {
             case 'trashTodo':
                 await this.run({ kind: 'deleteTodo', id: step.id });
                 this.trashed.add(step.id);
+                this.next.trashedBySync = [...(this.next.trashedBySync ?? []).filter(id => id !== step.id), step.id].slice(-TRASHED_KEPT);
                 return true;
             case 'trashProject':
                 if (this.holding.has(step.id)) return false;
@@ -721,7 +728,7 @@ export class Round {
         const counted: ReadonlyArray<VaultStep['kind']> = this.firstConnect ? ['add'] : ['update', 'move', 'add', 'retire'];
         const toVault = this.toVault + this.vaultSteps.filter(step => counted.includes(step.kind) && this.landed(step)).length;
         const result: ThingsRoundResult = { toThings: this.toThings, toVault, missed: this.missed };
-        if (this.failedSteps > 0) result.failed = { steps: this.failedSteps, kind: this.problem?.kind ?? 'other', message: this.problem?.message ?? '', halted: this.halted };
+        if (this.failedSteps > 0) result.failed = { steps: this.failedSteps, kind: this.problem?.kind ?? 'other', message: this.problem?.message || 'Some changes didn\'t reach Things; the next sync tries them again', halted: this.halted };
 
         // A change sent by link that a read still doesn't show, round after round: Things is
         // turning links away (a wrong token, most likely), so the round says so.

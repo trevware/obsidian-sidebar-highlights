@@ -93,7 +93,7 @@ export type VaultStep =
 
 export type ThingsPlan =
     /** `counts`: on first connect, the to-dos made in Things and the tasks written into notes; after that, the to-dos and tasks changed. */
-    | { ok: true; things: ThingsStep[]; vault: VaultStep[]; counts: { toThings: number; toVault: number } }
+    | { ok: true; things: ThingsStep[]; vault: VaultStep[]; counts: { toThings: number; toVault: number }; absent: string[] }
     /** Too many synced to-dos vanished from one side at once to be the user's doing; nothing is changed. */
     | { ok: false; reason: 'emptied'; side: 'things' | 'vault'; missing: number };
 
@@ -317,6 +317,9 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     const finals = new Map<string, Place>();
     const leaving = new Set<VaultTask>();
     let goneFromThings = 0;
+    const absent: string[] = [];
+    const wasAbsent = new Set(state.absent ?? []);
+    const trashedBySync = new Set(state.trashedBySync ?? []);
     const retire = (task: VaultTask) => { vaultSteps.push({ kind: 'retire', task }); leaving.add(task); };
     for (const [id, task] of lineById) {
         const synced = syncedById.get(id);
@@ -326,11 +329,21 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
             // the Logbook's reach, so its line stays; reopened, it starts over.
             // One in a project the user trashed went with it, and never counts
             // toward the guard.
-            if (synced?.fields.status === 'open') { retire(task); if (!trashedNote(synced.place.path)) goneFromThings++; }
-            else if (task.fields.status === 'open') { vaultSteps.push({ kind: 'unlink', task }); createTodo(withoutId(task)); }
+            // A read can miss a to-do once; it's retired only when the next read misses it too.
+            if (synced?.fields.status === 'open') {
+                if (trashedNote(synced.place.path)) retire(task);
+                else if (wasAbsent.has(id)) { retire(task); goneFromThings++; }
+                else absent.push(id);
+            } else if (task.fields.status === 'open') { vaultSteps.push({ kind: 'unlink', task }); createTodo(withoutId(task)); }
             continue;
         }
-        if (gone(todo)) { retire(task); continue; }
+        if (gone(todo)) {
+            // Sync trashed this one itself when its line went (indented under another, cut for a while):
+            // the line is back, so it gets a to-do of its own. Deleted in Things, it's retired.
+            if (todo.trashed && trashedBySync.has(id) && !synced && task.fields.status === 'open') { vaultSteps.push({ kind: 'unlink', task }); createTodo(withoutId(task)); }
+            else retire(task);
+            continue;
+        }
 
         // A line joined by name this round: both sides go to the agreed fields.
         // A line whose ID Things knows and the state doesn't: the note wins.
@@ -510,5 +523,5 @@ function planRound(vault: VaultSnapshot, things: ThingsSnapshot, state: ThingsSt
     const toVaultKinds: ReadonlyArray<VaultStep['kind']> = firstConnect ? ['add'] : ['update', 'move', 'add', 'retire'];
     const toThings = thingsSteps.filter(s => toThingsKinds.includes(s.kind)).length;
     const toVault = allVault.reduce((sum, s) => sum + (s.kind === 'createNote' ? s.todos.length : toVaultKinds.includes(s.kind) ? 1 : 0), 0);
-    return { ok: true, things: byKind(thingsSteps, THINGS_ORDER), vault: byKind(allVault, VAULT_ORDER), counts: { toThings, toVault } };
+    return { ok: true, things: byKind(thingsSteps, THINGS_ORDER), vault: byKind(allVault, VAULT_ORDER), counts: { toThings, toVault }, absent };
 }

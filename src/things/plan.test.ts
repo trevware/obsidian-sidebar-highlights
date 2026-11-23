@@ -388,7 +388,8 @@ describe('planThingsSync: new on one side', () => {
 describe('planThingsSync: gone from Things', () => {
     it('retires a line whose to-do was trashed or is missing', () => {
         expect(show(plan(world({ todos: [momTodo({ trashed: true })] })))).toEqual(['retire Call Mom']);
-        expect(show(plan(world({ todos: [] })))).toEqual(['retire Call Mom']);
+        expect(show(plan(world({ todos: [] })))).toEqual([]);
+        expect(show(plan(world({ todos: [], state: syncedState({ absent: [A] }) })))).toEqual(['retire Call Mom']);
     });
     it('leaves a done line whose to-do is missing, since it may be in the Logbook', () => {
         const done = { status: 'completed' as const };
@@ -562,7 +563,9 @@ describe('planThingsSync: the guard', () => {
     });
 
     it('stops when more than 3, and more than a quarter, of the synced to-dos vanish from Things', () => {
-        const w = many(10);
+        // The second read in a row that misses them: the first only notes them as absent.
+        const many10 = many(10);
+        const w = { ...many10, state: { ...many10.state!, absent: many10.todos!.map(t => t.id) } };
         expect(plan({ ...w, todos: w.todos!.slice(4) })).toEqual({ ok: false, reason: 'emptied', side: 'things', missing: 4 });
         expect(show(plan({ ...w, todos: w.todos!.slice(3) }))).toEqual(['retire Task id0xxxxxx', 'retire Task id1xxxxxx', 'retire Task id2xxxxxx']);
     });
@@ -607,7 +610,8 @@ describe('planThingsSync: the guard', () => {
         expect(show(plan({ ...w, acceptMissing: true }))).toEqual(['t03xxxxxx', 't04xxxxxx', 't05xxxxxx', 't10xxxxxx', 't11xxxxxx'].map(id => `trashTodo ${id}`));
     });
     it('still checks the Things side when the user confirmed what vanished from the vault', () => {
-        const w = many(10);
+        const many10 = many(10);
+        const w = { ...many10, state: { ...many10.state!, absent: many10.todos!.map(t => t.id) } };
         expect(plan({ ...w, todos: w.todos!.slice(4), acceptMissing: true })).toEqual({ ok: false, reason: 'emptied', side: 'things', missing: 4 });
     });
 });
@@ -1012,5 +1016,29 @@ describe('a line whose ID the state has lost (another Mac took over, or the stat
         const { things, vault } = steps(p);
         expect(things.filter(s => s.kind === 'updateTodo')).toEqual([]);
         expect(vault.map(vaultLine)).toEqual(['update Call Mom {"status":"completed","when":"2026-11-26"}']);
+    });
+});
+
+describe('a line whose to-do the plugin itself trashed, or that a read missed once', () => {
+    it('gives a line back its own to-do when the one it carries was trashed by sync (indented, then outdented)', () => {
+        const p = plan({
+            notes: [note(PLAN, [mom()])],
+            areas: [WORK],
+            projects: [planProject()],
+            todos: [momTodo({ trashed: true })],
+            state: syncedState({ todos: [], trashedBySync: [A] })
+        });
+        expect(steps(p).vault.map(vaultLine)).toEqual(['unlink Call Mom']);
+        expect(steps(p).things.map(thingsLine)).toEqual(['createTodo Call Mom']);
+    });
+
+    it('waits a round before retiring a line whose to-do one read didn\'t find', () => {
+        const w: World = { notes: [note(PLAN, [mom()])], areas: [WORK], projects: [planProject()], todos: [], state: syncedState() };
+        const once = plan(w);
+        expect(steps(once).vault.map(vaultLine)).toEqual([]);
+        if (!once.ok) throw new Error('stopped');
+        expect(once.absent).toEqual([A]);
+        const twice = plan({ ...w, state: syncedState({ absent: [A] }) });
+        expect(steps(twice).vault.map(vaultLine)).toEqual(['retire Call Mom']);
     });
 });

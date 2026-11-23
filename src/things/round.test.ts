@@ -447,6 +447,9 @@ describe.each(CONFIGS)('runThingsRound: $name', config => {
     it('changes nothing when too much vanished from one side, until the user confirms the vault side', async () => {
         const ids = await synced('One', 'Two', 'Three', 'Four', 'Five');
         for (const id of ids.slice(0, 4)) t.todos.delete(id);
+        // The first read that misses them only notes them as absent; the second stops.
+        expect(await w.round()).toEqual({ toThings: 0, toVault: 0, missed: 0 });
+        expect(w.state.absent).toHaveLength(4);
         const before = w.picture();
         const things = await w.round();
         expect(things).toEqual({ toThings: 0, toVault: 0, missed: 0, stopped: { side: 'things', missing: 4 } });
