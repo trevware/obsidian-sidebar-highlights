@@ -47,6 +47,11 @@ export const THINGS_LAUNCHED = false;
 export const THINGS_PREVIEW_KEY = 'sidebar-highlights-things-preview';
 
 /** Whether Things sync is on in this vault: a Mac with Obsidian's desktop app, once launched or previewed. */
+/** Whether Things sync is out (or previewed) in this vault, on any device: phones show where it runs. */
+export function thingsVisible(app: App): boolean {
+    return THINGS_LAUNCHED || devInstall || app.loadLocalStorage(THINGS_PREVIEW_KEY) === 'true';
+}
+
 export function thingsAvailable(app: App): boolean {
     if (!Platform.isDesktopApp || !Platform.isMacOS) return false;
     return THINGS_LAUNCHED || devInstall || app.loadLocalStorage(THINGS_PREVIEW_KEY) === 'true';

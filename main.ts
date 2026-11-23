@@ -30,6 +30,7 @@ import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
 import { ThingsSync } from './src/things/things-sync';
 import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
+import { thingsGroup } from './src/things/settings';
 import { calendarAvailable, markDevInstall } from './src/plus/plus-client';
 import type { PlusStatus } from './src/plus/plus-client';
 import type { Extension } from '@codemirror/state';
@@ -3636,6 +3637,7 @@ class HighlightSettingTab extends PluginSettingTab {
         this.plugin = plugin;
         // Obsidian keeps the tab's rows between visits, so they're redrawn whenever sync's state moves.
         plugin.calendarSync.onStatus(() => this.update());
+        plugin.thingsSync.onStatus(() => this.update());
     }
 
     hide(): void {
@@ -3885,6 +3887,7 @@ class HighlightSettingTab extends PluginSettingTab {
                 ],
             },
             ...plusAndCalendarGroups(this, this.plugin, this.plugin.plusStatus),
+            ...thingsGroup(this, this.plugin, this.plugin.plusStatus),
             {
                 type: 'group',
                 heading: t('settings.backupRestore.heading'),

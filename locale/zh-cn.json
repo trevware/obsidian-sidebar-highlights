@@ -337,6 +337,55 @@
       "restoreFailed": "从备份恢复失败。请查看控制台了解详情。",
       "manualBackupCreated": "手动备份创建成功",
       "manualBackupSkipped": "已跳过备份 — 最近的备份内容完全相同。"
+    },
+    "things": {
+      "heading": "Things",
+      "macOnly": {
+        "name": "Things 同步",
+        "desc": "Things 同步需要在装有 Things 3 的 Mac 上的 Obsidian 中运行。"
+      },
+      "otherVault": {
+        "name": "Things 同步",
+        "desc": "Things 已与仓库“{{vault}}”同步。一台 Mac 上只能有一个仓库与 Things 同步。"
+      },
+      "token": {
+        "name": "Things URL 令牌",
+        "desc": "在 Things 中前往“设置 → 通用”，打开“Enable Things URLs”，然后选择“Manage”并复制令牌。",
+        "placeholder": "粘贴令牌"
+      },
+      "connect": {
+        "name": "连接 Things",
+        "desc": "此仓库中的每个任务都会出现在 Things 中，Things 中所有未完成的内容也会进入仓库。无论在 Mac 还是 iPhone 上，一边的更改都会同步到另一边。文件夹会成为区域，笔记会成为项目，标题仍是标题。首次连接时，macOS 会询问 Obsidian 能否控制 Things：请选择“允许”。",
+        "button": "连接",
+        "reading": "正在读取 Things…"
+      },
+      "confirm": {
+        "title": "连接 Things？",
+        "body": "将发送到 Things 的任务：{{toThings}}。将进入笔记的待办事项：{{toVault}}。两边都已有的内容会自动对应起来，已完成或重复的待办事项会留在 Things 中。",
+        "confirm": "连接",
+        "cancel": "取消"
+      },
+      "connected": {
+        "name": "已连接",
+        "syncNow": "立即同步",
+        "disconnect": "断开连接",
+        "sendToTrash": "移到 Things 的废纸篓"
+      },
+      "elsewhere": {
+        "name": "由另一台 Mac 同步",
+        "desc": "{{device}} 正在将此仓库与 Things 同步。你在这里所做的更改，会在那台 Mac 打开 Obsidian 时同步到 Things。",
+        "takeOver": "改由这台 Mac 同步"
+      },
+      "disconnectConfirm": {
+        "title": "断开 Things 连接？",
+        "body": "同步会停止。你的笔记和 Things 都保持原样，重新连接后会从上次停下的地方继续。",
+        "confirm": "断开连接",
+        "cancel": "取消"
+      },
+      "showIds": {
+        "name": "显示 Things ID",
+        "desc": "每个已同步的任务在行尾带有一个简短 ID，用来找到对应的待办事项。除非开启此项，否则它是隐藏的。删除它会为该任务新建一个待办事项。"
+      }
     }
   },
   "sidebar": {
@@ -910,6 +959,27 @@
       "privacy": "你的密码只保存在此设备上。Trevware 不会看到它或你的日历。",
       "connect": "连接",
       "connecting": "正在连接…"
+    }
+  },
+  "things": {
+    "status": {
+      "never": "尚未同步。",
+      "syncing": "正在同步…",
+      "synced": "{{when}}已同步。",
+      "closed": "Things 已关闭，手机上的更改正在等待同步。请打开 Things，或选择“立即同步”。",
+      "elsewhere": "{{device}} 正在将此仓库与 Things 同步。"
+    },
+    "errors": {
+      "noPlus": "Things 同步需要有效的 Power-Up 订阅。",
+      "noToken": "请添加 Things URL 令牌以开始同步。",
+      "permission": "Obsidian 没有控制 Things 的权限。请前往“系统设置 → 隐私与安全性 → 自动化”，在 Obsidian 下打开 Things，然后选择“立即同步”。",
+      "notInstalled": "此 Mac 上未安装 Things 3，或它没有打开。",
+      "urlsOff": "Things 拒绝了这项更改。请在 Things 中前往“设置 → 通用”，打开“Enable Things URLs”。",
+      "timeout": "Things 响应超时。稍后会自动重试同步。",
+      "emptiedThings": "Things 中一次消失了 {{count}} 个已同步的待办事项，因此没有做任何更改。如果它们是被误删到了 Things 的废纸篓，请将它们恢复。",
+      "emptiedVault": "你的笔记中一次消失了 {{count}} 个已同步的任务，因此 Things 中没有做任何更改。",
+      "otherVault": "Things 已与仓库“{{vault}}”同步。请先在那里断开连接。",
+      "noteGone": "笔记“{{path}}”已不存在。"
     }
   }
 }

@@ -337,6 +337,55 @@
       "restoreFailed": "Failed to restore from backup. Please check the console for details.",
       "manualBackupCreated": "Manual backup created successfully",
       "manualBackupSkipped": "Backup skipped. Your most recent backup is already identical."
+    },
+    "things": {
+      "heading": "Things",
+      "macOnly": {
+        "name": "Things sync",
+        "desc": "Things sync runs in Obsidian on a Mac with Things 3 installed."
+      },
+      "otherVault": {
+        "name": "Things sync",
+        "desc": "Things is synced with the vault {{vault}}. Only one vault on a Mac can sync with Things."
+      },
+      "token": {
+        "name": "Things URL token",
+        "desc": "In Things, go to Settings → General, turn on Enable Things URLs, then choose Manage and copy the token.",
+        "placeholder": "Paste the token"
+      },
+      "connect": {
+        "name": "Connect Things",
+        "desc": "Every task in this vault shows up in Things, and everything open in Things comes into the vault. A change on either side, on your Mac or your iPhone, reaches the other. Folders become areas, notes become projects, and headings stay headings. The first time, macOS asks whether Obsidian can control Things: choose Allow.",
+        "button": "Connect",
+        "reading": "Reading Things…"
+      },
+      "confirm": {
+        "title": "Connect Things?",
+        "body": "Tasks going to Things: {{toThings}}. To-dos coming into your notes: {{toVault}}. Things you already have in both places are matched up, and completed or repeating to-dos stay in Things.",
+        "confirm": "Connect",
+        "cancel": "Cancel"
+      },
+      "connected": {
+        "name": "Connected",
+        "syncNow": "Sync now",
+        "disconnect": "Disconnect",
+        "sendToTrash": "Send them to Things' Trash"
+      },
+      "elsewhere": {
+        "name": "Synced from another Mac",
+        "desc": "{{device}} syncs this vault with Things. Changes you make here reach Things while that Mac has Obsidian open.",
+        "takeOver": "Sync from this Mac instead"
+      },
+      "disconnectConfirm": {
+        "title": "Disconnect Things?",
+        "body": "Syncing stops. Your notes and Things stay as they are, and connecting again picks up where it left off.",
+        "confirm": "Disconnect",
+        "cancel": "Cancel"
+      },
+      "showIds": {
+        "name": "Show Things IDs",
+        "desc": "Each synced task carries a short ID at the end of its line, which is how it finds its to-do. It's hidden unless this is on. Removing one gives that task a new to-do."
+      }
     }
   },
   "sidebar": {
@@ -910,6 +959,27 @@
       "privacy": "Your password stays on this device. Trevware never sees it or your calendar.",
       "connect": "Connect",
       "connecting": "Connecting…"
+    }
+  },
+  "things": {
+    "status": {
+      "never": "Not synced yet.",
+      "syncing": "Syncing…",
+      "synced": "Synced {{when}}.",
+      "closed": "Things is closed, so changes from your phone are waiting. Open Things, or choose Sync now.",
+      "elsewhere": "{{device}} syncs this vault with Things."
+    },
+    "errors": {
+      "noPlus": "Things sync needs an active Power-Up subscription.",
+      "noToken": "Add your Things URL token to sync.",
+      "permission": "Obsidian isn't allowed to control Things. Go to System Settings → Privacy & Security → Automation, turn on Things under Obsidian, then choose Sync now.",
+      "notInstalled": "Things 3 isn't installed on this Mac, or it didn't open.",
+      "urlsOff": "Things turned the change away. In Things, go to Settings → General and turn on Enable Things URLs.",
+      "timeout": "Things took too long to answer. Syncing tries again in a moment.",
+      "emptiedThings": "{{count}} synced to-dos disappeared from Things at once, so nothing was changed. If they went to Things' Trash by mistake, put them back.",
+      "emptiedVault": "{{count}} synced tasks disappeared from your notes at once, so nothing was changed in Things.",
+      "otherVault": "Things is synced with the vault {{vault}}. Disconnect it there first.",
+      "noteGone": "The note {{path}} is gone."
     }
   }
 }

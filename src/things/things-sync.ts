@@ -300,7 +300,8 @@ export class ThingsSync {
         return this.bridge;
     }
 
-    private token(): string | null {
+    /** This device's Things URL token, when it has one. */
+    token(): string | null {
         return this.plugin.app.secretStorage.getSecret(TOKEN_SECRET)?.trim() || null;
     }
 
