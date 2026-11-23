@@ -12,7 +12,7 @@ import { deviceName, homeDir, nodeOwnerFs, nodeRunner } from './bridge-runner';
 import { carryBlock } from './carry';
 import { joinFirstConnect, withDeadline } from './join';
 import { withThingsTags } from './mapping';
-import type { Place, ThingsState, VaultSnapshot, VaultTask } from './model';
+import type { Place, StateStamp, ThingsState, VaultSnapshot, VaultTask } from './model';
 import { applyThingsEdits } from './note-edits';
 import type { ThingsFormats } from './note-edits';
 import { canConnect, ownerFile, readOwner, releaseOwner, writeOwner } from './owner';
@@ -20,7 +20,7 @@ import { planThingsSync } from './plan';
 import type { ThingsNoteInfo } from './plan';
 import { runThingsRound } from './round';
 import type { ThingsRoundResult } from './round';
-import { parseState, renameInState } from './state';
+import { freshState, renameInState, stateFor } from './state';
 import { vaultSnapshot } from './vault-snapshot';
 
 /** This device's Things URL token, from Things → Settings → General → Enable Things URLs → Manage. */
@@ -44,11 +44,6 @@ export interface ThingsStatus {
     result?: ThingsRoundResult;
     /** The round stopped because this many synced items vanished from one side; the user can confirm it. */
     missing?: { side: 'things' | 'vault'; count: number };
-}
-
-interface DailyNoteOptions {
-    folder?: string;
-    format?: string;
 }
 
 const folderOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf('/')));
@@ -75,8 +70,17 @@ export class ThingsSync {
     private started = false;
     private taskManager: TaskManager;
     /** Every note's lines, kept current from Obsidian's reports, so a round never reads the whole vault. */
-    private cache = new Map<string, { lines: string[]; mtime: number }>();
+    /** `seen` is when this Obsidian last saw the note change, which a note synced from another device can be newer than its mtime. */
+    private cache = new Map<string, { lines: string[]; mtime: number; seen: number }>();
     private cacheReady = false;
+    /** The settings that decide how notes are read, as the cache was read with. */
+    private readWith = '';
+    /** A round is planning from a snapshot: renames from now on wait for the state it hands back. */
+    private planning = false;
+    /** The state file as last read or written, so an unchanged state isn't written again. */
+    private savedText = '';
+    /** This Mac held Things for the vault, so it lets go when the vault disconnects from elsewhere. */
+    private ownedHere = false;
     /** Text this plugin just wrote, so its own writes don't set off another round. */
     private ownWrites = new Map<string, string>();
     /** Notes this round renamed, which its own state already follows. */
@@ -98,6 +102,7 @@ export class ThingsSync {
     start(): void {
         if (this.started || !thingsAvailable(this.plugin.app)) return;
         this.started = true;
+        this.readWith = this.readSettings();
         const { app } = this.plugin;
         this.plugin.registerEvent(app.metadataCache.on('changed', (file, data) => this.noteChanged(file, data)));
         this.plugin.registerEvent(app.vault.on('rename', (file, oldPath) => void this.renamed(file, oldPath)));
@@ -123,11 +128,28 @@ export class ThingsSync {
         return () => this.listeners.delete(listener);
     }
 
-    /** A setting the vault's reading depends on changed (excluded files, date format): read the notes again. */
+    /** Settings changed: the notes are read again only when what decides the reading changed (excluded files, date format). */
     settingsChanged(): void {
+        const readWith = this.readSettings();
+        if (readWith !== this.readWith) {
+            this.readWith = readWith;
+            this.cache.clear();
+            this.cacheReady = false;
+        }
+        this.schedule(SETTLE_DELAY_MS);
+    }
+
+    private readSettings(): string {
+        const settings = this.plugin.settings;
+        return JSON.stringify([settings.taskDateFormat, settings.excludeExcalidraw, settings.fileFilters, settings.hideTasksPluginMetadata]);
+    }
+
+    /** Forgets what this Mac remembered of an earlier connection: the state and the notes are read afresh. */
+    private resetLocal(): void {
+        this.state = null;
+        this.savedText = '';
         this.cache.clear();
         this.cacheReady = false;
-        this.schedule(SETTLE_DELAY_MS);
     }
 
     private setStatus(status: ThingsStatus): void {
@@ -138,6 +160,11 @@ export class ThingsSync {
     /** Off when not connected, elsewhere when another Mac syncs; leaves a round's own status alone otherwise. */
     private refreshStatus(): void {
         const connection = this.plugin.settings.things;
+        if (!connection && this.ownedHere) {
+            // Disconnected from another device: this Mac lets go of Things and its token.
+            this.ownedHere = false;
+            this.releaseHere();
+        }
         if (!connection) this.setStatus({ state: 'off' });
         else if (!this.isSyncingDevice()) this.setStatus({ state: 'elsewhere', message: t('things.status.elsewhere', { device: connection.device.name }) });
         else if (this.status.state === 'off' || this.status.state === 'elsewhere') this.setStatus({ state: 'idle' });
@@ -169,18 +196,19 @@ export class ThingsSync {
 
     // ── Following the notes ─────────────────────────────────────────────
 
+    /** Keeps the cache current whenever it's been read, so a round never plans from notes as they were days ago. */
     private noteChanged(file: TFile, content: string): void {
-        if (!this.active()) return;
+        if (!this.started || !this.cacheReady) return;
         if (!this.taskManager.shouldProcessFile(file)) {
             this.cache.delete(file.path);
             return;
         }
-        this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime });
+        this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime, seen: Date.now() });
         if (this.ownWrites.get(file.path) === content) {
             this.ownWrites.delete(file.path);
             return;
         }
-        this.schedule(SETTLE_DELAY_MS);
+        if (this.active()) this.schedule(SETTLE_DELAY_MS);
     }
 
     private deleted(file: TAbstractFile): void {
@@ -195,12 +223,14 @@ export class ThingsSync {
         for (const [path, entry] of [...this.cache]) {
             if (path === oldPath || (folder && path.startsWith(`${oldPath}/`))) {
                 this.cache.delete(path);
-                this.cache.set(`${file.path}${path.slice(oldPath.length)}`, entry);
+                const moved = `${file.path}${path.slice(oldPath.length)}`;
+                if (this.included(moved)) this.cache.set(moved, { ...entry, seen: Date.now() });
             }
         }
-        if (!this.plugin.settings.things) return;
+        // Only the Mac that syncs keeps the state.
+        if (!this.active()) return;
         if (this.ownRenames.delete(oldPath)) return;
-        if (this.running) {
+        if (this.planning) {
             this.pendingRenames.push({ from: oldPath, to: file.path, folder });
             return;
         }
@@ -211,14 +241,14 @@ export class ThingsSync {
 
     private async fillCache(): Promise<void> {
         if (this.cacheReady) return;
-        const { vault, metadataCache } = this.plugin.app;
+        const { vault } = this.plugin.app;
+        this.readWith = this.readSettings();
+        // Every note is read: Obsidian's index may not yet know about notes changed while it was closed.
+        const now = Date.now();
         for (const file of vault.getMarkdownFiles()) {
             if (!this.taskManager.shouldProcessFile(file)) continue;
-            // A note with no list items has no tasks, so it isn't worth reading.
-            const cache = metadataCache.getFileCache(file);
-            if (cache && !cache.listItems?.length) continue;
             const content = await vault.cachedRead(file);
-            this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime });
+            this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime, seen: now });
         }
         this.cacheReady = true;
     }
@@ -230,7 +260,8 @@ export class ThingsSync {
             {
                 parse: (path, content) => this.taskManager.tasksInContent(path, content, true, true),
                 hideMetadata: settings.hideTasksPluginMetadata,
-                dailyDate: (path) => this.dailyDate(path)
+                // Undated tasks stay undated in Things, daily notes included (see the design's Status).
+                dailyDate: () => undefined
             }
         );
     }
@@ -246,26 +277,15 @@ export class ThingsSync {
         return {
             included: (path) => this.included(path),
             exists: (path) => vault.getAbstractFileByPath(path) instanceof TFile,
+            // The later of the note's mtime and when this Obsidian saw it change, so a note
+            // arriving from another device with an older mtime still waits out the settle.
             mtime: (path) => {
                 const file = vault.getAbstractFileByPath(path);
-                return file instanceof TFile ? file.stat.mtime : 0;
+                return Math.max(file instanceof TFile ? file.stat.mtime : 0, this.cache.get(path)?.seen ?? 0);
             }
         };
     }
 
-    /** The day a daily note stands for, when the path is one, for its undated tasks. */
-    private dailyDate(path: string): string | undefined {
-        type Internal = { getPluginById?: (id: string) => { enabled?: boolean; instance?: { options?: DailyNoteOptions } } | null };
-        const internal = (this.plugin.app as unknown as { internalPlugins?: Internal }).internalPlugins;
-        const daily = internal?.getPluginById?.('daily-notes');
-        if (!daily?.enabled) return undefined;
-        const options = daily.instance?.options ?? {};
-        const folder = (options.folder ?? '').replace(/^\/+|\/+$/g, '');
-        if (folderOf(path) !== folder) return undefined;
-        const name = (path.split('/').pop() ?? path).replace(/\.md$/, '');
-        const day = moment(name, options.format || 'YYYY-MM-DD', true);
-        return day.isValid() ? day.format('YYYY-MM-DD') : undefined;
-    }
 
     private formats(): ThingsFormats {
         const settings = this.plugin.settings;
@@ -292,13 +312,25 @@ export class ThingsSync {
         } catch {
             text = null;
         }
-        this.state = parseState(text);
+        this.state = stateFor(text, this.stamp());
+        this.savedText = text !== null && this.state.connection && JSON.stringify(this.state) === text ? text : '';
         return this.state;
     }
 
+    /** Writes the state, stamped with this Mac and connection, unless nothing in it changed. */
     private async saveState(state: ThingsState): Promise<void> {
-        this.state = state;
-        await this.plugin.app.vault.adapter.write(this.statePath(), JSON.stringify(state));
+        const stamp = this.stamp();
+        const next = stamp ? { ...state, connection: stamp } : state;
+        this.state = next;
+        const text = JSON.stringify(next);
+        if (text === this.savedText) return;
+        await this.plugin.app.vault.adapter.write(this.statePath(), text);
+        this.savedText = text;
+    }
+
+    private stamp(): StateStamp | null {
+        const connection = this.plugin.settings.things;
+        return connection ? { install: connection.device.install, connectedAt: connection.connectedAt } : null;
     }
 
     // ── Talking to Things ───────────────────────────────────────────────
@@ -388,6 +420,8 @@ export class ThingsSync {
             if (ready === 'missing') return this.problem(t('things.errors.notInstalled'));
             await this.fillCache();
             const state = await this.loadState();
+            this.ownedHere = true;
+            this.planning = true;
             this.setStatus({ ...this.status, state: 'syncing' });
             const { result, state: next } = await runThingsRound({
                 vault: this.snapshot(),
@@ -423,6 +457,8 @@ export class ThingsSync {
             if (this.state) await this.saveState(this.state);
             const kind = error instanceof ThingsError ? error.kind : 'other';
             this.problem(this.messageFor(kind, error instanceof Error ? error.message : String(error)));
+        } finally {
+            this.planning = false;
         }
     }
 
@@ -445,7 +481,7 @@ export class ThingsSync {
 
     /** Remembers a note the plugin just wrote, for the cache, the task index and its own change report. */
     private wrote(file: TFile, content: string): void {
-        this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime });
+        this.cache.set(file.path, { lines: content.split(/\r?\n/), mtime: file.stat.mtime, seen: Date.now() });
         this.ownWrites.set(file.path, content);
         this.plugin.taskIndex.noteWritten(file.path, content);
     }
@@ -537,12 +573,13 @@ export class ThingsSync {
      * tasks come into the vault. Reads Things, and plans without changing
      * anything.
      */
-    async preview(): Promise<{ toThings: number; toVault: number }> {
+    async preview(fresh = false): Promise<{ toThings: number; toVault: number }> {
         const bridge = this.getBridge();
         const ready = await this.thingsReady(bridge);
         if (ready !== 'ready') throw new ThingsError('not-installed', t('things.errors.notInstalled'));
         await this.fillCache();
-        const state = await this.loadState();
+        // Taking over plans the way the first round after it will: from a fresh state, the IDs on the lines joining up.
+        const state = fresh ? freshState() : await this.loadState();
         const notes = this.noteInfo();
         const read = await bridge.read([]);
         const things = { ...read, todos: read.todos.map(withDeadline) };
@@ -560,6 +597,8 @@ export class ThingsSync {
         writeOwner(nodeOwnerFs(), ownerFile(homeDir()), { vaultPath: this.vaultPath(), vaultName: this.plugin.app.vault.getName() });
         this.plugin.settings.things = { device: { install: this.install(), name: deviceName() }, connectedAt: Date.now() };
         await this.plugin.saveSettings();
+        this.resetLocal();
+        this.ownedHere = true;
         this.quitSeen = false;
         this.start();
         this.refreshStatus();
@@ -573,8 +612,11 @@ export class ThingsSync {
         const owner = this.ownerElsewhere();
         if (owner) throw new Error(t('things.errors.otherVault', { vault: owner }));
         writeOwner(nodeOwnerFs(), ownerFile(homeDir()), { vaultPath: this.vaultPath(), vaultName: this.plugin.app.vault.getName() });
-        this.plugin.settings.things = { ...connection, device: { install: this.install(), name: deviceName() } };
+        // A new connection stamp: whatever this Mac remembered from before is set aside, and the IDs on the lines join up again.
+        this.plugin.settings.things = { device: { install: this.install(), name: deviceName() }, connectedAt: Date.now() };
         await this.plugin.saveSettings();
+        this.resetLocal();
+        this.ownedHere = true;
         this.refreshStatus();
         void this.syncNow();
     }
@@ -585,13 +627,17 @@ export class ThingsSync {
      * it left off.
      */
     async disconnect(): Promise<void> {
-        if (this.isSyncingDevice()) {
-            this.plugin.app.secretStorage.setSecret(TOKEN_SECRET, '');
-            releaseOwner(nodeOwnerFs(), ownerFile(homeDir()), this.vaultPath());
-        }
+        if (this.isSyncingDevice()) this.releaseHere();
+        this.ownedHere = false;
         this.plugin.settings.things = null;
         await this.plugin.saveSettings();
         this.setStatus({ state: 'off' });
+    }
+
+    /** Lets go of Things on this Mac: the owner file, if this vault holds it, and the token. */
+    private releaseHere(): void {
+        this.plugin.app.secretStorage.setSecret(TOKEN_SECRET, '');
+        releaseOwner(nodeOwnerFs(), ownerFile(homeDir()), this.vaultPath());
     }
 
     /** Whether this device has the Things URL token. */

@@ -139,7 +139,16 @@ export function thingsGroup(tab: Tab, plugin: HighlightCommentsPlugin, plusStatu
                         }
                         try {
                             sync.setToken(tokenValue);
-                            await sync.takeOver();
+                            button.setDisabled(true);
+                            button.setButtonText(t('settings.things.connect.reading'));
+                            const counts = await sync.preview(true);
+                            const confirmed = await confirmAction(tab.app, {
+                                title: t('settings.things.confirm.title'),
+                                message: t('settings.things.confirm.body', counts),
+                                confirm: t('settings.things.confirm.confirm'),
+                                cancel: t('settings.things.confirm.cancel')
+                            });
+                            if (confirmed) await sync.takeOver();
                         } catch (error) {
                             new Notice(errorText(error));
                         }

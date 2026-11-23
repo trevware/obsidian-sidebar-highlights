@@ -89,7 +89,13 @@ export interface ThingsState {
      * the project was found.
      */
     pending?: PendingProject[];
+    /** The Mac and connection that wrote this state: another one's (or an older connection's) is set aside. */
+    connection?: StateStamp;
+    /** To-dos sent a change by link, and for how many rounds in a row Things didn't show it. */
+    unconfirmed?: Record<string, number>;
 }
+
+export interface StateStamp { install: string; connectedAt: number }
 
 export interface PendingProject { marker: string; path: string; at: number; headings?: string[]; swapOf?: string; id?: string }
 

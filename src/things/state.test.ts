@@ -1,6 +1,6 @@
 import { EMPTY_STATE } from './model';
 import type { ThingsState } from './model';
-import { freshState, parseState, renameInState } from './state';
+import { freshState, parseState, renameInState, stateFor } from './state';
 
 function state(): ThingsState {
     return {
@@ -70,5 +70,23 @@ describe('the stored state', () => {
         const before = state();
         renameInState(before, 'Work', 'Job', true);
         expect(before).toEqual(state());
+    });
+});
+
+describe('the state a connection reads back', () => {
+    const connection = { install: 'mac-1', connectedAt: 100 };
+
+    it('keeps a state this Mac wrote under this connection', () => {
+        const saved = { ...state(), connection };
+        expect(stateFor(JSON.stringify(saved), connection)).toEqual(saved);
+    });
+
+    it('starts over from a state another Mac or an earlier connection wrote, so the IDs on the lines join everything again', () => {
+        const otherMac = { ...state(), connection: { install: 'mac-2', connectedAt: 100 } };
+        const earlier = { ...state(), connection: { install: 'mac-1', connectedAt: 50 } };
+        const unstamped = state();
+        for (const saved of [otherMac, earlier, unstamped]) {
+            expect(stateFor(JSON.stringify(saved), connection)).toEqual({ ...EMPTY_STATE, connection });
+        }
     });
 });

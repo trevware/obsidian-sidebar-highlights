@@ -999,3 +999,18 @@ describe('notes excluded from tasks', () => {
         expect(nothing(plan(w))).toEqual({ things: [], vault: [] });
     });
 });
+
+describe('a line whose ID the state has lost (another Mac took over, or the state file is gone)', () => {
+    it('lets what Things changed since come into the note, never reopening a to-do done on the phone', () => {
+        const p = plan({
+            notes: [note(PLAN, [line('Call Mom', { id: A, f: { status: 'open', when: '2026-11-25' } })])],
+            areas: [WORK],
+            projects: [planProject({ headings: [] })],
+            todos: [momTodo({ heading: undefined, f: { status: 'completed', when: '2026-11-26' } })],
+            state: state({ joined: false })
+        });
+        const { things, vault } = steps(p);
+        expect(things.filter(s => s.kind === 'updateTodo')).toEqual([]);
+        expect(vault.map(vaultLine)).toEqual(['update Call Mom {"status":"completed","when":"2026-11-26"}']);
+    });
+});

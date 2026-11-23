@@ -161,6 +161,20 @@ export function joinByName(vault: VaultSnapshot, things: ThingsSnapshot, state: 
         for (const todo of candidates) if (!paired.has(todo.id)) pair(todo, free(todo)[0]);
     }
 
+    // A line that already carries an ID the state doesn't know (the state was
+    // lost, or another Mac kept it): what the note has counts as last written,
+    // so whatever Things changed since, on the phone say, comes into the note.
+    const todoById = new Map(todos.map(todo => [todo.id, todo]));
+    for (const note of vault.notes) {
+        for (const task of note.tasks) {
+            if (task.id === undefined || synced.has(task.id)) continue;
+            const todo = todoById.get(task.id);
+            if (!todo || todo.trashed) continue;
+            const place: Place = task.heading === undefined ? { path: task.path } : { path: task.path, heading: task.heading };
+            synced.set(task.id, { id: task.id, place, fields: JSON.parse(JSON.stringify(task.fields)) as TodoFields });
+        }
+    }
+
     // To-dos that come into a joined note are the importable ones nothing knows yet.
     const incoming = (todo: ThingsTodo) => importable(todo) && !synced.has(todo.id) && !onLines.has(todo.id);
     for (const { sp, project, note } of joinedNow) {

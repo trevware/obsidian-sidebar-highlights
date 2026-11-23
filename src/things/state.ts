@@ -7,7 +7,7 @@
  */
 
 import { EMPTY_STATE } from './model';
-import type { ThingsState } from './model';
+import type { StateStamp, ThingsState } from './model';
 
 /** A new empty state, never the shared `EMPTY_STATE` itself. */
 export function freshState(): ThingsState {
@@ -30,6 +30,20 @@ export function parseState(text: string | null): ThingsState {
         // A broken file starts over; the IDs on the lines join everything up again.
     }
     return freshState();
+}
+
+/**
+ * The saved state for this connection. A state another Mac wrote, or one
+ * from an earlier connection, may be out of date by many rounds (another Mac
+ * synced since), so it's set aside for a fresh one: the IDs on the lines join
+ * everything up again, and whatever Things changed since comes into the notes.
+ */
+export function stateFor(text: string | null, connection: StateStamp | null): ThingsState {
+    const state = parseState(text);
+    if (!connection) return state;
+    const stamp = state.connection;
+    if (stamp && stamp.install === connection.install && stamp.connectedAt === connection.connectedAt) return state;
+    return { ...freshState(), connection: { ...connection } };
 }
 
 /**
