@@ -376,12 +376,15 @@ export class Round {
      * swap). Until the project is recorded it stays in `pending`, so a later
      * round finds it if Things acts on the link late, or a swap stops part way.
      */
-    async makeProject(title: string, headings: readonly string[], areaId: string | undefined, why: { path: string; swapOf?: string; notes?: string }): Promise<string> {
+    async makeProject(title: string, headings: readonly string[], areaId: string | undefined, why: { path: string; swapOf?: string; notes?: string; tags?: readonly string[]; when?: string; deadline?: string }): Promise<string> {
         const marker = this.deps.newMarker();
         const entry: PendingProject = { marker, path: why.path, at: this.deps.now, headings: [...headings], ...(why.swapOf === undefined ? {} : { swapOf: why.swapOf }) };
         this.next.pending = [...(this.next.pending ?? []), entry];
         const attributes: Record<string, unknown> = { title, notes: marker, items: headings.map(heading => ({ type: 'heading', attributes: { title: heading } })) };
         if (areaId !== undefined) attributes['area-id'] = areaId;
+        if (why.tags?.length) attributes.tags = [...why.tags];
+        if (why.when !== undefined) attributes.when = why.when;
+        if (why.deadline !== undefined) attributes.deadline = why.deadline;
         await this.open(jsonCreateLink([{ type: 'project', attributes }]));
         const id = await this.findProject(marker);
         if (!id) throw new ThingsError('urls-off', 'Things never made the project its link asked for, so Things URLs look turned off');
@@ -402,9 +405,10 @@ export class Round {
         else delete this.next.pending;
     }
 
-    /** A project's notes as read. */
-    notesOf(id: string): string | undefined {
-        return this.projectById.get(id)?.notes;
+    /** What a swap carries from a project to the one rebuilt for it: its notes, tags, When and deadline as read. */
+    carriedFrom(id: string): { notes?: string; tags?: string[]; when?: string; deadline?: string } {
+        const project = this.projectById.get(id);
+        return project ? { notes: project.notes, tags: project.tags, when: project.when, deadline: project.deadline } : {};
     }
 
     private async findProject(marker: string): Promise<string | null> {

@@ -767,6 +767,20 @@ describe.each(CONFIGS)('runThingsRound after review: $name', config => {
         expect(t.todos.get(brief)?.projectId).toBe(w.project(PLAN).id);
     });
 
+    it('carries the old project\'s tags, When and deadline over in a swap', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        t.tags.add('Q4');
+        const old = t.projects.get(w.project(PLAN).id);
+        if (!old) throw new Error('missing');
+        Object.assign(old, { tags: ['Q4'], when: '2026-12-01', deadline: '2026-12-15' });
+        w.write(PLAN, '# Plan', '## Next', `- [ ] Write brief %%things:${brief}%%`);
+        await w.round();
+        expect(t.projects.get(w.project(PLAN).id)).toMatchObject({ tags: ['Q4'], when: '2026-12-01', deadline: '2026-12-15' });
+    });
+
     it('carries the old project\'s notes over in a swap', async () => {
         w.write(PLAN, '# Plan', '- [ ] Write brief');
         await w.round();

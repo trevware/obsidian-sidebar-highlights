@@ -119,7 +119,7 @@ export class ScriptBridge implements ThingsBridge {
 
 type FakeCall = 'read' | 'open' | 'running' | BridgeOp['kind'];
 export type FakeTodo = Omit<ThingsTodo, 'logged'>;
-export interface FakeProject { id: string; title: string; notes: string; areaId?: string; headings: string[]; status: TodoStatus; trashed: boolean }
+export interface FakeProject { id: string; title: string; notes: string; areaId?: string; headings: string[]; status: TodoStatus; trashed: boolean; tags?: string[]; when?: string; deadline?: string }
 type Attributes = Record<string, unknown>;
 
 const TODO_ATTRIBUTES = ['title', 'notes', 'when', 'deadline', 'tags', 'checklist-items', 'list-id', 'heading', 'completed', 'canceled'];
@@ -243,7 +243,7 @@ export class FakeThings implements ThingsBridge {
         };
         return clone({
             areas: [...this.areas.values()],
-            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: caps.headings ? p.headings : undefined, status: p.status, trashed: p.trashed, notes: p.notes })),
+            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: caps.headings ? p.headings : undefined, status: p.status, trashed: p.trashed, notes: p.notes, ...(p.tags?.length ? { tags: [...p.tags] } : {}), ...(p.when ? { when: p.when } : {}), ...(p.deadline ? { deadline: p.deadline } : {}) })),
             todos: [...this.todos.values()].filter(t => listed(t) || known.has(t.id)).map(todo),
             capabilities: caps
         });
@@ -457,7 +457,10 @@ export class FakeThings implements ThingsBridge {
             notes: textOf(attributes.notes),
             headings: items.filter(item => item.type === 'heading').map(titleOf),
             status: statusFrom(attributes, 'open'),
-            ...(this.areas.has(areaId) ? { areaId } : {})
+            ...(this.areas.has(areaId) ? { areaId } : {}),
+            ...('tags' in attributes ? { tags: sortedTags(Array.isArray(attributes.tags) ? attributes.tags.map(String) : textOf(attributes.tags).split(',')).filter(tag => this.tags.has(tag)) } : {}),
+            ...(textOf(attributes.when) ? { when: textOf(attributes.when) } : {}),
+            ...(textOf(attributes.deadline) ? { deadline: textOf(attributes.deadline) } : {})
         });
         let heading: string | undefined;
         for (const item of items) {

@@ -59,7 +59,7 @@ export interface ThingsTodo {
     logged: boolean;
 }
 
-export interface ThingsProject { id: string; title: string; areaId?: string; headings?: string[]; status: TodoStatus; trashed: boolean; notes?: string }
+export interface ThingsProject { id: string; title: string; areaId?: string; headings?: string[]; status: TodoStatus; trashed: boolean; notes?: string; tags?: string[]; when?: string; deadline?: string }
 
 export interface ThingsArea { id: string; title: string }
 

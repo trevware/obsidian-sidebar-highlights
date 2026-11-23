@@ -2,8 +2,9 @@
  * The heading swap, carried out. Things can't add a heading to a project, so
  * a project whose note's headings changed is rebuilt:
  *
- * 1. A new project with the note's headings, in the same area and with the
- *    same title, made by a `json` link and found by a marker in its notes.
+ * 1. A new project with the note's headings, in the same area, with the old
+ *    one's title, notes, tags, When and deadline, made by a `json` link and
+ *    found by a marker in its notes.
  * 2. Every to-do the note has there moved across, each under its heading
  *    (`list-id` goes with `heading=`, as Things asks), keeping its ID. Then
  *    everything else still in the old project, done and cancelled to-dos
@@ -48,7 +49,7 @@ export async function swapProject(round: Round, step: Extract<ThingsStep, { kind
     const now = round.projectNow.get(old);
     const sp = round.next.projects.find(p => p.id === old);
     const title = now?.title ?? sp?.title ?? '';
-    const made = await round.makeProject(title, step.headings, now?.areaId, { path: step.path, swapOf: old, notes: round.notesOf(old) });
+    const made = await round.makeProject(title, step.headings, now?.areaId, { path: step.path, swapOf: old, ...round.carriedFrom(old) });
 
     /** The to-dos moved into the new project, each with the heading it got there. */
     const moved = new Map<string, string | undefined>();
