@@ -58,6 +58,7 @@ export async function swapProject(round: Round, step: Extract<ThingsStep, { kind
         moved.set(id, undefined);
         // Always a link, so an earlier link this round can't pull the to-do elsewhere after the script moved it.
         await round.open(updateLink(id, { 'list-id': made, ...(heading === undefined ? {} : { heading }) }, round.deps.token));
+        if (heading !== undefined && round.caps.headings) round.sentByLink(id);
         moved.set(id, heading);
     };
     try {

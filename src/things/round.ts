@@ -85,6 +85,9 @@ export interface ThingsRoundResult {
 
 /** How long to wait before each further look for a project a link made. */
 const FIND_WAITS_MS = [250, 500, 1000, 2000, 2000];
+/** Rounds in a row a change sent by link can go unseen before the round says Things is turning changes away. */
+const STUCK_ROUNDS = 3;
+
 /** How long a project asked for by a link is looked for in later rounds before it's given up on. */
 const PENDING_KEEP_MS = 30 * 60 * 1000;
 
@@ -242,6 +245,8 @@ export class Round {
     private readonly trashed = new Set<string>();
     /** Projects holding a to-do that didn't move out: they stay out of the Trash. */
     private readonly holding = new Set<string>();
+    /** To-dos sent a change by link this round that a later read has to confirm. */
+    private readonly unconfirmedNow = new Set<string>();
 
     // What went in the notes.
     private readonly renames = new Map<string, string>();
@@ -398,6 +403,11 @@ export class Round {
         return id;
     }
 
+    /** A to-do was sent a change by link that only a later read can confirm. */
+    sentByLink(id: string): void {
+        this.unconfirmedNow.add(id);
+    }
+
     /** A project made by `makeProject` is recorded now: no later round needs to look for it. */
     settle(id: string): void {
         const left = (this.next.pending ?? []).filter(entry => entry.id !== id);
@@ -496,7 +506,10 @@ export class Round {
             }
             if (f.checklist.length) params['checklist-items'] = checklistTitles(f.checklist);
             if (f.when !== undefined || f.someday) params.when = whenParam(f);
-            if (Object.keys(params).length) await this.open(updateLink(id, params, this.deps.token));
+            if (Object.keys(params).length) {
+                await this.open(updateLink(id, params, this.deps.token));
+                if ('when' in params || (this.caps.headings && 'heading' in params) || (this.caps.checklist && 'checklist-items' in params)) this.sentByLink(id);
+            }
             // Things shows the heading, the date and (when it can) the checklist on the
             // next read, so those count once a read confirms them: a link Things turned
             // away then leaves the note alone and is sent again. Only what Things can't
@@ -547,6 +560,7 @@ export class Round {
         // A link's changes count once a read shows them (see createTodo), except what Things can't show.
         if (Object.keys(params).length) {
             await this.open(updateLink(id, params, this.deps.token));
+            if (dated || (checklist && this.caps.checklist)) this.sentByLink(id);
             if (!this.caps.reminder) take(['reminder']);
             if (checklist && !checklist.some(item => item.done) && !this.caps.checklist) take(['checklist']);
         }
@@ -568,6 +582,7 @@ export class Round {
         if (listId !== undefined) {
             await this.open(updateLink(id, { 'list-id': listId, ...(list.projectId !== undefined && to.heading !== undefined ? { heading: to.heading } : {}) }, this.deps.token));
             if (!this.caps.headings) this.placed.set(id, this.placeIn(to.path, to.heading));
+            else if (list.projectId !== undefined && to.heading !== undefined) this.sentByLink(id);
         }
         return true;
     }
@@ -707,6 +722,16 @@ export class Round {
         const toVault = this.toVault + this.vaultSteps.filter(step => counted.includes(step.kind) && this.landed(step)).length;
         const result: ThingsRoundResult = { toThings: this.toThings, toVault, missed: this.missed };
         if (this.failedSteps > 0) result.failed = { steps: this.failedSteps, kind: this.problem?.kind ?? 'other', message: this.problem?.message ?? '', halted: this.halted };
+
+        // A change sent by link that a read still doesn't show, round after round: Things is
+        // turning links away (a wrong token, most likely), so the round says so.
+        const before = this.base.unconfirmed ?? {};
+        const counts: Record<string, number> = {};
+        for (const id of this.unconfirmedNow) counts[id] = (before[id] ?? 0) + 1;
+        if (Object.keys(counts).length) next.unconfirmed = counts;
+        else delete next.unconfirmed;
+        const stuck = Object.values(counts).filter(rounds => rounds >= STUCK_ROUNDS).length;
+        if (stuck > 0 && !result.failed) result.failed = { steps: stuck, kind: 'urls-off', message: 'Things isn\'t taking the changes sent to it', halted: false };
         return { result, state: next };
     }
 

@@ -974,7 +974,7 @@
       "noToken": "Add your Things URL token to sync.",
       "permission": "Obsidian isn't allowed to control Things. Go to System Settings → Privacy & Security → Automation, turn on Things under Obsidian, then choose Sync now.",
       "notInstalled": "Things 3 isn't installed on this Mac, or it didn't open.",
-      "urlsOff": "Things turned the change away. In Things, go to Settings → General and turn on Enable Things URLs.",
+      "urlsOff": "Things is turning changes away. In Things, go to Settings → General, check that Enable Things URLs is on, then copy the token from Manage again and paste it under Things here.",
       "timeout": "Things took too long to answer. Syncing tries again in a moment.",
       "emptiedThings": "{{count}} synced to-dos disappeared from Things at once, so nothing was changed. If they went to Things' Trash by mistake, put them back.",
       "emptiedVault": "{{count}} synced tasks disappeared from your notes at once, so nothing was changed in Things.",

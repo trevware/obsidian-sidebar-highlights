@@ -974,7 +974,7 @@
       "noToken": "请添加 Things URL 令牌以开始同步。",
       "permission": "Obsidian 没有控制 Things 的权限。请前往“系统设置 → 隐私与安全性 → 自动化”，在 Obsidian 下打开 Things，然后选择“立即同步”。",
       "notInstalled": "此 Mac 上未安装 Things 3，或它没有打开。",
-      "urlsOff": "Things 拒绝了这项更改。请在 Things 中前往“设置 → 通用”，打开“Enable Things URLs”。",
+      "urlsOff": "Things 拒绝了更改。请在 Things 中前往“设置 → 通用”，确认已打开“Enable Things URLs”，然后从“Manage”重新复制令牌，粘贴到这里的“Things”设置中。",
       "timeout": "Things 响应超时。稍后会自动重试同步。",
       "emptiedThings": "Things 中一次消失了 {{count}} 个已同步的待办事项，因此没有做任何更改。如果它们是被误删到了 Things 的废纸篓，请将它们恢复。",
       "emptiedVault": "你的笔记中一次消失了 {{count}} 个已同步的任务，因此 Things 中没有做任何更改。",

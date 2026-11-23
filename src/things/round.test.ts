@@ -696,6 +696,24 @@ describe.each(CONFIGS)('runThingsRound after review: $name', config => {
         await w.settled();
     });
 
+    it('says Things is turning changes away once a change sent by link hasn\'t shown for three rounds', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        w.write(PLAN, '# Plan', `- [ ] Write brief 2026-11-25 %%things:${brief}%%`);
+        const first = await w.round({ token: 'stale-token' });
+        const second = await w.round({ token: 'stale-token' });
+        const third = await w.round({ token: 'stale-token' });
+        expect(first.failed).toBeUndefined();
+        expect(second.failed).toBeUndefined();
+        expect(third.failed).toMatchObject({ kind: 'urls-off', halted: false });
+        await w.round();
+        expect(t.todos.get(brief)?.fields.when).toBe('2026-11-25');
+        await w.settled();
+        expect(w.state.unconfirmed).toBeUndefined();
+    });
+
     it('lets a move to another note win over the swap\'s heading link in the same round', async () => {
         w.write(HOME, '# Home', '- [ ] Water plants');
         w.write(PLAN, '# Plan', '## Next', '- [ ] Write brief', '- [ ] Book venue');
