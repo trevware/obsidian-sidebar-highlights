@@ -780,3 +780,20 @@ describe.each(CONFIGS)('runThingsRound after review: $name', config => {
         expect(t.projects.get(w.project(PLAN).id)?.notes).toBe('Keep the receipts');
     });
 });
+
+describe.each(CONFIGS)('runThingsRound keeps Things titles and tags whole: $name', config => {
+    it('connects without rewriting a to-do\'s title or tags in Things', async () => {
+        const w = new World(config);
+        const t = w.things;
+        for (const tag of ['@home', 'follow-up', 'Q&A', '2026']) t.tags.add(tag);
+        const title = 'Email #design team about [[Q4]] 50% & more by 2026-11-30';
+        const id = t.addTodo({ title, inbox: true, tags: ['@home', 'follow-up', 'Q&A', '2026'] });
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+
+        await w.round();
+        await w.settled();
+        expect(t.todos.get(id)?.fields.title).toBe(title);
+        expect(t.todos.get(id)?.fields.tags).toEqual(['2026', '@home', 'Q&A', 'follow-up']);
+        expect(w.lines('Things Inbox.md').some(line => line.includes('#home') && line.includes('#follow-up') && line.includes('#QA'))).toBe(true);
+    });
+});

@@ -38,7 +38,7 @@ import { ThingsError } from './bridge';
 import type { BridgeOp, ThingsBridge, ThingsErrorKind } from './bridge';
 import { joinFirstConnect, withDeadline } from './join';
 import { jsonCreateLink, updateLink, whenParam } from './links';
-import { areaName } from './mapping';
+import { areaName, withThingsTags } from './mapping';
 import { differences } from './merge';
 import type { Capabilities, ChecklistItem, PendingProject, Place, SyncedTodo, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultSnapshot, VaultTask } from './model';
 import { newNoteContent } from './note-edits';
@@ -143,10 +143,12 @@ export async function runThingsRound(deps: ThingsRoundDeps): Promise<{ result: T
         if (recovered.changedThings) read = await deps.bridge.read(knownIds(deps.vault, start));
     }
     const things: ThingsSnapshot = { ...read, todos: read.todos.map(withDeadline) };
-    const base = start.joined ? start : joinFirstConnect(deps.vault, things, start, path => deps.notes.exists(path));
-    const plan = planThingsSync(deps.vault, things, base, { now: deps.now, settleMs: SETTLE_MS, notes: deps.notes, acceptMissing: deps.acceptMissing });
+    // Tags named as Things names them, so a tag a line writes differently (`@home` as `#home`) reads back the same.
+    const tagged = { ...deps, vault: withThingsTags(deps.vault, things) };
+    const base = start.joined ? start : joinFirstConnect(tagged.vault, things, start, path => deps.notes.exists(path));
+    const plan = planThingsSync(tagged.vault, things, base, { now: deps.now, settleMs: SETTLE_MS, notes: deps.notes, acceptMissing: deps.acceptMissing });
     if (!plan.ok) return { result: { toThings: 0, toVault: 0, missed: 0, stopped: { side: plan.side, missing: plan.missing } }, state: start };
-    const round = new Round(deps, things, base, plan.things, plan.vault);
+    const round = new Round(tagged, things, base, plan.things, plan.vault);
     await round.carryOutThings();
     await round.writeNotes();
     return round.finish();

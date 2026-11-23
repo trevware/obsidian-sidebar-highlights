@@ -15,7 +15,7 @@ import { contextRange, indentWidth, notesText, parseTaskLine } from '../tasks-vi
 import { reminderTitle } from '../tasks-view/reminders';
 import { checkboxStateToStatus } from '../utils/task-status';
 import { stripThingsId } from './ids';
-import type { ChecklistItem, TodoFields, TodoStatus } from './model';
+import type { ChecklistItem, ThingsSnapshot, TodoFields, TodoStatus, VaultSnapshot } from './model';
 
 const STATUS_TAGS: Record<string, string> = { '/': 'In Progress', '?': 'Question' };
 const PRIORITY_TAGS = ['Priority 1', 'Priority 2', 'Priority 3'];
@@ -28,9 +28,88 @@ export function thingsTag(lineTagName: string): string {
     return lineTagName.replace(/^#/, '').replace(/-/g, ' ');
 }
 
-/** A Things tag as a line can carry it: spaces become hyphens, no `#`. */
+/**
+ * A Things tag as a line can carry it: spaces become hyphens, and anything
+ * a tag can't hold (`@`, `&`, punctuation) is left out, so `@home` is
+ * `#home` on the line. `resolveTags` reads it back as `@home`. Empty when
+ * nothing a tag can hold is left, or only digits are: a line can't carry it.
+ */
 export function lineTag(thingsTagName: string): string {
-    return thingsTagName.replace(/^#/, '').trim().replace(/\s+/g, '-');
+    const name = thingsTagName.replace(/^#/, '').trim().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}_/-]/gu, '');
+    return /[\p{L}_/-]/u.test(name) ? name : '';
+}
+
+/**
+ * A line's tags as the Things tags they stand for: a tag Things has by that
+ * name, else one Things has that a line writes the same way (`#home` for
+ * `@home`, `#follow-up` for `follow-up`), else the name as it is. Sorted.
+ */
+export function resolveTags(tags: readonly string[], known: readonly string[]): string[] {
+    const exact = new Set(known);
+    const byLine = new Map<string, string>();
+    for (const name of known) {
+        const key = lineTag(name).toLowerCase();
+        if (key && !byLine.has(key)) byLine.set(key, name);
+    }
+    const out = tags.map(tag => (exact.has(tag) ? tag : byLine.get(lineTag(tag).toLowerCase()) ?? tag));
+    return [...new Set(out)].sort();
+}
+
+/**
+ * The vault with each task's tags named as Things names them (`#home` read
+ * back as `@home`), and with a synced to-do's tags that no line can hold
+ * (only digits, say) kept from Things, so connecting never rewrites them.
+ */
+export function withThingsTags(vault: VaultSnapshot, things: ThingsSnapshot): VaultSnapshot {
+    const known = [...new Set(things.todos.flatMap(todo => todo.fields.tags))];
+    const byId = new Map(things.todos.map(todo => [todo.id, todo]));
+    return {
+        ...vault,
+        notes: vault.notes.map(note => ({
+            ...note,
+            tasks: note.tasks.map(task => {
+                const unheld = task.id === undefined ? [] : (byId.get(task.id)?.fields.tags ?? []).filter(tag => !lineTag(tag));
+                const tags = resolveTags([...task.fields.tags, ...unheld], known);
+                const same = tags.length === task.fields.tags.length && tags.every((tag, i) => tag === task.fields.tags[i]);
+                return same ? task : { ...task, fields: { ...task.fields, tags } };
+            })
+        }))
+    };
+}
+
+/**
+ * A Things title made safe to write on a task line: a backslash goes in
+ * front of anything a line would read as something else (a `#tag`, a
+ * `[[link]]` or `[link](url)`, formatting, a `%%comment%%`, a date), so the
+ * line shows the same words and reads back as the same title.
+ */
+export function escapeTitle(title: string): string {
+    return title
+        .replace(/[\\[\]*`]/g, ch => `\\${ch}`)
+        .replace(/__|==|~~|%%/g, pair => `\\${pair[0]}\\${pair[1]}`)
+        .replace(/(^|\s)#(?=[\p{L}\p{N}_/-])/gu, '$1\\#')
+        .replace(/(\d)([-/.])(?=\d)/g, '$1\\$2');
+}
+
+/** A line's words with the backslashes `escapeTitle` put in taken out again. */
+export function unescapeTitle(text: string): string {
+    return text.replace(/\\([\\#[\]*`_=~%\-/.])/g, '$1');
+}
+
+/** Characters a backslash can keep literal, stood in for while a line's words are read. */
+const SHIELD_BASE = 0xe000;
+const shield = (text: string): string => text.replace(/\\([\\#[\]*`_=~%\-/.])/g, (_, ch: string) => String.fromCharCode(SHIELD_BASE + ch.charCodeAt(0)));
+const unshield = (text: string): string => text.replace(/[\ue000-\ue07f]/g, ch => String.fromCharCode(ch.charCodeAt(0) - SHIELD_BASE));
+
+/**
+ * A line's words as Things' title: links and formatting reduced to the words
+ * they show, tags taken out, and anything escaped with a backslash kept as
+ * the character itself (set aside while the rest is read, so `\*\*` is two
+ * asterisks and never bold).
+ */
+function lineTitle(text: string, dateText: string | undefined, hideMetadata: boolean): { title: string; tags: string[] } {
+    const read = splitTags(reminderTitle(shield(text), dateText, hideMetadata));
+    return { title: unshield(read.title), tags: read.tags };
 }
 
 function taskStatus(task: Task): TodoStatus {
@@ -110,7 +189,7 @@ export function checklistLines(lines: string[], index: number): Array<{ line: nu
         const child = parseTaskLine(line);
         if (child) {
             if (indentWidth(child.indent) <= base) break;
-            const title = splitTags(reminderTitle(child.text, undefined, false)).title;
+            const title = lineTitle(child.text, undefined, false).title;
             items.push({ line: i, item: { title, done: child.state.toLowerCase() === 'x' } });
         } else if (indentWidth(line) <= base) {
             break;
@@ -125,7 +204,7 @@ export function checklistLines(lines: string[], index: number): Array<{ line: nu
  * date and time (or the day of the daily note it sits in when it has none).
  */
 export function fieldsFromTask(task: Task, lines: string[], opts: { hideMetadata: boolean; impliedWhen?: string }): TodoFields {
-    const { title, tags: lineTags } = splitTags(reminderTitle(stripThingsId(task.text), task.dateText, opts.hideMetadata));
+    const { title, tags: lineTags } = lineTitle(stripThingsId(task.text), task.dateText, opts.hideMetadata);
     const tags = new Set<string>();
     let someday = false;
     for (const tag of lineTags) {

@@ -397,25 +397,25 @@ describe('applyThingsEdits: add', () => {
 });
 
 describe('applyThingsEdits: titles that break Markdown or URLs', () => {
-    // `#1` has no letter so it stays words, and a link reads as the words it shows (mapping.test.ts reads this same line).
+    // A Things title is escaped on the line, so it shows the same words and reads back as the same title.
     const title = 'Fix #1 & 50% of [[A|b]] 🎉';
-    const readsAs = 'Fix #1 & 50% of b 🎉';
+    const written = 'Fix \\#1 & 50% of \\[\\[A|b\\]\\] 🎉';
 
-    it('writes one on one line through add, and reads it back as the vault reads that text', () => {
+    it('writes one on one line through add, escaped so it reads back as the same title', () => {
         const { lines } = applyThingsEdits(['- [ ] Next'], [{ kind: 'add', todo: todo(A, title), to: { path: PATH } }], fmt);
-        expect(lines).toEqual(['- [ ] Next', `- [ ] ${title} %%things:${A}%%`]);
-        expect(task(lines, readsAs).fields).toMatchObject({ title: readsAs, tags: [] });
+        expect(lines).toEqual(['- [ ] Next', `- [ ] ${written} %%things:${A}%%`]);
+        expect(read(lines)[1].fields).toMatchObject({ title, tags: [] });
     });
 
-    it('writes one on one line through update, and Things\' own words come back unchanged', () => {
+    it('writes one through update the same way, and keeps the line\'s own link where Things\' words still show it', () => {
         const lines = [`- [ ] Fix it %%things:${A}%%`, '- [ ] Next'];
         const literal = updated(lines, 'Fix it', { title });
-        expect(literal).toEqual([`- [ ] ${title} %%things:${A}%%`, '- [ ] Next']);
-        expect(task(literal, readsAs).fields).toMatchObject({ title: readsAs, tags: [] });
+        expect(literal).toEqual([`- [ ] ${written} %%things:${A}%%`, '- [ ] Next']);
+        expect(read(literal)[0].fields.title).toBe(title);
         const linked = [`- [ ] Fix #1 of [[A|b]] %%things:${A}%%`];
-        const out = updated(linked, 'Fix #1 of b', { title: readsAs });
-        expect(out).toEqual([`- [ ] ${title} %%things:${A}%%`]);
-        expect(read(out)[0].fields.title).toBe(readsAs);
+        const out = updated(linked, 'Fix #1 of b', { title: 'Fix #1 & 50% of b 🎉' });
+        expect(out).toEqual([`- [ ] Fix \\#1 & 50% of [[A|b]] 🎉 %%things:${A}%%`]);
+        expect(read(out)[0].fields.title).toBe('Fix #1 & 50% of b 🎉');
     });
 });
 

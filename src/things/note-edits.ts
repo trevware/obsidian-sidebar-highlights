@@ -27,7 +27,7 @@ import { addUnderNewHeading, bodyStart, moveHeading, moveTasks, newHeadingLevel,
 import type { MovePlan, NoteHeading } from '../tasks-view/task-move';
 import { tasksPluginMetadata } from '../utils/task-metadata';
 import { withThingsId } from './ids';
-import { checklistLines, lineTag, lineTagsIn, notesUnder, relink, statusFromTags, thingsTag } from './mapping';
+import { checklistLines, escapeTitle, lineTag, lineTagsIn, notesUnder, relink, statusFromTags, thingsTag } from './mapping';
 import type { ChecklistItem, ThingsTodo, TodoFields, TodoStatus, VaultTask } from './model';
 import type { VaultStep } from './plan';
 
@@ -42,6 +42,8 @@ export interface ThingsFormats {
 
 /** Things text on one line: a newline in a title would end the task there. */
 const oneLine = (text: string): string => text.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+/** A Things title as a task line writes it: on one line, with what a line would misread escaped. */
+const lineWords = (text: string): string => escapeTitle(oneLine(text));
 
 /** A heading name from Things, on one line. A blank one is no heading: `## ` never reads back as one. */
 function headingName(name: string | undefined): string | undefined {
@@ -65,13 +67,13 @@ function plainBullet(line: string, text?: string): string {
 /** A to-do's task line: title, tags and `#someday`, its date and time, and its ID last. */
 function todoLine(todo: ThingsTodo, fmt: ThingsFormats): string {
     const f = todo.fields;
-    const tags = statusFromTags([...f.tags]).tags.map(tag => `#${lineTag(tag)}`);
-    const words = [oneLine(f.title), ...tags, ...(f.someday ? ['#someday'] : [])].filter(Boolean).join(' ');
+    const tags = statusFromTags([...f.tags]).tags.map(lineTag).filter(Boolean).map(tag => `#${tag}`);
+    const words = [lineWords(f.title), ...tags, ...(f.someday ? ['#someday'] : [])].filter(Boolean).join(' ');
     const built = buildTaskLine({ text: words, date: f.when ? fmt.date(f.when) : undefined, time: f.when && f.reminder ? fmt.time(f.reminder) : undefined });
     return `- [${checkbox(f.status, f.tags)}] ${withThingsId(parseTaskLine(built)?.text ?? '', todo.id).trim()}`;
 }
 
-const itemLine = (item: ChecklistItem): string => `- [${item.done ? 'x' : ' '}] ${oneLine(item.title)}`;
+const itemLine = (item: ChecklistItem): string => `- [${item.done ? 'x' : ' '}] ${lineWords(item.title)}`;
 
 /** Writes a to-do into `lines` at `at`: its line, its notes, and its checklist as subtasks. */
 function writeTodo(lines: string[], at: number, todo: ThingsTodo, fmt: ThingsFormats): void {
@@ -274,7 +276,7 @@ const tagKey = (name: string): string => thingsTag(name).toLowerCase();
 
 /** Words carrying Things' tags: ones Things dropped taken out, new ones added at the end. Status, priority and someday tags stay as they are. */
 function withTags(words: string, tags: readonly string[]): string {
-    const wanted = statusFromTags([...tags]).tags.map(lineTag);
+    const wanted = statusFromTags([...tags]).tags.map(lineTag).filter(Boolean);
     const keep = new Set(wanted.map(tagKey));
     const had = new Set<string>();
     const kept = cutTags(words, tag => {
@@ -295,9 +297,9 @@ function withSomeday(words: string, someday: boolean): string {
 
 /** A task's or checklist item's text with Things' title, its `[[links]]` put back and what Things never saw kept. */
 function retitled(text: string, dateText: string | undefined, oldTitle: string, title: string): string {
-    const next = oneLine(title);
+    const next = lineWords(title);
     const words = editableTitle(text, dateText);
-    return withTitle(text, dateText, [relink(next, text), ...unseen(words, oldTitle, next)].join(' '));
+    return withTitle(text, dateText, [relink(next, text), ...unseen(words, oldTitle, oneLine(title))].join(' '));
 }
 
 /** A task's text with the fields Things changed: title, tags, someday, date and time. */

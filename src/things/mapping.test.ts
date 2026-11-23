@@ -1,7 +1,7 @@
 import type { Task } from '../../main';
 import { parseTaskLine } from '../tasks-view/task-line';
 import { readTimeAfter } from '../tasks-view/times';
-import { areaName, checklistLines, fieldsFromTask, folderFor, lineTag, lineTagsIn, looseNoteName, noteName, relink, statusFromTags, thingsTag } from './mapping';
+import { areaName, checklistLines, escapeTitle, fieldsFromTask, folderFor, lineTag, lineTagsIn, looseNoteName, noteName, relink, resolveTags, statusFromTags, thingsTag, unescapeTitle } from './mapping';
 
 /** Builds a Task from the line at `index`, the way TaskManager.tasksInContent would. */
 function taskAt(lines: string[], index = 0): Task {
@@ -159,5 +159,32 @@ describe('relink', () => {
         expect(relink('Skim the notes', 'Read [the docs](https://example.com/a)')).toBe('Skim the notes');
         expect(relink('Read [the docs](https://example.com/a)', 'Read [the docs](https://example.com/a)')).toBe('Read [the docs](https://example.com/a)');
         expect(relink('See docs and [[Docs]]', 'See [docs](https://x.com) and [[Docs]]')).toBe('See [docs](https://x.com) and [[Docs]]');
+    });
+});
+
+describe('Things titles and tags kept whole on the way through a line', () => {
+    const nasty = 'Email #design team about [[Q4]] and [the deck](https://x.co) 50% & more by 2026-11-30, **bold** ==mark== `code` %%note%% ~~old~~';
+
+    it('escapes a Things title so a line reads it back unchanged', () => {
+        const escaped = escapeTitle(nasty);
+        expect(escaped).not.toContain(' #design');
+        expect(unescapeTitle(escaped)).toBe(nasty);
+        const text = `- [ ] ${escaped}`;
+        const read = fieldsFromTask(taskAt([text]), [text], { hideMetadata: true });
+        expect(read.title).toBe(nasty);
+        expect(read.tags).toEqual([]);
+        expect(read.when).toBeUndefined();
+    });
+
+    it('writes a Things tag as a tag a line can hold', () => {
+        expect(lineTag('@home')).toBe('home');
+        expect(lineTag('Q&A')).toBe('QA');
+        expect(lineTag('follow-up')).toBe('follow-up');
+        expect(lineTag('Deep Work')).toBe('Deep-Work');
+    });
+
+    it('reads a line\'s tags back as the Things tags they came from', () => {
+        const known = ['@home', 'Q&A', 'follow-up', 'Deep Work'];
+        expect(resolveTags(['home', 'QA', 'follow up', 'Deep Work', 'new one'], known)).toEqual(['@home', 'Deep Work', 'Q&A', 'follow-up', 'new one']);
     });
 });
