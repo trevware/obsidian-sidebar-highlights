@@ -92,6 +92,8 @@ export class ThingsSync {
     private wasRunning = false;
     private quitSeen = false;
     private acceptMissingNext = false;
+    /** The user pressed Sync now or gave a new token: links paused after Things turned them away go out again. */
+    private retryLinksNext = false;
 
     constructor(private plugin: HighlightCommentsPlugin) {
         this.taskManager = new TaskManager(plugin);
@@ -373,6 +375,7 @@ export class ThingsSync {
     /** Runs a round now, starting Things again if the user had quit it. */
     syncNow(): Promise<void> {
         this.quitSeen = false;
+        this.retryLinksNext = true;
         return this.run();
     }
 
@@ -413,6 +416,8 @@ export class ThingsSync {
 
         const acceptMissing = this.acceptMissingNext;
         this.acceptMissingNext = false;
+        const retryLinks = this.retryLinksNext;
+        this.retryLinksNext = false;
         try {
             const bridge = this.getBridge();
             const ready = await this.thingsReady(bridge);
@@ -432,6 +437,7 @@ export class ThingsSync {
                 fmt: this.formats(),
                 notes: this.noteInfo(),
                 acceptMissing,
+                retryLinks,
                 editNote: (path, steps) => this.editNote(path, steps),
                 createNote: (path, content) => this.createNote(path, content),
                 renameNote: (from, to) => this.renameNote(from, to),
@@ -647,5 +653,6 @@ export class ThingsSync {
 
     setToken(token: string): void {
         this.plugin.app.secretStorage.setSecret(TOKEN_SECRET, token.trim());
+        this.retryLinksNext = true;
     }
 }

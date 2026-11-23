@@ -699,7 +699,7 @@ describe.each(CONFIGS)('runThingsRound after review: $name', config => {
         await w.settled();
     });
 
-    it('says Things is turning changes away once a change sent by link hasn\'t shown for three rounds', async () => {
+    it('says Things is turning changes away once three reads haven\'t shown a change sent by link', async () => {
         w.write(PLAN, '# Plan', '- [ ] Write brief');
         await w.round();
         await w.round();
@@ -708,13 +708,32 @@ describe.each(CONFIGS)('runThingsRound after review: $name', config => {
         const first = await w.round({ token: 'stale-token' });
         const second = await w.round({ token: 'stale-token' });
         const third = await w.round({ token: 'stale-token' });
+        const fourth = await w.round({ token: 'stale-token' });
         expect(first.failed).toBeUndefined();
         expect(second.failed).toBeUndefined();
-        expect(third.failed).toMatchObject({ kind: 'urls-off', halted: false });
-        await w.round();
+        expect(third.failed).toBeUndefined();
+        expect(fourth.failed).toMatchObject({ kind: 'urls-off', halted: false });
+        await w.round({ retryLinks: true });
         expect(t.todos.get(brief)?.fields.when).toBe('2026-11-25');
         await w.settled();
         expect(w.state.unconfirmed).toBeUndefined();
+    });
+
+    it('stops sending links once Things has turned them away, until the user tries again', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        w.write(PLAN, '# Plan', `- [ ] Write brief 2026-11-25 %%things:${brief}%%`);
+        for (let i = 0; i < 4; i++) await w.round({ token: 'stale-token' });
+        expect(w.state.linksStuck).toBe(true);
+        const sent = t.links.length;
+        const paused = await w.round({ token: 'stale-token' });
+        expect(t.links.length).toBe(sent);
+        expect(paused.failed).toMatchObject({ kind: 'urls-off' });
+        await w.round({ retryLinks: true });
+        expect(t.todos.get(brief)?.fields.when).toBe('2026-11-25');
+        expect(w.state.linksStuck).toBeUndefined();
     });
 
     it('lets a move to another note win over the swap\'s heading link in the same round', async () => {

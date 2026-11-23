@@ -68,6 +68,8 @@ export interface ThingsRoundDeps {
     newMarker(): string;
     /** Waits between looks for a project a link made. Tests pass one that acts on the fake's links. */
     wait?: (ms: number) => Promise<void>;
+    /** The user tried again (Sync now, or a new token): links paused after Things turned them away go out again. */
+    retryLinks?: boolean;
 }
 
 export interface ThingsRoundResult {
@@ -88,7 +90,7 @@ const FIND_WAITS_MS = [250, 500, 1000, 2000, 2000];
 /** How many to-dos sync trashed itself it remembers, newest kept. */
 const TRASHED_KEPT = 500;
 
-/** Rounds in a row a change sent by link can go unseen before the round says Things is turning changes away. */
+/** Reads in a row that can miss a change sent by link before the round says Things is turning changes away. */
 const STUCK_ROUNDS = 3;
 
 /** How long a project asked for by a link is looked for in later rounds before it's given up on. */
@@ -288,7 +290,13 @@ export class Round {
         return this.deps.bridge.run(op);
     }
 
+    /**
+     * Sends a link. Paused after Things kept turning links away, since each
+     * one it turns away brings Things to the front: the round stops instead,
+     * until the user tries again.
+     */
     open(link: string): Promise<void> {
+        if (this.base.linksStuck && !this.deps.retryLinks) return Promise.reject(new ThingsError('urls-off', 'Links to Things are paused until the token is checked'));
         return this.deps.bridge.open(link);
     }
 
@@ -732,13 +740,18 @@ export class Round {
 
         // A change sent by link that a read still doesn't show, round after round: Things is
         // turning links away (a wrong token, most likely), so the round says so.
-        const before = this.base.unconfirmed ?? {};
+        // A retry starts the count again.
+        const before = this.deps.retryLinks ? {} : this.base.unconfirmed ?? {};
         const counts: Record<string, number> = {};
         for (const id of this.unconfirmedNow) counts[id] = (before[id] ?? 0) + 1;
         if (Object.keys(counts).length) next.unconfirmed = counts;
         else delete next.unconfirmed;
-        const stuck = Object.values(counts).filter(rounds => rounds >= STUCK_ROUNDS).length;
-        if (stuck > 0 && !result.failed) result.failed = { steps: stuck, kind: 'urls-off', message: 'Things isn\'t taking the changes sent to it', halted: false };
+        // Sent again after STUCK_ROUNDS reads that didn't show it.
+        const stuck = Object.values(counts).filter(rounds => rounds > STUCK_ROUNDS).length;
+        const paused = this.base.linksStuck === true && !this.deps.retryLinks;
+        if (stuck > 0 || paused) next.linksStuck = true;
+        else delete next.linksStuck;
+        if ((stuck > 0 || paused) && !result.failed) result.failed = { steps: stuck, kind: 'urls-off', message: 'Things isn\'t taking the changes sent to it', halted: false };
         return { result, state: next };
     }
 

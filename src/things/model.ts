@@ -93,6 +93,8 @@ export interface ThingsState {
     connection?: StateStamp;
     /** To-dos sent a change by link, and for how many rounds in a row Things didn't show it. */
     unconfirmed?: Record<string, number>;
+    /** Things kept turning links away, so links are paused until the user tries again (Sync now, or a new token). */
+    linksStuck?: boolean;
     /** Synced to-dos the last read didn't find at all: retired only if the next read misses them too. */
     absent?: string[];
     /** To-dos sync itself sent to the Trash (their line had gone), newest last: a line coming back gets a new one. */
