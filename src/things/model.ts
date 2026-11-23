@@ -59,7 +59,7 @@ export interface ThingsTodo {
     logged: boolean;
 }
 
-export interface ThingsProject { id: string; title: string; areaId?: string; headings?: string[]; status: TodoStatus; trashed: boolean }
+export interface ThingsProject { id: string; title: string; areaId?: string; headings?: string[]; status: TodoStatus; trashed: boolean; notes?: string }
 
 export interface ThingsArea { id: string; title: string }
 
@@ -81,7 +81,17 @@ export interface ThingsState {
     /** Notes standing in for Things lists that aren't projects: the Inbox, and each area's loose to-dos. */
     inboxNote: string;
     looseNotes: Record<string /* areaId */, string /* path */>;
+    /**
+     * Projects asked for by a link and not yet recorded: Things may act on a
+     * link after the round gave up looking, and a swap may stop part way.
+     * The next round looks for each first, so a note never gets a second
+     * project. `swapOf` is the project a swap was replacing; `id` is set once
+     * the project was found.
+     */
+    pending?: PendingProject[];
 }
+
+export interface PendingProject { marker: string; path: string; at: number; headings?: string[]; swapOf?: string; id?: string }
 
 export const EMPTY_STATE: ThingsState = {
     version: 1,

@@ -61,6 +61,11 @@ describe('the stored state', () => {
         expect(next.looseNotes).toEqual({ aW: 'Job/Work.md' });
     });
 
+    it('follows a note a project is still being looked for in', () => {
+        const waiting = { ...state(), pending: [{ marker: 'm1', path: 'Work/Plan.md', at: 1 }] };
+        expect(renameInState(waiting, 'Work', 'Job', true).pending).toEqual([{ marker: 'm1', path: 'Job/Plan.md', at: 1 }]);
+    });
+
     it('never changes the state it was given', () => {
         const before = state();
         renameInState(before, 'Work', 'Job', true);

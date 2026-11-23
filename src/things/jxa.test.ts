@@ -266,8 +266,8 @@ describe('readScript', () => {
         const snapshot = runRead(world(0), ['TodoDone01', 'TodoTrash1', 'TodoGone01', 'TodoPlan01']);
         expect(snapshot.areas).toEqual([{ id: 'AreaWork01', title: 'Work' }]);
         expect(snapshot.projects).toEqual([
-            { id: 'ProjQ4Plan', title: 'Q4 plan', areaId: 'AreaWork01', headings: ['Next week'], status: 'open', trashed: false },
-            { id: 'ProjDone01', title: 'Old launch', status: 'completed', trashed: false }
+            { id: 'ProjQ4Plan', title: 'Q4 plan', areaId: 'AreaWork01', headings: ['Next week'], status: 'open', trashed: false, notes: '' },
+            { id: 'ProjDone01', title: 'Old launch', status: 'completed', trashed: false, notes: '' }
         ]);
         const byId = new Map(snapshot.todos.map(t => [t.id, t]));
         expect([...byId.keys()].sort()).toEqual(['TodoDone01', 'TodoInbox1', 'TodoPlan01', 'TodoSome01', 'TodoTrash1']);
@@ -283,7 +283,7 @@ describe('readScript', () => {
         const w = world(0);
         w.items.push({ id: 'ProjAway01', name: 'Away', kind: 'project', status: 'canceled' });
         const snapshot = runRead(w, ['ProjAway01']);
-        expect(snapshot.projects).toContainEqual({ id: 'ProjAway01', title: 'Away', status: 'canceled', trashed: false });
+        expect(snapshot.projects).toContainEqual({ id: 'ProjAway01', title: 'Away', status: 'canceled', trashed: false, notes: '' });
         expect(snapshot.todos.some(t => t.id === 'ProjAway01')).toBe(false);
     });
 

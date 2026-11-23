@@ -166,11 +166,29 @@ class World {
 
     /** Everything a round could change: the notes, the state, and what Things was asked to do. */
     picture(): string {
-        return JSON.stringify({ notes: [...this.notes].map(([path, note]) => [path, note.lines]), state: this.state, ops: this.things.ops, links: this.things.links });
+        return JSON.stringify({ notes: [...this.notes].map(([path, note]) => [path, note.lines]), state: this.state, ops: this.changes(), links: this.things.links });
     }
 
-    /** A round that changes nothing. */
+    /** The notes and what Things was asked to do: everything but the state. */
+    outside(): string {
+        return JSON.stringify({ notes: [...this.notes].map(([path, note]) => [path, note.lines]), ops: this.changes(), links: this.things.links });
+    }
+
+    /** The ops that change Things, leaving out the ones that only ask it something. */
+    changes(): unknown[] {
+        return this.things.ops.filter(op => op.kind !== 'findProjectByNotes' && op.kind !== 'projectTodoIds');
+    }
+
+    /**
+     * Quiet from here: one round that may only record what Things now shows
+     * (a change sent by link counts once a read confirms it) and touches
+     * neither the notes nor Things, then a round that changes nothing at all.
+     */
     async settled(): Promise<void> {
+        const outside = this.outside();
+        const confirming = await this.round();
+        expect(confirming).toEqual({ toThings: 0, toVault: 0, missed: 0 });
+        expect(this.outside()).toBe(outside);
         const before = this.picture();
         const result = await this.round();
         expect(result).toEqual({ toThings: 0, toVault: 0, missed: 0 });
@@ -255,9 +273,9 @@ describe.each(CONFIGS)('runThingsRound: $name', config => {
         expect(w.state.projects.map(p => [p.path, p.id]).sort()).toEqual([['Home/Errands.md', errands?.id], [PLAN, planNow], ['Work/Trip.md', trip]]);
         expect(w.project('Work/Trip.md')).toMatchObject({ title: 'Trip', areaId: work, headings: config.caps.headings ? ['Before'] : [] });
         expect(w.state.todos.map(todo => todo.id).sort()).toEqual([brief, venue, milk, pack, taxes, passport].sort());
-        expect(w.state.todos.find(todo => todo.id === venue)?.place).toEqual({ path: PLAN, heading: 'Later' });
-
         await w.settled();
+        // The heading counts once a read shows Things took it.
+        expect(w.state.todos.find(todo => todo.id === venue)?.place).toEqual({ path: PLAN, heading: 'Later' });
     });
 
     it('rebuilds the project when the note gains a heading, and every to-do keeps its ID', async () => {
@@ -285,6 +303,8 @@ describe.each(CONFIGS)('runThingsRound: $name', config => {
     // Without headings in the read, a move between headings in Things can't be seen at all.
     (config.caps.headings ? it : it.skip)('moves the line, not the to-do back, when a move from Things missed the note during a swap', async () => {
         w.write(PLAN, '# Plan', '## A', '- [ ] Write brief', '## B', '- [ ] Book venue');
+        await w.round();
+        // A second round, so the state holds the headings Things now shows.
         await w.round();
         const brief = w.idOn(PLAN, 'Write brief');
         const venue = w.idOn(PLAN, 'Book venue');
@@ -625,5 +645,138 @@ describe.each(CONFIGS)('runThingsRound: $name', config => {
         const sam = w.idOn(PLAN, 'Call Sam');
         expect(t.todos.get(pack)?.fields.title).toBe('Pack');
         expect(t.todos.get(sam)?.projectId).toBe(w.project(PLAN).id);
+    });
+});
+
+describe.each(CONFIGS)('runThingsRound after review: $name', config => {
+    let w: World;
+    let t: Things;
+    beforeEach(() => {
+        w = new World(config);
+        t = w.things;
+    });
+
+    const liveProjects = (title: string) => [...t.projects.values()].filter(project => project.title === title && !project.trashed);
+
+    it('records a heading Things renamed, so the next round leaves the project alone', async () => {
+        if (!config.caps.headings) return;
+        w.write(PLAN, '# Plan', '## Later', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        const id = w.project(PLAN).id;
+        const project = t.projects.get(id);
+        const todo = t.todos.get(brief);
+        if (!project || !todo) throw new Error('missing');
+        project.headings = ['Soon'];
+        todo.heading = 'Soon';
+        await w.round();
+        expect(w.lines(PLAN)).toContain('## Soon');
+        expect(w.project(PLAN).headings).toEqual(['Soon']);
+        await w.settled();
+        expect(w.project(PLAN).id).toBe(id);
+    });
+
+    it('keeps a note\'s date and subtasks when Things turns the link away', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        w.write(PLAN, '# Plan', `- [ ] Write brief %%things:${brief}%%`, '- [ ] Book venue 2026-11-25', '\t- [ ] Call hall', '\t- [ ] Pay deposit');
+        await w.round({ token: 'stale-token' });
+        await w.round({ token: 'stale-token' });
+        const lines = w.lines(PLAN);
+        expect(lines.find(line => line.includes('Book venue'))).toMatch(/^- \[ \] Book venue 2026-11-25 %%things:\w+%%$/);
+        expect(lines).toContain('\t- [ ] Call hall');
+        expect(lines).toContain('\t- [ ] Pay deposit');
+        // With the right token the date reaches Things, and then everything settles.
+        await w.round();
+        expect(t.todos.get(w.idOn(PLAN, 'Book venue'))?.fields.when).toBe('2026-11-25');
+        await w.round();
+        await w.settled();
+    });
+
+    it('lets a move to another note win over the swap\'s heading link in the same round', async () => {
+        w.write(HOME, '# Home', '- [ ] Water plants');
+        w.write(PLAN, '# Plan', '## Next', '- [ ] Write brief', '- [ ] Book venue');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        const venue = w.idOn(PLAN, 'Book venue');
+        const water = w.idOn(HOME, 'Water plants');
+        w.write(PLAN, '# Plan', '## Next', `- [ ] Book venue %%things:${venue}%%`, '', '## Later', '- [ ] Call caterer');
+        w.write(HOME, '# Home', `- [ ] Water plants %%things:${water}%%`, `- [ ] Write brief %%things:${brief}%%`);
+        await w.round();
+        expect(t.todos.get(brief)?.projectId).toBe(w.project(HOME).id);
+        await w.round();
+        expect(w.lines(HOME).some(line => line.includes('Write brief'))).toBe(true);
+        expect(w.lines(PLAN).some(line => line.includes('Write brief'))).toBe(false);
+        await w.settled();
+    });
+
+    it('puts a to-do back for good when a swap fails, even with its heading link still waiting', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief', '- [ ] Book venue');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        const venue = w.idOn(PLAN, 'Book venue');
+        const old = w.project(PLAN).id;
+        t.trap = op => (op.kind === 'moveTodo' && op.id === brief && op.projectId !== old ? new ThingsError('other', 'Things failed: moveTodo') : undefined);
+        w.write(PLAN, '# Plan', '## Next', `- [ ] Book venue %%things:${venue}%%`, `- [ ] Write brief %%things:${brief}%%`);
+        await w.round();
+        const where = t.todos.get(venue);
+        expect(where?.projectId).toBe(old);
+        expect(t.projects.get(old)?.trashed).toBe(false);
+        t.trap = undefined;
+        await w.round();
+        expect(w.lines(PLAN)).not.toContain(RETIRED);
+        expect(w.lines(PLAN).some(line => line.startsWith('- [ ] Book venue'))).toBe(true);
+    });
+
+    it('adopts a project Things made late, so a note never gets a second one', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        w.write('Home/Errands.md', '# Errands', '- [ ] Buy milk');
+        await w.round({ wait: async () => {} });
+        await w.round({ wait: async () => {} });
+        await w.round();
+        await w.round();
+        expect(liveProjects('Errands')).toHaveLength(1);
+        expect(liveProjects('Errands')[0].notes).toBe('');
+        expect([...w.notes.keys()].filter(path => path.startsWith('Home/Errands'))).toEqual(['Home/Errands.md']);
+        expect(w.project('Home/Errands.md').id).toBe(liveProjects('Errands')[0].id);
+    });
+
+    it('leaves no second project or note behind when Things stops answering mid-swap', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief', '- [ ] Book venue');
+        await w.round();
+        await w.round();
+        const venue = w.idOn(PLAN, 'Book venue');
+        const brief = w.idOn(PLAN, 'Write brief');
+        let moves = 0;
+        t.trap = op => (op.kind === 'moveTodo' && ++moves > 1 ? new ThingsError('timeout', 'Things took too long') : undefined);
+        w.write(PLAN, '# Plan', '## Next', `- [ ] Book venue %%things:${venue}%%`, `- [ ] Write brief %%things:${brief}%%`);
+        await w.round();
+        t.trap = undefined;
+        await w.round();
+        await w.round();
+        expect(liveProjects('Plan')).toHaveLength(1);
+        expect([...w.notes.keys()].filter(path => path.startsWith('Work/Plan'))).toEqual([PLAN]);
+        expect(t.todos.get(venue)?.projectId).toBe(w.project(PLAN).id);
+        expect(t.todos.get(brief)?.projectId).toBe(w.project(PLAN).id);
+    });
+
+    it('carries the old project\'s notes over in a swap', async () => {
+        w.write(PLAN, '# Plan', '- [ ] Write brief');
+        await w.round();
+        await w.round();
+        const brief = w.idOn(PLAN, 'Write brief');
+        const old = t.projects.get(w.project(PLAN).id);
+        if (!old) throw new Error('missing');
+        old.notes = 'Keep the receipts';
+        w.write(PLAN, '# Plan', '## Next', `- [ ] Write brief %%things:${brief}%%`);
+        await w.round();
+        expect(t.projects.get(w.project(PLAN).id)?.notes).toBe('Keep the receipts');
     });
 });

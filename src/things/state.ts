@@ -49,5 +49,6 @@ export function renameInState(state: ThingsState, from: string, to: string, fold
     next.todos = next.todos.map(todo => ({ ...todo, place: { ...todo.place, path: move(todo.place.path) } }));
     next.inboxNote = move(next.inboxNote);
     next.looseNotes = Object.fromEntries(Object.entries(next.looseNotes).map(([area, path]) => [area, move(path)]));
+    if (next.pending) next.pending = next.pending.map(entry => ({ ...entry, path: move(entry.path) }));
     return next;
 }

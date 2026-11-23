@@ -48,15 +48,15 @@ export async function swapProject(round: Round, step: Extract<ThingsStep, { kind
     const now = round.projectNow.get(old);
     const sp = round.next.projects.find(p => p.id === old);
     const title = now?.title ?? sp?.title ?? '';
-    const made = await round.makeProject(title, step.headings, now?.areaId);
+    const made = await round.makeProject(title, step.headings, now?.areaId, { path: step.path, swapOf: old, notes: round.notesOf(old) });
 
     /** The to-dos moved into the new project, each with the heading it got there. */
     const moved = new Map<string, string | undefined>();
     const place = async (id: string, heading?: string): Promise<void> => {
         await round.run({ kind: 'moveTodo', id, projectId: made });
         moved.set(id, undefined);
-        if (heading === undefined) return;
-        await round.open(updateLink(id, { 'list-id': made, heading }, round.deps.token));
+        // Always a link, so an earlier link this round can't pull the to-do elsewhere after the script moved it.
+        await round.open(updateLink(id, { 'list-id': made, ...(heading === undefined ? {} : { heading }) }, round.deps.token));
         moved.set(id, heading);
     };
     try {
@@ -72,10 +72,11 @@ export async function swapProject(round: Round, step: Extract<ThingsStep, { kind
             }
         }
     } catch (error) {
-        await putBack(round, moved, old, made);
+        if (await putBack(round, moved, old, made)) round.settle(made);
         throw error;
     }
     await retireOld(round, old);
+    round.settle(made);
 
     if (sp) {
         sp.id = made;
@@ -84,7 +85,8 @@ export async function swapProject(round: Round, step: Extract<ThingsStep, { kind
     round.headingsIn.set(made, [...step.headings]);
     round.projectNow.set(made, { title, ...(now?.areaId === undefined ? {} : { areaId: now.areaId }) });
     round.newProjects.add(made);
-    moved.forEach((heading, id) => round.placed.set(id, heading === undefined ? { path: step.path } : { path: step.path, heading }));
+    // A heading Things can show counts once a read confirms it, so a heading link Things turned away is sent again.
+    moved.forEach((heading, id) => round.placed.set(id, heading === undefined || round.caps.headings ? { path: step.path } : { path: step.path, heading }));
     return true;
 }
 
@@ -115,22 +117,28 @@ async function retireOld(round: Round, old: string): Promise<void> {
     }
 }
 
-/** A swap that failed: every to-do moved goes back under its heading, then the new project, once empty, to the Trash. */
-async function putBack(round: Round, moved: Map<string, string | undefined>, old: string, made: string): Promise<void> {
+/**
+ * A swap that failed: every to-do moved goes back under its heading, then the
+ * new project, once empty, to the Trash. True when everything went back and
+ * the new project is gone; otherwise a later round finishes the job.
+ */
+async function putBack(round: Round, moved: Map<string, string | undefined>, old: string, made: string): Promise<boolean> {
     let stuck = false;
     for (const id of [...moved.keys()].reverse()) {
         try {
             await round.run({ kind: 'moveTodo', id, projectId: old });
             const heading = headingOf(round, id);
-            if (heading !== undefined) await round.open(updateLink(id, { 'list-id': old, heading }, round.deps.token));
+            await round.open(updateLink(id, { 'list-id': old, ...(heading === undefined ? {} : { heading }) }, round.deps.token));
         } catch {
             stuck = true;
         }
     }
-    if (stuck) return;
+    if (stuck) return false;
     try {
         await round.run({ kind: 'deleteProject', id: made });
+        return true;
     } catch {
-        // An empty project stays in Things; nothing in it is lost.
+        // An empty project stays in Things; nothing in it is lost, and a later round trashes it.
+        return false;
     }
 }

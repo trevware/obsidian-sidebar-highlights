@@ -129,7 +129,7 @@ describe('FakeThings', () => {
         const id = await things.run({ kind: 'makeTodo', name: 'Draft', notes: '', tags: [], projectId });
         await things.open(updateLink(id ?? '', { heading: 'Next week' }, TOKEN));
         const snapshot = await things.read([]);
-        expect(snapshot.projects).toEqual([{ id: projectId, title: 'Q4 plan', headings: ['This week', 'Next week'], status: 'open', trashed: false }]);
+        expect(snapshot.projects).toEqual([{ id: projectId, title: 'Q4 plan', headings: ['This week', 'Next week'], status: 'open', trashed: false, notes: 'marker-1' }]);
         expect(snapshot.todos).toEqual([expect.objectContaining({ id, projectId, heading: 'Next week', inbox: false })]);
         expect(snapshot.capabilities).toEqual({ headings: true, checklist: true, reminder: true, repeating: false, reorder: false });
     });

@@ -41,7 +41,7 @@ import { joinFirstConnect, withDeadline } from './join';
 import { jsonCreateLink, updateLink, whenParam } from './links';
 import { areaName } from './mapping';
 import { differences } from './merge';
-import type { Capabilities, ChecklistItem, Place, SyncedTodo, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultSnapshot, VaultTask } from './model';
+import type { Capabilities, ChecklistItem, PendingProject, Place, SyncedTodo, ThingsProject, ThingsSnapshot, ThingsState, ThingsTodo, TodoFields, VaultSnapshot, VaultTask } from './model';
 import { newNoteContent } from './note-edits';
 import type { ThingsFormats } from './note-edits';
 import { planThingsSync } from './plan';
@@ -86,6 +86,9 @@ export interface ThingsRoundResult {
 
 /** How long to wait before each further look for a project a link made. */
 const FIND_WAITS_MS = [250, 500, 1000, 2000, 2000];
+/** How long a project asked for by a link is looked for in later rounds before it's given up on. */
+const PENDING_KEEP_MS = 30 * 60 * 1000;
+
 /** What Things said that means it won't take anything more this round. */
 const HALTS: ReadonlySet<ThingsErrorKind> = new Set<ThingsErrorKind>(['permission', 'not-installed', 'urls-off', 'timeout']);
 
@@ -133,15 +136,73 @@ function knownIds(vault: VaultSnapshot, state: ThingsState): string[] {
 }
 
 export async function runThingsRound(deps: ThingsRoundDeps): Promise<{ result: ThingsRoundResult; state: ThingsState }> {
-    const read = await deps.bridge.read(knownIds(deps.vault, deps.state));
+    let read = await deps.bridge.read(knownIds(deps.vault, deps.state));
+    let start = deps.state;
+    if (start.pending?.length) {
+        const recovered = await recoverPending(deps, start, read);
+        start = recovered.state;
+        if (recovered.changedThings) read = await deps.bridge.read(knownIds(deps.vault, start));
+    }
     const things: ThingsSnapshot = { ...read, todos: read.todos.map(withDeadline) };
-    const base = deps.state.joined ? deps.state : joinFirstConnect(deps.vault, things, deps.state, path => deps.notes.exists(path));
+    const base = start.joined ? start : joinFirstConnect(deps.vault, things, start, path => deps.notes.exists(path));
     const plan = planThingsSync(deps.vault, things, base, { now: deps.now, settleMs: SETTLE_MS, notes: deps.notes, acceptMissing: deps.acceptMissing });
-    if (!plan.ok) return { result: { toThings: 0, toVault: 0, missed: 0, stopped: { side: plan.side, missing: plan.missing } }, state: deps.state };
+    if (!plan.ok) return { result: { toThings: 0, toVault: 0, missed: 0, stopped: { side: plan.side, missing: plan.missing } }, state: start };
     const round = new Round(deps, things, base, plan.things, plan.vault);
     await round.carryOutThings();
     await round.writeNotes();
     return round.finish();
+}
+
+/**
+ * Projects asked for by a link that an earlier round never recorded. One
+ * Things made late is taken on as its note's project, or trashed when the
+ * note has one by now; a swap's half-built project gives its to-dos back to
+ * the project it was replacing and goes to the Trash. One not found yet is
+ * looked for again until it's half an hour old.
+ */
+async function recoverPending(deps: ThingsRoundDeps, state: ThingsState, read: ThingsSnapshot): Promise<{ state: ThingsState; changedThings: boolean }> {
+    const next = clone(state);
+    const keep: PendingProject[] = [];
+    let changedThings = false;
+    for (const entry of state.pending ?? []) {
+        let id = entry.id ?? null;
+        try {
+            id ??= await deps.bridge.run({ kind: 'findProjectByNotes', marker: entry.marker });
+        } catch {
+            keep.push(entry);
+            continue;
+        }
+        if (!id) {
+            if (deps.now - entry.at < PENDING_KEEP_MS) keep.push(entry);
+            continue;
+        }
+        const project = read.projects.find(p => p.id === id);
+        if (!project || project.trashed || next.projects.some(sp => sp.id === id)) continue;
+        try {
+            if (entry.swapOf === undefined && deps.notes.exists(entry.path) && !next.projects.some(sp => sp.path === entry.path)) {
+                const area = project.areaId === undefined ? {} : { areaId: project.areaId };
+                next.projects.push({ id, path: entry.path, title: project.title, headings: [...(project.headings ?? entry.headings ?? [])], ...area });
+                await deps.bridge.run({ kind: 'setProject', id, notes: '' });
+                changedThings = true;
+                continue;
+            }
+            if (entry.swapOf !== undefined) {
+                const listed: unknown = JSON.parse((await deps.bridge.run({ kind: 'projectTodoIds', id })) ?? '[]');
+                for (const todoId of Array.isArray(listed) ? listed.map(String) : []) {
+                    await deps.bridge.run({ kind: 'moveTodo', id: todoId, projectId: entry.swapOf });
+                    const heading = state.todos.find(todo => todo.id === todoId)?.place.heading;
+                    await deps.bridge.open(updateLink(todoId, { 'list-id': entry.swapOf, ...(heading === undefined ? {} : { heading }) }, deps.token));
+                }
+            }
+            await deps.bridge.run({ kind: 'deleteProject', id });
+            changedThings = true;
+        } catch {
+            keep.push({ ...entry, id });
+        }
+    }
+    if (keep.length) next.pending = keep;
+    else delete next.pending;
+    return { state: next, changedThings };
 }
 
 /** One round's Things changes and note writes, and what each left behind. */
@@ -308,21 +369,41 @@ export class Round {
         return true;
     }
 
-    /** Makes a project with these headings through a `json` link and finds it by a marker in its notes. */
-    async makeProject(title: string, headings: readonly string[], areaId?: string): Promise<string> {
+    /**
+     * Makes a project with these headings through a `json` link and finds it
+     * by a marker in its notes, then sets its notes (the old project's, for a
+     * swap). Until the project is recorded it stays in `pending`, so a later
+     * round finds it if Things acts on the link late, or a swap stops part way.
+     */
+    async makeProject(title: string, headings: readonly string[], areaId: string | undefined, why: { path: string; swapOf?: string; notes?: string }): Promise<string> {
         const marker = this.deps.newMarker();
+        const entry: PendingProject = { marker, path: why.path, at: this.deps.now, headings: [...headings], ...(why.swapOf === undefined ? {} : { swapOf: why.swapOf }) };
+        this.next.pending = [...(this.next.pending ?? []), entry];
         const attributes: Record<string, unknown> = { title, notes: marker, items: headings.map(heading => ({ type: 'heading', attributes: { title: heading } })) };
         if (areaId !== undefined) attributes['area-id'] = areaId;
         await this.open(jsonCreateLink([{ type: 'project', attributes }]));
         const id = await this.findProject(marker);
         if (!id) throw new ThingsError('urls-off', 'Things never made the project its link asked for, so Things URLs look turned off');
+        entry.id = id;
         try {
-            await this.run({ kind: 'setProject', id, notes: '' });
+            await this.run({ kind: 'setProject', id, notes: why.notes ?? '' });
         } catch (error) {
             // The marker stays in the project's notes; nothing else depends on it.
             this.fail(error);
         }
         return id;
+    }
+
+    /** A project made by `makeProject` is recorded now: no later round needs to look for it. */
+    settle(id: string): void {
+        const left = (this.next.pending ?? []).filter(entry => entry.id !== id);
+        if (left.length) this.next.pending = left;
+        else delete this.next.pending;
+    }
+
+    /** A project's notes as read. */
+    notesOf(id: string): string | undefined {
+        return this.projectById.get(id)?.notes;
     }
 
     private async findProject(marker: string): Promise<string | null> {
@@ -338,12 +419,13 @@ export class Round {
     private async createProject(step: StepOf<'createProject'>): Promise<boolean> {
         const areaId = step.folder ? this.areaFor(step.folder) : undefined;
         if (step.folder && areaId === undefined) return false;
-        const id = await this.makeProject(step.title, step.headings, areaId);
+        const id = await this.makeProject(step.title, step.headings, areaId, { path: step.path });
         const area = areaId === undefined ? {} : { areaId };
         this.next.projects = [...this.next.projects.filter(sp => sp.path !== step.path), { id, path: step.path, title: step.title, headings: [...step.headings], ...area }];
         this.headingsIn.set(id, [...step.headings]);
         this.projectNow.set(id, { title: step.title, ...area });
         this.newProjects.add(id);
+        this.settle(id);
         return true;
     }
 
@@ -410,10 +492,15 @@ export class Round {
             if (f.checklist.length) params['checklist-items'] = checklistTitles(f.checklist);
             if (f.when !== undefined || f.someday) params.when = whenParam(f);
             if (Object.keys(params).length) await this.open(updateLink(id, params, this.deps.token));
-            record.place = this.placeIn(task.path, task.heading);
-            record.fields = { ...clone(f), checklist: f.checklist.map(item => ({ title: item.title, done: false })) };
+            // Things shows the heading, the date and (when it can) the checklist on the
+            // next read, so those count once a read confirms them: a link Things turned
+            // away then leaves the note alone and is sent again. Only what Things can't
+            // show is taken as done now.
+            if (!this.caps.headings) record.place = this.placeIn(task.path, task.heading);
+            if (!this.caps.reminder && f.reminder !== undefined) record.fields.reminder = f.reminder;
+            if (!this.caps.checklist) record.fields.checklist = f.checklist.map(item => ({ title: item.title, done: false }));
             if (f.checklist.some(item => item.done)) await this.open(checklistTicksLink(id, f.checklist, this.deps.token));
-            record.fields = clone(f);
+            if (!this.caps.checklist) record.fields.checklist = clone(f.checklist);
         } catch (error) {
             this.fail(error);
         }
@@ -452,14 +539,15 @@ export class Round {
         if (dated) params.when = whenParam(this.whenOf(id, change));
         const checklist = 'checklist' in change ? change.checklist ?? [] : undefined;
         if (checklist) params['checklist-items'] = checklistTitles(checklist);
+        // A link's changes count once a read shows them (see createTodo), except what Things can't show.
         if (Object.keys(params).length) {
             await this.open(updateLink(id, params, this.deps.token));
-            take(['when', 'reminder', 'someday']);
-            if (checklist && !checklist.some(item => item.done)) take(['checklist']);
+            if (!this.caps.reminder) take(['reminder']);
+            if (checklist && !checklist.some(item => item.done) && !this.caps.checklist) take(['checklist']);
         }
         if (checklist?.some(item => item.done)) {
             await this.open(checklistTicksLink(id, checklist, this.deps.token));
-            take(['checklist']);
+            if (!this.caps.checklist) take(['checklist']);
         }
         return true;
     }
@@ -469,9 +557,12 @@ export class Round {
         if (!list) return false;
         await this.run(list.projectId !== undefined ? { kind: 'moveTodo', id, projectId: list.projectId } : list.areaId !== undefined ? { kind: 'moveTodo', id, areaId: list.areaId } : { kind: 'moveTodo', id, inbox: true });
         this.placed.set(id, at(to.path));
-        if (list.projectId !== undefined && to.heading !== undefined) {
-            await this.open(updateLink(id, { 'list-id': list.projectId, heading: to.heading }, this.deps.token));
-            this.placed.set(id, this.placeIn(to.path, to.heading));
+        // Always a link last, even with no heading: Things acts on links in order and after the
+        // script, so an earlier link this round (a swap's heading) can't pull the to-do back.
+        const listId = list.projectId ?? list.areaId;
+        if (listId !== undefined) {
+            await this.open(updateLink(id, { 'list-id': listId, ...(list.projectId !== undefined && to.heading !== undefined ? { heading: to.heading } : {}) }, this.deps.token));
+            if (!this.caps.headings) this.placed.set(id, this.placeIn(to.path, to.heading));
         }
         return true;
     }
@@ -589,6 +680,12 @@ export class Round {
         const next = this.next;
         if (!next.joined) next.joined = !this.halted && this.vaultSteps.every(step => step.kind !== 'adopt' || this.landed(step));
         next.todos = this.todos();
+        // Headings Things renamed or added, now in the note: the project has them.
+        for (const step of this.vaultSteps) {
+            if (step.kind !== 'headings' || !this.landed(step)) continue;
+            const sp = next.projects.find(p => p.path === step.path);
+            if (sp) sp.headings = [...step.to];
+        }
         // A project gone from Things leaves the state once its lines are retired, so a new task in its note can make a new one.
         next.projects = next.projects.filter(sp => {
             const project = this.projectById.get(sp.id);

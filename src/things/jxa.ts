@@ -106,8 +106,8 @@ const READ = `function run() {
         return { id, name: areaRead.values.name[i] };
     });
     const projects = new Map();
-    const addProject = (spec, id, name, status) => {
-        const record = { id, name, status, area: null, json: null };
+    const addProject = (spec, id, name, status, notes) => {
+        const record = { id, name, status, notes, area: null, json: null };
         projects.set(id, record);
         if (status !== 'open' || trash.has(id)) return;
         const area = spec.area();
@@ -115,8 +115,8 @@ const READ = `function run() {
         record.json = experimental(spec);
         for (const todo of spec.toDos.id()) projectOf.set(todo, id);
     };
-    const projectRead = bulk(app.projects, ['name', 'status']);
-    projectRead.ids.forEach((id, i) => addProject(app.projects.byId(id), id, projectRead.values.name[i], projectRead.values.status[i]));
+    const projectRead = bulk(app.projects, ['name', 'status', 'notes']);
+    projectRead.ids.forEach((id, i) => addProject(app.projects.byId(id), id, projectRead.values.name[i], projectRead.values.status[i], projectRead.values.notes[i]));
     const todos = new Map();
     const inbox = [];
     const someday = [];
@@ -147,7 +147,7 @@ const READ = `function run() {
         if (attempt(() => spec.class()) === 'project') { addProject(spec, id, name, status); continue; }
         const project = spec.project();
         const projectId = project ? project.id() : null;
-        if (projectId && !projects.has(projectId)) addProject(project, projectId, project.name(), project.status());
+        if (projectId && !projects.has(projectId)) addProject(project, projectId, project.name(), project.status(), project.notes());
         const area = projectId ? null : spec.area();
         todos.set(id, {
             id, name, notes: spec.notes(), status, tags: spec.tagNames(),
@@ -383,6 +383,7 @@ function projectOf(raw: Data, trash: Set<string>, caps: Capabilities): ThingsPro
     const id = textOf(raw.id, 'a project without an ID');
     const what = `project ${id}`;
     const project: ThingsProject = { id, title: optionalText(raw.name, what), status: statusOf(raw.status, what), trashed: trash.has(id) };
+    if (typeof raw.notes === 'string') project.notes = raw.notes;
     const areaId = idOf(raw.area, what);
     if (areaId !== undefined) project.areaId = areaId;
     const headings = caps.headings ? headingsOf(first(experimentalOf(raw.json), EXPERIMENTAL.projectHeadings)) : undefined;

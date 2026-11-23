@@ -243,7 +243,7 @@ export class FakeThings implements ThingsBridge {
         };
         return clone({
             areas: [...this.areas.values()],
-            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: caps.headings ? p.headings : undefined, status: p.status, trashed: p.trashed })),
+            projects: [...this.projects.values()].map(p => ({ id: p.id, title: p.title, areaId: p.areaId, headings: caps.headings ? p.headings : undefined, status: p.status, trashed: p.trashed, notes: p.notes })),
             todos: [...this.todos.values()].filter(t => listed(t) || known.has(t.id)).map(todo),
             capabilities: caps
         });
