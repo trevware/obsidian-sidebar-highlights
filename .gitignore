@@ -34,3 +34,6 @@ restore-log.txt
 
 # Local hot-reload marker (not for distribution)
 .hotreload
+
+# Things sync state (task titles and notes; local to the syncing Mac)
+things-state.json
