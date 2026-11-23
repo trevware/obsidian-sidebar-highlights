@@ -28,6 +28,7 @@ import type { ThingsConnection } from './src/things/model';
 import { hideSyncIds } from './src/calendar/hide-ids';
 import type { CalendarConnection } from './src/calendar/providers/types';
 import { CalendarSync } from './src/calendar/calendar-sync';
+import { ThingsSync } from './src/things/things-sync';
 import { EVENT_LENGTHS, plusAndCalendarGroups } from './src/calendar/settings';
 import { calendarAvailable, markDevInstall } from './src/plus/plus-client';
 import type { PlusStatus } from './src/plus/plus-client';
@@ -315,6 +316,7 @@ export default class HighlightCommentsPlugin extends Plugin {
     private statusBarCounter: StatusBarCounter | null = null;
     taskIndex: TaskIndex;
     calendarSync: CalendarSync;
+    thingsSync: ThingsSync;
     private settingTab: HighlightSettingTab | null = null;
     /** Power-Up as the server last described it, for the settings tab. */
     plusStatus: PlusStatus | null = null;
@@ -369,6 +371,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.taskIndex = new TaskIndex(this, () => this.settings.taskReminders || Boolean(this.settings.calendar));
         this.reminders = new ReminderManager(this, this.taskIndex);
         this.calendarSync = new CalendarSync(this, this.taskIndex);
+        this.thingsSync = new ThingsSync(this);
         
         // Register hover source for link previews
         // Note: registerHoverLinkSource may not be available in all Obsidian versions
@@ -488,6 +491,7 @@ export default class HighlightCommentsPlugin extends Plugin {
             this.taskIndex.start();
             this.reminders.start();
             this.calendarSync.start();
+            this.thingsSync.start();
             // The license is checked by sync itself; with no calendar connected, nothing goes online.
             if (calendarAvailable(this.app) && this.settings.calendar && this.calendarSync.plus.licenseKey()) void this.refreshPlusStatus();
 
@@ -572,6 +576,7 @@ export default class HighlightCommentsPlugin extends Plugin {
 
         this.reminders?.stop();
         this.calendarSync?.stop();
+        this.thingsSync?.stop();
         this.taskIndex?.stop();
 
         // Write anything still waiting for its quiet spell.
@@ -858,6 +863,7 @@ export default class HighlightCommentsPlugin extends Plugin {
         this.taskIndex.settingsChanged();
         this.reminders.settingsChanged();
         this.calendarSync.settingsChanged();
+        this.thingsSync.settingsChanged();
     }
 
     /** Asks Power-Up about the license again (the client answers from its cache unless `fresh`). */

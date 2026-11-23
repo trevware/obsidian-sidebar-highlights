@@ -12,6 +12,7 @@
 import { Platform } from 'obsidian';
 import { ThingsError, thingsErrorFrom } from './bridge';
 import type { Runner } from './bridge';
+import type { OwnerFs } from './owner';
 
 type ExecFile = (
     file: string,
@@ -49,5 +50,58 @@ export function nodeRunner(): Runner {
         running: () => new Promise(resolve => {
             execFile('pgrep', ['-x', 'Things3'], { timeout: PGREP_TIMEOUT_MS, maxBuffer: MAX_OUTPUT }, error => resolve(error === null));
         })
+    };
+}
+
+interface NodeFs {
+    readFileSync(path: string, encoding: 'utf8'): string;
+    writeFileSync(path: string, text: string, encoding: 'utf8'): void;
+    mkdirSync(path: string, options: { recursive: boolean }): void;
+    rmSync(path: string, options: { force: boolean }): void;
+}
+
+interface NodeOs {
+    homedir(): string;
+    hostname(): string;
+}
+
+/** Node's fs and os, loaded only in Obsidian's desktop app on a Mac, like `child_process` above. */
+function loadNode(): { fs: NodeFs; os: NodeOs } {
+    if (Platform.isDesktop && Platform.isDesktopApp && Platform.isMacOS) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- guarded like loadExecFile; an import would load on mobile
+        const fs = require('fs') as NodeFs;
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- guarded like loadExecFile; an import would load on mobile
+        const os = require('os') as NodeOs;
+        return { fs, os };
+    }
+    throw new ThingsError('other', 'Things sync runs only in Obsidian on a Mac');
+}
+
+/** The Mac user's home folder, where the file naming the vault that owns Things lives. */
+export function homeDir(): string {
+    return loadNode().os.homedir();
+}
+
+/** This Mac's name, shown on other devices as the one syncing with Things. */
+export function deviceName(): string {
+    return loadNode().os.hostname().replace(/\.local$/, '');
+}
+
+/** The owner file's reads and writes, on this Mac's disk. */
+export function nodeOwnerFs(): OwnerFs {
+    const { fs } = loadNode();
+    return {
+        read: (path) => {
+            try {
+                return fs.readFileSync(path, 'utf8');
+            } catch {
+                return null;
+            }
+        },
+        write: (path, text) => {
+            fs.mkdirSync(path.slice(0, path.lastIndexOf('/')), { recursive: true });
+            fs.writeFileSync(path, text, 'utf8');
+        },
+        remove: (path) => fs.rmSync(path, { force: true })
     };
 }
